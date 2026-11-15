@@ -307,6 +307,7 @@ int rm_mcp_handle(const rm_ops_t *ops, const char *body, size_t len, char **out)
 {
     *out = NULL;
     if (!body || len == 0) return finish(error_resp(NULL, -32700, "parse error"), out);
+    if (!rm_json_depth_ok(body, len, RM_JSON_MAX_DEPTH)) return finish(error_resp(NULL, -32600, "invalid request: nested too deeply"), out);
     cJSON *req = cJSON_ParseWithLength(body, len);
     if (!req) return finish(error_resp(NULL, -32700, "parse error"), out);
     int status;

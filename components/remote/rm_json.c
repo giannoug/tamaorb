@@ -164,3 +164,23 @@ const char *rm_json_press_req(const cJSON *args, rm_press_req_t *out)
     if (!ms_field(args, "settle_ms", &out->settle_ms)) return "settle_ms";
     return NULL;
 }
+
+bool rm_json_depth_ok(const char *body, size_t len, int max_depth)
+{
+    int depth = 0;
+    bool in_str = false;
+    for (size_t i = 0; i < len; i++) {
+        char c = body[i];
+        if (in_str) {
+            if (c == '\\') i++;
+            else if (c == '"') in_str = false;
+        } else if (c == '"') {
+            in_str = true;
+        } else if (c == '{' || c == '[') {
+            if (++depth > max_depth) return false;
+        } else if ((c == '}' || c == ']') && depth > 0) {
+            depth--;
+        }
+    }
+    return true;
+}

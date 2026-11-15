@@ -114,5 +114,10 @@ const char *rm_json_press_req(const cJSON *args, rm_press_req_t *out);
 // Standard base64 with padding. Needs 4*ceil(len/3)+1 bytes in out; returns the length.
 size_t rm_base64_encode(const uint8_t *in, size_t len, char *out);
 
+#define RM_JSON_MAX_DEPTH 16
+// False if any {/[ nesting (outside strings, honouring backslash escapes) exceeds max_depth.
+// Run before cJSON_Parse: cJSON recurses per level, which would overflow a small task stack.
+bool rm_json_depth_ok(const char *body, size_t len, int max_depth);
+
 // Returns the HTTP status (200 or 202). *out is a malloc'd JSON body, NULL for 202.
 int rm_mcp_handle(const rm_ops_t *ops, const char *body, size_t len, char **out);

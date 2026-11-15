@@ -353,6 +353,38 @@ static void test_hostile_input(void)
     }
 }
 
+static void test_depth_limit(void)
+{
+    char *deep = malloc(2001);
+    memset(deep, '[', 2000);
+    deep[2000] = 0;
+    cJSON *r = call(deep, NULL);
+    TEST_ASSERT_EQUAL(-32600, err_code(r));
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(r, "id")));
+    cJSON_Delete(r);
+    free(deep);
+
+    // Exactly depth 16: the outer object plus 15 arrays.
+    char ok[256] = "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\",\"params\":";
+    strcat(ok, "[[[[[[[[[[[[[[[");
+    strcat(ok, "]]]]]]]]]]]]]]]}");
+    r = call(ok, NULL);
+    TEST_ASSERT_NOT_NULL(result(r));
+    cJSON_Delete(r);
+    // One more level is refused.
+    char over[256] = "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\",\"params\":";
+    strcat(over, "[[[[[[[[[[[[[[[[");
+    strcat(over, "]]]]]]]]]]]]]]]]}");
+    r = call(over, NULL);
+    TEST_ASSERT_EQUAL(-32600, err_code(r));
+    cJSON_Delete(r);
+
+    TEST_ASSERT_TRUE(rm_json_depth_ok("\"[[[[[[[[[[[[[[[[[[[[\"", 22, 2));
+    const char *esc = "{\"a\":\"\\\"[[[[[[[[[[[[[[[[[[[[\"}";
+    TEST_ASSERT_TRUE(rm_json_depth_ok(esc, strlen(esc), 2));
+    TEST_ASSERT_FALSE(rm_json_depth_ok("[[[", 3, 2));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -378,5 +410,6 @@ int main(void)
     RUN_TEST(test_resources);
     RUN_TEST(test_resources_read_guide);
     RUN_TEST(test_hostile_input);
+    RUN_TEST(test_depth_limit);
     return UNITY_END();
 }
