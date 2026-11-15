@@ -10,16 +10,31 @@
 #include "tama_core.h"
 #include "ui.h"
 #include "emu_task.h"
+#include <stdio.h>
+#include <string.h>
+#include "esp_system.h"
+#include "rom_store.h"
+#include "saver.h"
+#include "power.h"
 
 #define LOOP_MS        30
 #define SCREEN_TIMEOUT 30000
 #define BACKLIGHT_PCT  80
+#define DIM_PCT        5
+#define DIM_USB_MS     30000  // plugged in: dim after 30 s idle, never off
+#define DIM_BATTERY_MS 15000  // on battery: dim after 15 s, off at SCREEN_TIMEOUT
 
 static const char *TAG = "ui";
 static tc_model_t s_model;
 static uint16_t *s_fb;
+static volatile bool s_low_battery;
+
+void ui_task_show_low_battery(void) { s_low_battery = true; }
 
 static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
+
+static void picker_from_play(void);
+static uint8_t read_touch_buttons(ui_touch_tracker_t *tr);
 
 static void ui_task(void *arg)
 {
@@ -29,11 +44,20 @@ static void ui_task(void *arg)
     uint32_t frame_seq = 0;
     uint8_t shown_held = 0xFF;
     bool backlight = false;
+    bool usb_was = true;  // no wake event for the USB state at boot
+    bool dimmed = false;
 
     // Before the emulator runs: a start-up screen, then the catch-up progress screen.
     uint32_t last_progress_draw = 0;
     bool boot_drawn = false;
+    power_screen_on(true);  // these screens are lit: no light sleep (it would stop the backlight PWM)
     while (emu_phase() != EMU_RUN) {
+        if (s_low_battery) {
+            ui_render_low_battery(s_fb, &UI_PALETTE_CLASSIC);
+            board_display_flush(s_fb);
+            board_backlight_set(BACKLIGHT_PCT);
+            vTaskSuspend(NULL);  // the power task puts the device to sleep
+        }
         if (emu_phase() == EMU_BOOT && !boot_drawn) {
             ui_render_message(s_fb, "TamaOrb", "Starting...", &UI_PALETTE_CLASSIC);
             board_display_flush(s_fb);
@@ -45,13 +69,19 @@ static void ui_task(void *arg)
             emu_catchup_progress(&done, &total, &eta);
             ui_render_catchup(s_fb, done, total, eta, &UI_PALETTE_CLASSIC);
             board_display_flush(s_fb);
+            ESP_LOGI(TAG, "catch-up screen %llu/%llu s", (unsigned long long)done, (unsigned long long)total);
             board_backlight_set(BACKLIGHT_PCT);
             last_progress_draw = now_ms();
         }
         vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
     }
-    ui_screen_init(&screen, now_ms());
+    {
+        ui_touch_tracker_t probe = { 0 };  // a finger held through the catch-up screen isn't a press
+        ui_screen_resume(&screen, now_ms(), board_boot_down(), read_touch_buttons(&probe) != 0);
+    }
+    power_screen_on(false);
     backlight = false;  // force a fresh pet frame and backlight on
+    ESP_LOGI(TAG, "showing the pet");
 
     for (;;) {
         board_touch_t bt;
@@ -61,34 +91,147 @@ static void ui_task(void *arg)
         tc_tone_t tone;
         tc_get_tone(&tone);
 
+        // Plugged in: no automatic timeout, and plugging in wakes the screen. On battery: 30 s.
+        bool usb = board_usb_present();
+        if (usb && !usb_was) ui_screen_wake(&screen, now_ms());
+        usb_was = usb;
         ui_screen_out_t out = ui_screen_update(&screen, now_ms(), ui_touch_track(&tracker, &t),
-                                               board_boot_down(), tone.on, SCREEN_TIMEOUT);
+                                               board_boot_down(), tone.on, usb ? 0 : SCREEN_TIMEOUT);
         tc_post_buttons(out.buttons);
+        if (ui_screen_long_press(&screen)) {
+            tc_post_buttons(0);
+            picker_from_play();
+            ui_touch_tracker_t probe = { 0 };
+            ui_screen_resume(&screen, now_ms(), board_boot_down(), read_touch_buttons(&probe) != 0);
+            power_screen_on(false);
+            backlight = false;  // force a fresh pet frame
+            continue;
+        }
+
+        if (s_low_battery) {
+            ui_render_low_battery(s_fb, &UI_PALETTE_CLASSIC);
+            board_display_flush(s_fb);
+            board_backlight_set(BACKLIGHT_PCT);
+            power_screen_on(true);
+            vTaskSuspend(NULL);  // the power task puts the device to sleep
+        }
 
         bool redraw = false;
         if (out.backlight != backlight) {
             backlight = out.backlight;
             redraw = backlight;
+            power_screen_on(backlight);  // no light sleep while the backlight PWM must run
             if (!backlight) board_backlight_set(0);
         }
+        bool dim = ui_screen_dimmed(&screen, now_ms(), usb ? DIM_USB_MS : DIM_BATTERY_MS);
+        if (backlight && !redraw && dim != dimmed) board_backlight_set(dim ? DIM_PCT : BACKLIGHT_PCT);
+        dimmed = dim;
         if (backlight && (tc_frame_changed(&frame_seq) || out.buttons != shown_held || redraw)) {
             tc_frame_t f;
             tc_get_frame(&f);
             ui_render_pet(s_fb, &f, s_model, out.buttons, true, &UI_PALETTE_CLASSIC);
             board_display_flush(s_fb);
             shown_held = out.buttons;
-            if (redraw) board_backlight_set(BACKLIGHT_PCT);  // light up only after a fresh frame is on the panel
+            if (redraw) board_backlight_set(dimmed ? DIM_PCT : BACKLIGHT_PCT);  // light up only after a fresh frame
         }
         vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
     }
 }
 
+esp_err_t ui_init(void)
+{
+    // PSRAM: internal RAM can't spare 115 KB once Wi-Fi runs (measured). The display driver
+    // copies each frame into small internal DMA bands, so the framebuffer itself needn't be internal.
+    s_fb = heap_caps_malloc(UI_W * UI_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    return s_fb ? ESP_OK : ESP_ERR_NO_MEM;
+}
+
+void ui_message(const char *title, const char *body)
+{
+    if (!s_fb) return;
+    ui_render_message(s_fb, title, body, &UI_PALETTE_CLASSIC);
+    board_display_flush(s_fb);
+    board_backlight_set(BACKLIGHT_PCT);
+}
+
+static uint8_t read_touch_buttons(ui_touch_tracker_t *tr)
+{
+    board_touch_t bt;
+    board_touch_read(&bt);
+    ui_touch_t t = { .count = bt.count };
+    for (int i = 0; i < bt.count; i++) { t.pt[i].x = bt.pt[i].x; t.pt[i].y = bt.pt[i].y; }
+    return ui_touch_track(tr, &t);
+}
+
+int ui_pick_rom(const tc_rom_entry_t *roms, int n, int current, bool allow_cancel)
+{
+    int idx[16], sel = 0;
+    int m = tc_rom_distinct_valid(roms, n, idx, 16);  // one entry per distinct P1/P2 dump
+    for (int k = 0; k < m; k++)
+        if (current >= 0 && !memcmp(roms[idx[k]].sha1, roms[current].sha1, 20)) sel = k;
+    if (!m || !s_fb) return -1;
+
+    static char subs[UI_PICKER_MAX][24];
+    ui_touch_tracker_t tr = { 0 };
+    uint8_t prev = 0xFF;  // ignore whatever is held when the picker opens
+    bool boot_prev = true, dirty = true;
+    for (;;) {
+        if (dirty) {
+            int first = sel - 1 < 0 ? 0 : (sel - 1 > m - UI_PICKER_MAX ? (m > UI_PICKER_MAX ? m - UI_PICKER_MAX : 0) : sel - 1);
+            const char *names[UI_PICKER_MAX], *sp[UI_PICKER_MAX];
+            int shown = m - first < UI_PICKER_MAX ? m - first : UI_PICKER_MAX;
+            for (int k = 0; k < shown; k++) {
+                const tc_rom_entry_t *r = &roms[idx[first + k]];
+                names[k] = tc_model_name(r->model);
+                snprintf(subs[k], sizeof subs[k], "Gen %d - %.12s", r->model == TC_MODEL_P1 ? 1 : 2, r->name);
+                sp[k] = subs[k];
+            }
+            ui_render_picker(s_fb, names, sp, shown, sel - first, &UI_PALETTE_CLASSIC);
+            board_display_flush(s_fb);
+            board_backlight_set(BACKLIGHT_PCT);
+            dirty = false;
+        }
+        uint8_t b = read_touch_buttons(&tr);
+        uint8_t pressed = prev == 0xFF ? 0 : (uint8_t)(b & ~prev);
+        prev = b;
+        if (pressed & TC_BTN_MASK(TC_BTN_A)) { sel = (sel + m - 1) % m; dirty = true; }
+        if (pressed & TC_BTN_MASK(TC_BTN_C)) { sel = (sel + 1) % m; dirty = true; }
+        if (pressed & TC_BTN_MASK(TC_BTN_B)) return idx[sel];
+        bool boot = board_boot_down();
+        if (allow_cancel && boot && !boot_prev) return -1;
+        boot_prev = boot;
+        vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
+    }
+}
+
+// BOOT long press during play: pick a ROM; a different one is saved-then-rebooted into (spec §7.3).
+static void picker_from_play(void)
+{
+    static tc_rom_entry_t roms[16];
+    uint8_t active[20];
+    static uint8_t rom[TC_ROM_BYTES];
+    int n = rom_store_scan(roms, 16), current = -1;
+    if (rom_store_cached(rom, active))
+        for (int i = 0; i < n; i++)
+            if (!memcmp(roms[i].sha1, active, 20)) current = i;
+    int pick = ui_pick_rom(roms, n, current, true);
+    if (pick < 0 || pick == current) return;
+    ui_message("Switching", "Saving your pet...");
+    if (!saver_request_and_wait(3000)) {
+        ui_message("Not switching", "Couldn't save your\npet, so it stays.");
+        vTaskDelay(pdMS_TO_TICKS(2500));
+        return;
+    }
+    if (rom_store_read_sd(roms[pick].name, rom) && rom_store_set_active(rom) == ESP_OK) esp_restart();
+    ui_message("Switch failed", "Could not read\nthat ROM.");
+    vTaskDelay(pdMS_TO_TICKS(2000));
+}
+
 void ui_task_start(tc_model_t model)
 {
     s_model = model;
-    s_fb = heap_caps_malloc(UI_W * UI_H * sizeof(uint16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!s_fb) {
-        ESP_LOGE(TAG, "no memory for framebuffer");
+        ESP_LOGE(TAG, "ui_init() not called");
         return;
     }
     xTaskCreatePinnedToCore(ui_task, "ui", 6144, NULL, 5, NULL, 0);

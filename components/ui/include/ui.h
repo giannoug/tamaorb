@@ -40,12 +40,23 @@ typedef struct {
     bool boot_was_down;
     uint32_t boot_down_ms;
     bool sound_was_on;
+    bool long_fired;        // this BOOT hold already reported a long press
+    bool long_pending;      // not yet collected by ui_screen_long_press()
 } ui_screen_t;
 typedef struct { uint8_t buttons; bool backlight; } ui_screen_out_t;
 
 void ui_screen_init(ui_screen_t *s, uint32_t now_ms);  // starts on
+// timeout_ms == 0: no automatic timeout (e.g. on USB power); BOOT can still switch the screen off.
 ui_screen_out_t ui_screen_update(ui_screen_t *s, uint32_t now_ms, uint8_t touch_buttons,
                                  bool boot_down, bool sound_on, uint32_t timeout_ms);
+void ui_screen_wake(ui_screen_t *s, uint32_t now_ms);  // e.g. USB plugged in
+// True while the screen is on but has been idle (no touch, sound or BOOT) for at least dim_ms.
+bool ui_screen_dimmed(const ui_screen_t *s, uint32_t now_ms, uint32_t dim_ms);
+// Restarts the state machine after an overlay (e.g. the picker) closed: a BOOT press or touch that
+// is still held then is ignored until released, so it neither toggles the screen nor reaches the game.
+void ui_screen_resume(ui_screen_t *s, uint32_t now_ms, bool boot_down, bool touch_down);
+// True once per BOOT hold of >= 2 s (reported while still held); that press doesn't toggle the screen.
+bool ui_screen_long_press(ui_screen_t *s);
 
 // ---- Text screens (spec §5.5; layouts from the design canvas, ASCII only) ----
 // Draws with the 8x8 font; '\n' starts a new line (11 px * scale below). Returns the text width.

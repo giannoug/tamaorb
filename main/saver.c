@@ -17,6 +17,7 @@ static bool (*s_now)(int64_t *);
 static ps_policy_t s_policy;
 static uint8_t s_prev_buttons;
 static volatile bool s_requested;
+static volatile bool s_last_ok;
 static SemaphoreHandle_t s_done;
 static bool s_policy_ready;
 
@@ -52,17 +53,25 @@ esp_err_t saver_load(const uint8_t sha1[20], ps_meta_t *meta)
     nvs_close(h);
     int pick = ps_pick_newest(a, &ma, b, &mb);
     if (pick < 0) return ESP_ERR_NOT_FOUND;
-    const ps_meta_t *m = pick ? &mb : &ma;
-    if (!tc_state_load(pick ? pb : pa, pick ? lb : la)) {
-        ESP_LOGW(TAG, "newest save (seq %lu) does not fit this build", (unsigned long)m->seq);
-        return ESP_ERR_INVALID_VERSION;
+    // Keep counting from the highest sequence on flash whatever happens below.
+    s_seq = (a && b) ? ((int32_t)(mb.seq - ma.seq) > 0 ? mb.seq : ma.seq) : (pick ? mb.seq : ma.seq);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        int slot = attempt == 0 ? pick : !pick;
+        bool ok = slot ? b : a;
+        const ps_meta_t *m = slot ? &mb : &ma;
+        if (!ok) continue;
+        if (tc_state_load(slot ? pb : pa, slot ? lb : la)) {
+            *meta = *m;
+            s_next_slot = slot ? 'a' : 'b';  // overwrite the other slot next
+            ESP_LOGI(TAG, "loaded save seq %lu from slot %c (time %lld, %s)", (unsigned long)m->seq, slot ? 'b' : 'a',
+                     (long long)m->unix_time, m->time_trusted ? "trusted" : "untrusted");
+            return ESP_OK;
+        }
+        ESP_LOGW(TAG, "save seq %lu in slot %c does not fit this build", (unsigned long)m->seq, slot ? 'b' : 'a');
     }
-    *meta = *m;
-    s_seq = m->seq;
-    s_next_slot = pick ? 'a' : 'b';  // overwrite the older slot next
-    ESP_LOGI(TAG, "loaded save seq %lu from slot %c (time %lld, %s)", (unsigned long)m->seq, pick ? 'b' : 'a',
-             (long long)m->unix_time, m->time_trusted ? "trusted" : "untrusted");
-    return ESP_OK;
+    // Neither record loads: start fresh, but write into the older slot first so the newest record survives.
+    s_next_slot = pick ? 'a' : 'b';
+    return ESP_ERR_INVALID_VERSION;
 }
 
 void saver_set_time_source(bool (*now)(int64_t *unix_s)) { s_now = now; }
@@ -107,7 +116,7 @@ bool saver_request_and_wait(uint32_t timeout_ms)
     if (!s_done) return false;
     xSemaphoreTake(s_done, 0);
     s_requested = true;
-    return xSemaphoreTake(s_done, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+    return xSemaphoreTake(s_done, pdMS_TO_TICKS(timeout_ms)) == pdTRUE && s_last_ok;
 }
 
 void saver_poll(uint32_t now_ms)
@@ -122,7 +131,17 @@ void saver_poll(uint32_t now_ms)
     if (s_requested || ps_policy_due(&s_policy, now_ms)) {
         bool requested = s_requested;
         s_requested = false;
-        if (save_now() == ESP_OK) ps_policy_saved(&s_policy, now_ms);
+        s_last_ok = save_now() == ESP_OK;
+        if (s_last_ok) ps_policy_saved(&s_policy, now_ms);
+        else ps_policy_failed(&s_policy, now_ms);  // don't hammer a failing NVS every loop
         if (requested && s_done) xSemaphoreGive(s_done);
     }
+}
+
+void saver_serve_request_at(int64_t unix_s, bool trusted)
+{
+    if (!s_requested) return;
+    s_requested = false;
+    s_last_ok = saver_save_at(unix_s, trusted) == ESP_OK;
+    if (s_done) xSemaphoreGive(s_done);
 }

@@ -65,9 +65,11 @@ static void hal_set_lcd_icon(u8_t icon, bool_t val)
     else     g_back.icons &= (uint8_t)~(1u << icon);
 }
 
+static bool g_quiet;  // catch-up is silent; the final buzzer state is reported when it ends
+
 static void tone_changed(void)
 {
-    if (g_plat->tone) g_plat->tone(g_tone.freq_dhz, g_tone.on);
+    if (g_plat->tone && !g_quiet) g_plat->tone(g_tone.freq_dhz, g_tone.on);
 }
 
 static void hal_set_frequency(u32_t freq)
@@ -173,6 +175,7 @@ void tc_step(uint32_t n)
 uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_every_ticks)
 {
     tc_set_realtime(false);
+    g_quiet = true;
     uint64_t done = 0;
     uint64_t next_cb = cb_every_ticks ? cb_every_ticks : UINT64_MAX;
     uint32_t prev = ticks_now();
@@ -186,6 +189,8 @@ uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_eve
             next_cb += cb_every_ticks;
         }
     }
+    g_quiet = false;
+    tone_changed();
     tc_set_realtime(true);
     return done;
 }
@@ -297,3 +302,34 @@ uint8_t tc_applied_buttons(void) { return g_applied; }
 #ifdef TC_TESTING
 uint8_t tc_debug_applied_buttons(void) { return g_applied; }
 #endif
+
+typedef struct {
+    tc_catchup_cb cb;
+    void *ctx;
+    uint64_t offset, total;
+    bool stopped;
+} converge_ctx_t;
+
+static bool converge_cb(uint64_t done, uint64_t total, void *ctx)
+{
+    converge_ctx_t *c = ctx;
+    if (!c->cb) return true;
+    bool go = c->cb(c->offset + done, c->total, c->ctx);
+    c->stopped = !go;
+    return go;
+}
+
+uint64_t tc_catchup_converge(uint64_t ticks, uint64_t (*wall_us)(void), tc_catchup_cb cb, void *ctx,
+                             uint32_t cb_every_ticks)
+{
+    converge_ctx_t c = { .cb = cb, .ctx = ctx, .total = ticks };
+    uint64_t pass = ticks;
+    while (pass >= TC_TICK_HZ) {
+        uint64_t t0 = wall_us();
+        c.offset += tc_catchup(pass, converge_cb, &c, cb_every_ticks);
+        if (c.stopped) break;
+        pass = (wall_us() - t0) * TC_TICK_HZ / 1000000u;  // the time this pass took, still to replay
+        c.total = c.offset + pass;
+    }
+    return c.offset;
+}

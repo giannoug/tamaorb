@@ -91,6 +91,83 @@ static void test_lift_one_of_two(void)
     TEST_ASSERT_EQUAL_HEX8(C, step(30, C, false, false).buttons);
 }
 
+static void test_long_press_once(void)
+{
+    step(10, 0, true, false);
+    for (int t = 0; t < 2500; t += 100) step(100, 0, true, false);
+    TEST_ASSERT_TRUE(ui_screen_long_press(&s));
+    TEST_ASSERT_FALSE(ui_screen_long_press(&s));
+    TEST_ASSERT_TRUE(step(100, 0, false, false).backlight);  // release doesn't toggle
+    TEST_ASSERT_FALSE(ui_screen_long_press(&s));
+}
+
+static void test_short_press_not_long(void)
+{
+    step(10, 0, true, false);
+    step(500, 0, true, false);
+    step(10, 0, false, false);
+    TEST_ASSERT_FALSE(ui_screen_long_press(&s));
+}
+
+static void test_resume_ignores_held_boot(void)
+{
+    ui_screen_resume(&s, now, true, false);
+    TEST_ASSERT_TRUE(step(100, 0, true, false).backlight);
+    TEST_ASSERT_TRUE(step(100, 0, false, false).backlight);  // releasing the cancel press doesn't toggle
+    step(10, 0, true, false);
+    TEST_ASSERT_FALSE(step(100, 0, false, false).backlight);  // the next press does
+}
+
+static void test_resume_swallows_held_touch(void)
+{
+    ui_screen_resume(&s, now, false, true);
+    TEST_ASSERT_EQUAL_HEX8(0, step(30, B, false, false).buttons);
+    TEST_ASSERT_EQUAL_HEX8(0, step(30, 0, false, false).buttons);
+    TEST_ASSERT_EQUAL_HEX8(B, step(30, B, false, false).buttons);
+}
+
+static void test_no_timeout_when_zero(void)
+{
+    now += 10 * TIMEOUT;
+    TEST_ASSERT_TRUE(ui_screen_update(&s, now, 0, false, false, 0).backlight);
+}
+
+static void test_boot_still_toggles_without_timeout(void)
+{
+    ui_screen_update(&s, now += 10, 0, true, false, 0);
+    TEST_ASSERT_FALSE(ui_screen_update(&s, now += 200, 0, false, false, 0).backlight);
+    TEST_ASSERT_FALSE(ui_screen_update(&s, now += 60000, 0, false, false, 0).backlight);  // stays off by hand
+}
+
+static void test_wake_turns_screen_on(void)
+{
+    go_dark();
+    ui_screen_wake(&s, now);
+    TEST_ASSERT_TRUE(step(10, 0, false, false).backlight);
+    TEST_ASSERT_EQUAL_HEX8(A, step(30, A, false, false).buttons);  // a wake is not a swallowed touch
+}
+
+static void test_dims_after_idle(void)
+{
+    TEST_ASSERT_FALSE(ui_screen_dimmed(&s, now + 14999, 15000));
+    TEST_ASSERT_TRUE(ui_screen_dimmed(&s, now + 15000, 15000));
+}
+
+static void test_activity_undims(void)
+{
+    step(20000, 0, false, false);
+    TEST_ASSERT_TRUE(ui_screen_dimmed(&s, now, 15000));
+    step(10, B, false, false);
+    TEST_ASSERT_FALSE(ui_screen_dimmed(&s, now, 15000));
+    TEST_ASSERT_EQUAL_HEX8(B, step(10, B, false, false).buttons);  // a dimmed screen still takes presses
+}
+
+static void test_dark_screen_is_not_dimmed(void)
+{
+    go_dark();
+    TEST_ASSERT_FALSE(ui_screen_dimmed(&s, now, 15000));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -103,5 +180,15 @@ int main(void)
     RUN_TEST(test_boot_short_toggles);
     RUN_TEST(test_dark_screen_forwards_nothing);
     RUN_TEST(test_lift_one_of_two);
+    RUN_TEST(test_long_press_once);
+    RUN_TEST(test_short_press_not_long);
+    RUN_TEST(test_resume_ignores_held_boot);
+    RUN_TEST(test_resume_swallows_held_touch);
+    RUN_TEST(test_no_timeout_when_zero);
+    RUN_TEST(test_boot_still_toggles_without_timeout);
+    RUN_TEST(test_wake_turns_screen_on);
+    RUN_TEST(test_dims_after_idle);
+    RUN_TEST(test_activity_undims);
+    RUN_TEST(test_dark_screen_is_not_dimmed);
     return UNITY_END();
 }

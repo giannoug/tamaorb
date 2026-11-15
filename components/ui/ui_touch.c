@@ -20,7 +20,10 @@ uint8_t ui_touch_track(ui_touch_tracker_t *tr, const ui_touch_t *t)
         tr->down = false;
         return 0;
     }
-    if (t->count >= 2) return ui_touch_buttons(t);  // the chip separated two fingers
+    if (t->count >= 2) {
+        tr->down = false;  // when one finger lifts, the remaining one starts a fresh press
+        return ui_touch_buttons(t);  // the chip separated two fingers
+    }
 
     uint8_t cur = zone_mask(t->pt[0].x);
     if (!tr->down) {

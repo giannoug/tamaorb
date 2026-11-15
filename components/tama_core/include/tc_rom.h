@@ -23,4 +23,6 @@ typedef enum { TC_SEL_USE_CACHED, TC_SEL_USE_SD, TC_SEL_PICKER, TC_SEL_NO_ROM } 
 // The cached (remembered) ROM always wins. Otherwise one distinct valid SD ROM is used, several
 // open the picker, none means NO_ROM. Valid = P1 or P2; duplicate SHA-1s count once.
 // *sd_index_out is set for TC_SEL_USE_SD.
+// Indices of the distinct valid (P1/P2) entries, first occurrence of each SHA-1. Returns the count.
+int tc_rom_distinct_valid(const tc_rom_entry_t *sd, int n_sd, int *idx_out, int max);
 tc_sel_action_t tc_rom_select(bool have_cached, const tc_rom_entry_t *sd, int n_sd, int *sd_index_out);

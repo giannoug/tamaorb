@@ -41,6 +41,11 @@ uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_eve
 
 uint8_t  tc_applied_buttons(void);  // emulator task: the mask currently applied to tamalib
 
+// Like tc_catchup, then replays the wall time each pass took, until less than one second is left,
+// so the pet ends up at the current time (spec §6.4). cb sees cumulative done and the growing total.
+uint64_t tc_catchup_converge(uint64_t ticks, uint64_t (*wall_us)(void), tc_catchup_cb cb, void *ctx,
+                             uint32_t cb_every_ticks);
+
 #ifdef TC_TESTING
 uint8_t  tc_debug_applied_buttons(void);
 void     tc_debug_set_tick_source(uint32_t (*fn)(void));  // NULL = tamalib's counter

@@ -19,5 +19,8 @@ sdkconfig.old
 managed_components/
 build-host/
 
+# Python bytecode
+__pycache__/
+
 # Design specs and plans: kept local
 docs/superpowers/
