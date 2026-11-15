@@ -72,6 +72,14 @@ claude mcp add --transport http tamaorb http://tamaorb.local/mcp
 
 The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, and a how-to-play guide per model. Agent button beeps are quieter by default (`agent_feedback`).
 
+**If `tamaorb.local` doesn't resolve,** use the ball's IP address instead: `http://<ip>/` for the panel, and `claude mcp add --transport http tamaorb http://<ip>/mcp` for agents. Some routers stop forwarding mDNS names about 2 minutes after the ball boots, typically when the PC and the ball are on different subnets. To find the IP:
+
+- look in your router's DHCP client list;
+- or read the boot log over USB (`idf.py -p /dev/ttyACM0 monitor`): the line `esp_netif_handlers: sta ip: …`;
+- or, once the panel is open, read it on the Wi-Fi tile.
+
+Give the ball a DHCP reservation in the router so the address doesn't change. `tamaorb-rom.py status` doesn't show the IP.
+
 Without Wi-Fi, the same settings work over the cable:
 
 ```bash

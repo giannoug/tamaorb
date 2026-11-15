@@ -29,7 +29,13 @@ Pet pace stayed within ±3 ms per minute, every request succeeded, and the firmw
 
 With `--large` (adding a 16,384-byte settings PATCH, which must succeed, and a 16,385-byte save PUT, which must get 413) the run had no failures either: 1,287 requests, pace within ±0.003 s, internal minimum 42.5 KB.
 
-**Internal RAM under load.** Before Wi-Fi and lwIP moved to PSRAM, the network stack's buffers were the largest internal-RAM user under load, not our code. Four workers reading the 4.5 KB guide resource took the minimum to 19 KB, and the plain look mix to 33 KB. With the PSRAM option the same runs left the minimum where boot put it (about 42 KB). The cost: idle free internal RAM drops from about 88 KB to 75 KB, because the option's Wi-Fi defaults keep more static RX buffers in internal RAM. Throughput on the look mix went from 30.7 to 23.8 req/s, which a settings page and an agent don't notice.
+**Internal RAM under load.** Before Wi-Fi and lwIP moved to PSRAM, the network stack's buffers were the largest internal-RAM user under load, not our code. Four workers reading the 4.5 KB guide resource took the minimum to 19 KB, and the plain look mix to 33 KB. With the PSRAM option the same runs left the minimum where boot put it (about 42 KB). The option also changes other defaults, and they move with it if it is reverted or tuned:
+- 16 static RX buffers instead of 10, in internal RAM;
+- static TX buffers (16, in PSRAM) instead of 32 dynamic ones;
+- an RX block-ack window of 16 instead of 6;
+- `LWIP_TCP_OOSEQ_MAX_PBUFS=0`: the out-of-order TCP queue is unbounded instead of capped at 4, and backed by PSRAM.
+
+The cost: idle free internal RAM drops from about 88 KB to 75 KB, mostly because of the extra static RX buffers. Throughput on the look mix went from 30.7 to 23.8 req/s, which a settings page and an agent don't notice.
 
 **httpd stack: 8 KB.** On the spike's 6 KB the first load run overflowed the stack and the ball boot-looped. The MCP `look` path kept a 1 KB text buffer, a 1.6 KB PNG raster and a 1.7 KB pet list on the stack, and left 56 bytes. With 8 KB the worst high-water mark was 1,876 bytes free. Those buffers now come from the heap (the PNG raster is drawn straight into the output), so the worst case under load is about 4.4 KB free (4,420 bytes, on an MCP `list_pets`, which reads the SD card). The stack stays at 8 KB: `import_save` writes NVS and `list_pets` reads the SD card from the httpd task, so the extra margin is worth the 2 KB. A PSRAM stack is not an option for the same reason (flash writes disable the cache).
 
