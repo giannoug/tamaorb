@@ -12,7 +12,9 @@ void setUp(void)
 {
     fake_reset();
     test_hex20("09e5101b37636a314fc599d5d69b4846721b3c88", fake.pets[0].sha1);
+    fake.pets[0].model = TC_MODEL_P2;  // models to match the hashes
     test_hex20("4b4979cf92dc9d2fb6d7295a38f209f3da144f72", fake.pets[1].sha1);
+    fake.pets[1].model = TC_MODEL_P1;
 }
 void tearDown(void) { rm_set_alloc(NULL); }  // a failed assertion must not leave a test allocator behind
 
@@ -309,10 +311,27 @@ static void test_save_download_disposition(void)
     go(RM_GET, path, NULL, NULL, NULL);
     TEST_ASSERT_EQUAL(200, resp.status);
     TEST_ASSERT_EQUAL_STRING("application/octet-stream", resp.content_type);
-    TEST_ASSERT_NOT_NULL(strstr(resp.disposition, "tamaorb-P1-"));
+    // The P2 hash: P2 in the name. (This asserted P1 before, passing only because the fixture's model was wrong.)
+    TEST_ASSERT_NOT_NULL(strstr(resp.disposition, "attachment; filename=\"tamaorb-P2-"));
     TEST_ASSERT_EQUAL(12, resp.body_len);
     TEST_ASSERT_EQUAL_HEX8(0x5A, resp.body[0]);
     fake.export_result = RM_ERR_NOTFOUND;
+    go(RM_GET, path, NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(404, resp.status);
+}
+
+static void test_save_download_rom_not_listed(void)  // ruling R11
+{
+    memset(fake.pets[1].sha1, 0x11, 20);  // the P1 ROM is no longer on the card
+    fake.export_len = 4;
+    fake.export_meta.unix_time = 1700000000;
+    char path[80];
+    snprintf(path, sizeof path, "/api/pets/%s/save", SHA_OTHER);
+    go(RM_GET, path, NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_NOT_NULL(strstr(resp.disposition, "tamaorb-P1-"));
+    TEST_ASSERT_EQUAL(4, resp.body_len);
+    fake.export_result = RM_ERR_NOTFOUND;  // no save either: 404
     go(RM_GET, path, NULL, NULL, NULL);
     TEST_ASSERT_EQUAL(404, resp.status);
 }
@@ -430,6 +449,7 @@ int main(void)
     RUN_TEST(test_save_upload_active_restarts);
     RUN_TEST(test_save_upload_rom_not_on_card);
     RUN_TEST(test_save_download_disposition);
+    RUN_TEST(test_save_download_rom_not_listed);
     RUN_TEST(test_pets_and_switch);
     RUN_TEST(test_switch_catching_up_409);
     RUN_TEST(test_look_and_press);

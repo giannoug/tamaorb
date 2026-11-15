@@ -265,10 +265,10 @@ static void h_press(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
 
 static void h_save_get(const rm_ops_t *ops, const uint8_t sha[20], rm_resp_t *r)
 {
-    rm_pet_t pet;
-    int f = find_pet(ops, sha, &pet);
-    if (f < 0) { set_json(r, 500, NULL); return; }
-    if (!f) { set_err(r, 404, "not found", NULL); return; }
+    // Ruling R11: any pet with a save, listed or not (a restored save whose ROM left the card). The model comes
+    // from the hash; only P1 and P2 saves exist in a form a ball can restore.
+    tc_model_t model = tc_model_from_sha1(sha);
+    if (model != TC_MODEL_P1 && model != TC_MODEL_P2) { set_err(r, 404, "not found", NULL); return; }
     uint8_t *buf = rm_alloc(SAVE_MAX);
     if (!buf) { set_json(r, 500, NULL); return; }
     size_t len = 0;
@@ -277,7 +277,7 @@ static void h_save_get(const rm_ops_t *ops, const uint8_t sha[20], rm_resp_t *r)
     rm_err_t e = ops->export_save(ops->ctx, sha, buf, SAVE_MAX, &len, &meta);
     if (e != RM_OK) { free(buf); err_from(r, e); return; }
     char fn[48];
-    rm_save_filename(pet.model, &meta, fn);
+    rm_save_filename(model, &meta, fn);
     snprintf(r->disposition, sizeof r->disposition, "attachment; filename=\"%s\"", fn);
     r->status = 200;
     r->content_type = "application/octet-stream";
