@@ -41,6 +41,8 @@ The detailed hardware notes above should live in `docs/hardware/spotpear-ball-12
 | `0xA9` | firmware version `0x01` |
 | `0xFE` | write `0x01` to disable auto sleep (CST816S convention) |
 
+**Two-finger limits (measured):** two fingers at the same height (e.g. far left and far right) come back as one point at their average, with count 1. Diagonally separated fingers are sometimes reported as two points. Don't rely on two-finger input.
+
 ## Battery and USB notes
 
 - Full battery on USB: ADC raw ≈ 2557, ≈ 2084 mV at the pin, ≈ 4.17 V at the cell (divider ×2).

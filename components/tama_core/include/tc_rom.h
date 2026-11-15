@@ -16,3 +16,11 @@ tc_model_t  tc_rom_identify(const uint8_t *data, size_t len, uint8_t sha1_out[20
 // len must be TC_ROM_BYTES; each word is big-endian 16-bit masked to 12 bits.
 bool        tc_rom_decode(const uint8_t *data, size_t len, uint16_t *words_out);
 const char *tc_model_name(tc_model_t m);
+
+// ---- Active ROM selection (spec §7.3) ----
+typedef struct { char name[64]; uint8_t sha1[20]; tc_model_t model; } tc_rom_entry_t;
+typedef enum { TC_SEL_USE_CACHED, TC_SEL_USE_SD, TC_SEL_PICKER, TC_SEL_NO_ROM } tc_sel_action_t;
+// The cached (remembered) ROM always wins. Otherwise one distinct valid SD ROM is used, several
+// open the picker, none means NO_ROM. Valid = P1 or P2; duplicate SHA-1s count once.
+// *sd_index_out is set for TC_SEL_USE_SD.
+tc_sel_action_t tc_rom_select(bool have_cached, const tc_rom_entry_t *sd, int n_sd, int *sd_index_out);

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <stdio.h>
 #include <string.h>
 #include "unity.h"
 #include "test_support.h"
@@ -78,6 +79,58 @@ static void identify_file(const char *file, tc_model_t want, const char *hex)
 static void test_identify_p1(void) { identify_file("tama.bin", TC_MODEL_P1, "4b4979cf92dc9d2fb6d7295a38f209f3da144f72"); }
 static void test_identify_p2(void) { identify_file("tamag2.bin", TC_MODEL_P2, "09e5101b37636a314fc599d5d69b4846721b3c88"); }
 
+static tc_rom_entry_t entry(const char *name, tc_model_t m, uint8_t tag)
+{
+    tc_rom_entry_t e = { .model = m };
+    snprintf(e.name, sizeof e.name, "%s", name);
+    memset(e.sha1, tag, 20);
+    return e;
+}
+
+static void test_select_cached_wins(void)
+{
+    tc_rom_entry_t sd[2] = { entry("tama.bin", TC_MODEL_P1, 1), entry("tamag2.bin", TC_MODEL_P2, 2) };
+    int idx = -1;
+    TEST_ASSERT_EQUAL(TC_SEL_USE_CACHED, tc_rom_select(true, sd, 2, &idx));
+    TEST_ASSERT_EQUAL(TC_SEL_USE_CACHED, tc_rom_select(true, NULL, 0, &idx));
+}
+
+static void test_select_single_sd(void)
+{
+    tc_rom_entry_t sd[2] = { entry("readme", TC_MODEL_UNKNOWN, 9), entry("tamag2.bin", TC_MODEL_P2, 2) };
+    int idx = -1;
+    TEST_ASSERT_EQUAL(TC_SEL_USE_SD, tc_rom_select(false, sd, 2, &idx));
+    TEST_ASSERT_EQUAL(1, idx);
+}
+
+static void test_select_two_sd_picker(void)
+{
+    tc_rom_entry_t sd[2] = { entry("tama.bin", TC_MODEL_P1, 1), entry("tamag2.bin", TC_MODEL_P2, 2) };
+    int idx;
+    TEST_ASSERT_EQUAL(TC_SEL_PICKER, tc_rom_select(false, sd, 2, &idx));
+}
+
+static void test_select_duplicates_count_once(void)
+{
+    tc_rom_entry_t sd[2] = { entry("tama.bin", TC_MODEL_P1, 1), entry("copy.bin", TC_MODEL_P1, 1) };
+    int idx = -1;
+    TEST_ASSERT_EQUAL(TC_SEL_USE_SD, tc_rom_select(false, sd, 2, &idx));
+    TEST_ASSERT_EQUAL(0, idx);
+}
+
+static void test_select_ignores_unknown(void)
+{
+    tc_rom_entry_t sd[2] = { entry("x.bin", TC_MODEL_UNKNOWN, 5), entry("test.bin", TC_MODEL_TEST_ROM, 6) };
+    int idx;
+    TEST_ASSERT_EQUAL(TC_SEL_NO_ROM, tc_rom_select(false, sd, 2, &idx));
+}
+
+static void test_select_nothing(void)
+{
+    int idx;
+    TEST_ASSERT_EQUAL(TC_SEL_NO_ROM, tc_rom_select(false, NULL, 0, &idx));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -90,5 +143,11 @@ int main(void)
     RUN_TEST(test_model_names);
     RUN_TEST(test_identify_p1);
     RUN_TEST(test_identify_p2);
+    RUN_TEST(test_select_cached_wins);
+    RUN_TEST(test_select_single_sd);
+    RUN_TEST(test_select_two_sd_picker);
+    RUN_TEST(test_select_duplicates_count_once);
+    RUN_TEST(test_select_ignores_unknown);
+    RUN_TEST(test_select_nothing);
     return UNITY_END();
 }

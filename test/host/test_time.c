@@ -6,9 +6,9 @@
 #include "tc_time.h"
 #include "tama_core.h"
 
-static uint32_t fake_now;
-static uint32_t now_us(void) { return fake_now; }
-static void sleep_until_us(uint32_t ts) { if ((int32_t)(ts - fake_now) > 0) fake_now = ts; }
+static uint64_t fake_now;
+static uint64_t now_us(void) { return fake_now; }
+static void sleep_until_us(uint64_t ts) { if (ts > fake_now) fake_now = ts; }
 static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us };
 static bool have_rom, inited;
 static uint16_t program[TC_ROM_WORDS];
@@ -46,6 +46,12 @@ static void test_gap_clock_backwards(void)
     uint64_t g = 99;
     TEST_ASSERT_TRUE(tc_gap_seconds(5000, true, 4000, true, &g));
     TEST_ASSERT_EQUAL_UINT64(0, g);
+}
+
+static void test_progress_virtual_time(void)
+{
+    TEST_ASSERT_EQUAL_INT64(1000 + 3600, tc_progress_unix(1000, 3600ull * TC_TICK_HZ));
+    TEST_ASSERT_EQUAL_INT64(1000, tc_progress_unix(1000, TC_TICK_HZ - 1));  // whole seconds only
 }
 
 // Fake tick source: each read after a step jumps 2^31 ticks, so the 32-bit counter wraps
@@ -118,6 +124,7 @@ int main(void)
     RUN_TEST(test_gap_untrusted_save);
     RUN_TEST(test_gap_untrusted_now);
     RUN_TEST(test_gap_clock_backwards);
+    RUN_TEST(test_progress_virtual_time);
     RUN_TEST(test_catchup_exceeds_wrap);
     RUN_TEST(test_catchup_without_callback);
     RUN_TEST(test_catchup_matches_realtime);

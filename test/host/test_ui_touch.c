@@ -41,6 +41,69 @@ static void test_count_clamped_to_two(void)
     TEST_ASSERT_EQUAL_HEX8(TC_BTN_MASK(TC_BTN_A) | TC_BTN_MASK(TC_BTN_B), ui_touch_buttons(&t));
 }
 
+#define A TC_BTN_MASK(TC_BTN_A)
+#define B TC_BTN_MASK(TC_BTN_B)
+#define C TC_BTN_MASK(TC_BTN_C)
+static ui_touch_t at(int x) { return (ui_touch_t){ 1, { { (int16_t)x, 120 } } }; }
+static const ui_touch_t none = { 0 };
+
+static void test_track_keeps_start_zone_while_sliding(void)
+{
+    ui_touch_tracker_t tr = { 0 };
+    ui_touch_t t = at(20);
+    TEST_ASSERT_EQUAL_HEX8(A, ui_touch_track(&tr, &t));
+    t = at(120);
+    TEST_ASSERT_EQUAL_HEX8(A, ui_touch_track(&tr, &t));
+    TEST_ASSERT_EQUAL_HEX8(0, ui_touch_track(&tr, &none));
+}
+
+static void test_track_slide_a_to_c_holds_both(void)
+{
+    ui_touch_tracker_t tr = { 0 };
+    ui_touch_t t = at(20);
+    ui_touch_track(&tr, &t);
+    t = at(120);
+    ui_touch_track(&tr, &t);
+    t = at(200);
+    TEST_ASSERT_EQUAL_HEX8(A | C, ui_touch_track(&tr, &t));
+    TEST_ASSERT_EQUAL_HEX8(0, ui_touch_track(&tr, &none));
+}
+
+static void test_track_slide_c_to_a_holds_both(void)
+{
+    ui_touch_tracker_t tr = { 0 };
+    ui_touch_t t = at(220);
+    ui_touch_track(&tr, &t);
+    t = at(30);
+    TEST_ASSERT_EQUAL_HEX8(A | C, ui_touch_track(&tr, &t));
+}
+
+static void test_track_b_start_never_chords(void)
+{
+    ui_touch_tracker_t tr = { 0 };
+    ui_touch_t t = at(120);
+    ui_touch_track(&tr, &t);
+    t = at(230);
+    TEST_ASSERT_EQUAL_HEX8(B, ui_touch_track(&tr, &t));
+}
+
+static void test_track_new_touch_restarts(void)
+{
+    ui_touch_tracker_t tr = { 0 };
+    ui_touch_t t = at(20);
+    ui_touch_track(&tr, &t);
+    ui_touch_track(&tr, &none);
+    t = at(200);
+    TEST_ASSERT_EQUAL_HEX8(C, ui_touch_track(&tr, &t));
+}
+
+static void test_track_real_two_points_pass_through(void)
+{
+    ui_touch_tracker_t tr = { 0 };
+    ui_touch_t t = { 2, { { 20, 60 }, { 200, 180 } } };
+    TEST_ASSERT_EQUAL_HEX8(A | C, ui_touch_track(&tr, &t));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -49,5 +112,11 @@ int main(void)
     RUN_TEST(test_two_fingers_same_zone);
     RUN_TEST(test_zero_points);
     RUN_TEST(test_count_clamped_to_two);
+    RUN_TEST(test_track_keeps_start_zone_while_sliding);
+    RUN_TEST(test_track_slide_a_to_c_holds_both);
+    RUN_TEST(test_track_slide_c_to_a_holds_both);
+    RUN_TEST(test_track_b_start_never_chords);
+    RUN_TEST(test_track_new_touch_restarts);
+    RUN_TEST(test_track_real_two_points_pass_through);
     return UNITY_END();
 }

@@ -14,8 +14,9 @@ typedef struct { uint32_t rows[16]; uint8_t icons; } tc_frame_t;  // bit x of ro
 typedef struct { uint32_t freq_dhz; bool on; } tc_tone_t;
 
 typedef struct {
-    uint32_t (*now_us)(void);                 // monotonic, wraps at 2^32
-    void     (*sleep_until_us)(uint32_t ts);  // only called in real-time mode
+    uint64_t (*now_us)(void);                 // monotonic microseconds
+    void     (*sleep_until_us)(uint64_t ts);  // only called in real-time mode
+    void     (*tone)(uint32_t freq_dhz, bool on);  // buzzer changes, called on the emulator task; may be NULL
     void     (*lock)(void);                   // may be NULL (single-threaded hosts)
     void     (*unlock)(void);
 } tc_platform_t;
@@ -37,6 +38,8 @@ typedef bool (*tc_catchup_cb)(uint64_t done_ticks, uint64_t total_ticks, void *c
 // Runs at full speed until `ticks` emulated ticks have passed (wrap-safe), calling cb every
 // cb_every_ticks (0 = never). Restores real-time mode. Returns ticks actually run.
 uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_every_ticks);
+
+uint8_t  tc_applied_buttons(void);  // emulator task: the mask currently applied to tamalib
 
 #ifdef TC_TESTING
 uint8_t  tc_debug_applied_buttons(void);

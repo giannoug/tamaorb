@@ -25,6 +25,13 @@ typedef struct { uint8_t count; struct { int16_t x, y; } pt[2]; } ui_touch_t;
 // OR of the zone masks of the active points: x < 80 → A, 80..159 → B, >= 160 → C.
 uint8_t ui_touch_buttons(const ui_touch_t *t);
 
+// Stateful mapping used on the device. The CST816D averages two fingers at the same height into
+// one point (measured), so A+C is also a slide: a single finger keeps the button it started on
+// while it moves, and a finger that started on A and reaches C (or C and reaches A) holds A+C.
+// Genuine two-point reports still map through ui_touch_buttons.
+typedef struct { bool down; uint8_t start_mask; } ui_touch_tracker_t;
+uint8_t ui_touch_track(ui_touch_tracker_t *tr, const ui_touch_t *t);
+
 // ---- Screen timeout and BOOT button (spec §5.3–5.4) ----
 typedef struct {
     bool on;

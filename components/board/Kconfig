@@ -1,0 +1,8 @@
+menu "TamaOrb board"
+choice TAMAORB_BOARD
+    prompt "Target board"
+    default TAMAORB_BOARD_SPOTPEAR_BALL_128
+config TAMAORB_BOARD_SPOTPEAR_BALL_128
+    bool "SpotPear 1.28\" AI Voice Robot Ball (ESP32-S3, GC9A01A, CST816D, ES8311)"
+endchoice
+endmenu
