@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "hostlink.h"
+#include "tc_rom.h"
+
+struct hl_session {
+    const hl_ops_t *ops;
+    bool uploading;
+    char name[49];
+    size_t size, got;
+    uint32_t next_seq;
+    uint8_t sha1[20];
+    uint8_t data[TC_ROM_BYTES];
+};
+
+size_t hl_session_size(void) { return sizeof(hl_session_t); }
+
+void hl_init(hl_session_t *s, const hl_ops_t *ops)
+{
+    memset(s, 0, sizeof *s);
+    s->ops = ops;
+}
+
+static bool valid_name(const char *n)
+{
+    size_t len = strlen(n);
+    if (len < 5 || len > 48 || strcmp(n + len - 4, ".bin") != 0) return false;
+    for (size_t i = 0; i < len; i++)
+        if (!isalnum((unsigned char)n[i]) && n[i] != '.' && n[i] != '_' && n[i] != '-') return false;
+    return n[0] != '.';
+}
+
+static bool parse_hex20(const char *hex, uint8_t out[20])
+{
+    if (!hex || strlen(hex) != 40) return false;
+    for (int i = 0; i < 20; i++) {
+        char b[3] = { hex[2 * i], hex[2 * i + 1], 0 };
+        if (!isxdigit((unsigned char)b[0]) || !isxdigit((unsigned char)b[1])) return false;
+        out[i] = (uint8_t)strtoul(b, NULL, 16);
+    }
+    return true;
+}
+
+typedef struct { hl_emit_fn reply; void *rctx; } emit_ctx_t;
+
+static void emit_item(void *e, const char *item)
+{
+    emit_ctx_t *c = e;
+    char line[160];
+    snprintf(line, sizeof line, "@TO ITEM %s", item);
+    c->reply(c->rctx, line);
+}
+
+static void put(hl_session_t *s, char *args, hl_emit_fn reply, void *rctx)
+{
+    char *name = strtok(args, " "), *size = strtok(NULL, " "), *hex = strtok(NULL, " ");
+    if (!name || !valid_name(name)) { reply(rctx, "@TO ERR name"); return; }
+    if (!size || strtoul(size, NULL, 10) != TC_ROM_BYTES) { reply(rctx, "@TO ERR size"); return; }
+    if (!parse_hex20(hex, s->sha1)) { reply(rctx, "@TO ERR data"); return; }
+    snprintf(s->name, sizeof s->name, "%s", name);
+    s->size = TC_ROM_BYTES;
+    s->got = 0;
+    s->next_seq = 0;
+    s->uploading = true;
+    reply(rctx, "@TO OK");
+}
+
+static void chunk(hl_session_t *s, char *args, hl_emit_fn reply, void *rctx)
+{
+    char *seq = strtok(args, " "), *b64 = strtok(NULL, " ");
+    if (!s->uploading) { reply(rctx, "@TO ERR state"); return; }
+    if (!seq || strtoul(seq, NULL, 10) != s->next_seq) { reply(rctx, "@TO ERR seq"); return; }
+    int n = b64 ? hl_b64_decode(b64, s->data + s->got, s->size - s->got) : -1;
+    if (n < 0) { s->uploading = false; reply(rctx, "@TO ERR data"); return; }
+    s->got += (size_t)n;
+    char line[32];
+    snprintf(line, sizeof line, "@TO OK %lu", (unsigned long)s->next_seq++);
+    reply(rctx, line);
+}
+
+static void end(hl_session_t *s, hl_emit_fn reply, void *rctx)
+{
+    if (!s->uploading) { reply(rctx, "@TO ERR state"); return; }
+    s->uploading = false;
+    if (s->got != s->size) { reply(rctx, "@TO ERR size"); return; }
+    uint8_t h[20];
+    tc_model_t m = tc_rom_identify(s->data, s->size, h);
+    if (memcmp(h, s->sha1, 20) != 0) { reply(rctx, "@TO ERR sha1"); return; }
+    if (m != TC_MODEL_P1 && m != TC_MODEL_P2) { reply(rctx, "@TO ERR unknown"); return; }
+    if (!s->ops->store(s->ops->ctx, s->name, s->data, s->size)) { reply(rctx, "@TO ERR io"); return; }
+    char line[32];
+    snprintf(line, sizeof line, "@TO OK %s", tc_model_name(m));
+    reply(rctx, line);
+}
+
+static void wifi(hl_session_t *s, char *args, hl_emit_fn reply, void *rctx)
+{
+    char *ssid64 = strtok(args, " "), *pass64 = strtok(NULL, " ");
+    char ssid[33] = { 0 }, pass[65] = { 0 };
+    int a = ssid64 ? hl_b64_decode(ssid64, (uint8_t *)ssid, sizeof ssid - 1) : -1;
+    int b = pass64 ? hl_b64_decode(pass64, (uint8_t *)pass, sizeof pass - 1) : 0;
+    if (a <= 0 || b < 0) { reply(rctx, "@TO ERR data"); return; }
+    reply(rctx, s->ops->wifi(s->ops->ctx, ssid, pass) ? "@TO OK" : "@TO ERR io");
+}
+
+void hl_feed_line(hl_session_t *s, const char *line, hl_emit_fn reply, void *rctx)
+{
+    if (strncmp(line, "@TO ", 4) != 0) return;
+    char buf[HL_MAX_LINE];
+    snprintf(buf, sizeof buf, "%s", line + 4);
+    buf[strcspn(buf, "\r\n")] = '\0';
+    char *rest = strchr(buf, ' ');
+    if (rest) *rest++ = '\0';
+    else rest = buf + strlen(buf);
+
+    if (!strcmp(buf, "PUT")) put(s, rest, reply, rctx);
+    else if (!strcmp(buf, "D")) chunk(s, rest, reply, rctx);
+    else if (!strcmp(buf, "END")) end(s, reply, rctx);
+    else if (!strcmp(buf, "LIST")) {
+        emit_ctx_t c = { reply, rctx };
+        s->ops->list(s->ops->ctx, emit_item, &c);
+        reply(rctx, "@TO OK");
+    } else if (!strcmp(buf, "RM")) {
+        if (!valid_name(rest)) reply(rctx, "@TO ERR name");
+        else reply(rctx, s->ops->remove(s->ops->ctx, rest) ? "@TO OK" : "@TO ERR notfound");
+    } else if (!strcmp(buf, "WIFI")) wifi(s, rest, reply, rctx);
+    else if (!strcmp(buf, "STATUS")) {
+        char st[160], out[180];
+        s->ops->status(s->ops->ctx, st, sizeof st);
+        snprintf(out, sizeof out, "@TO STATUS %s", st);
+        reply(rctx, out);
+    } else reply(rctx, "@TO ERR cmd");
+}

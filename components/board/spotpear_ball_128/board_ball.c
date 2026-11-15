@@ -33,6 +33,7 @@ esp_err_t board_init(void)
     gpio_set_direction(PIN_AMP_EN, GPIO_MODE_OUTPUT);
     gpio_set_level(PIN_AMP_EN, 0);
     backlight_init();
+    ball_power_init();
     gpio_config_t boot = { .pin_bit_mask = 1ULL << PIN_BOOT, .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE };
     gpio_config(&boot);
     ESP_RETURN_ON_ERROR(ball_display_init(), TAG, "display");

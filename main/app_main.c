@@ -7,6 +7,7 @@
 #include "emu_task.h"
 #include "rom_store.h"
 #include "saver.h"
+#include "hostlink_task.h"
 #include "net.h"
 #include "nvs_flash.h"
 #include "tc_rom.h"
@@ -58,6 +59,7 @@ void app_main(void)
     net_start();
 
     tc_model_t model = choose_rom();
+    hostlink_task_start(model);  // also serves the no-ROM case, so a ROM can be pushed
     if (model == TC_MODEL_UNKNOWN) {
         ESP_LOGE(TAG, "no usable ROM");  // Task 20 shows a message screen
         return;
