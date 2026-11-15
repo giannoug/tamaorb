@@ -39,6 +39,8 @@ typedef bool (*tc_catchup_cb)(uint64_t done_ticks, uint64_t total_ticks, void *c
 // cb_every_ticks (0 = never). Restores real-time mode. Returns ticks actually run.
 uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_every_ticks);
 
+uint8_t  tc_applied_buttons(void);  // emulator task: the mask currently applied to tamalib
+
 #ifdef TC_TESTING
 uint8_t  tc_debug_applied_buttons(void);
 void     tc_debug_set_tick_source(uint32_t (*fn)(void));  // NULL = tamalib's counter

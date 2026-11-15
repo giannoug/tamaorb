@@ -124,6 +124,17 @@ static void test_policy_no_save_while_held(void)
     TEST_ASSERT_FALSE(ps_policy_due(&p, 11000));
 }
 
+static void test_pick_newest(void)
+{
+    ps_meta_t a = { .seq = 5 }, b = { .seq = 6 };
+    TEST_ASSERT_EQUAL(1, ps_pick_newest(true, &a, true, &b));
+    TEST_ASSERT_EQUAL(0, ps_pick_newest(true, &a, false, &b));
+    TEST_ASSERT_EQUAL(1, ps_pick_newest(false, &a, true, &b));
+    TEST_ASSERT_EQUAL(-1, ps_pick_newest(false, &a, false, &b));
+    a.seq = 0; b.seq = 0xFFFFFFFFu;  // a was written after the counter wrapped
+    TEST_ASSERT_EQUAL(0, ps_pick_newest(true, &a, true, &b));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -138,5 +149,6 @@ int main(void)
     RUN_TEST(test_policy_after_release);
     RUN_TEST(test_policy_periodic);
     RUN_TEST(test_policy_no_save_while_held);
+    RUN_TEST(test_pick_newest);
     return UNITY_END();
 }

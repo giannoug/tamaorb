@@ -59,3 +59,11 @@ void ps_key(const uint8_t sha1[20], uint8_t pet_id, char slot, char out[16])
 {
     snprintf(out, 16, "s%02x%02x%02x%02x%02x_%u%c", sha1[0], sha1[1], sha1[2], sha1[3], sha1[4], pet_id % 10u, slot);
 }
+
+int ps_pick_newest(bool a_ok, const ps_meta_t *a, bool b_ok, const ps_meta_t *b)
+{
+    if (a_ok && b_ok) return (int32_t)(b->seq - a->seq) > 0 ? 1 : 0;
+    if (a_ok) return 0;
+    if (b_ok) return 1;
+    return -1;
+}

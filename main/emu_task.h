@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include <stdbool.h>
 #include <stdint.h>
 
-// Initialises tama_core with the program and starts the emulator task (core 1, priority 10).
-void emu_task_start(const uint16_t *program);
+bool emu_init(const uint16_t *program);  // tama_core init; restore a save between this and emu_start()
+void emu_start(void);                    // emulator task on core 1, priority 10

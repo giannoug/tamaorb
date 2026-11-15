@@ -292,6 +292,8 @@ bool tc_state_load(const uint8_t *buf, size_t len)
     return true;
 }
 
+uint8_t tc_applied_buttons(void) { return g_applied; }
+
 #ifdef TC_TESTING
 uint8_t tc_debug_applied_buttons(void) { return g_applied; }
 #endif

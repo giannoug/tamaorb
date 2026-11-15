@@ -6,6 +6,7 @@
 #include "board.h"
 #include "emu_task.h"
 #include "rom_store.h"
+#include "saver.h"
 #include "tc_rom.h"
 #include "ui_task.h"
 
@@ -52,6 +53,11 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "running %s", tc_model_name(model));
     tc_rom_decode(s_rom, sizeof s_rom, s_program);
-    emu_task_start(s_program);
+    if (!emu_init(s_program)) return;
+    uint8_t sha1[20];
+    tc_rom_identify(s_rom, sizeof s_rom, sha1);
+    ps_meta_t meta;
+    if (saver_load(sha1, &meta) != ESP_OK) ESP_LOGI(TAG, "no save for this ROM; starting fresh");
+    emu_start();
     ui_task_start(model);
 }

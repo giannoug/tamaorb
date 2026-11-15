@@ -25,6 +25,9 @@ bool   ps_record_decode(const uint8_t *rec, size_t rec_len, ps_meta_t *m, const 
 // NVS key, max 15 chars: "s" + first 10 hex digits of sha1 + "_" + pet digit + slot ('a' or 'b').
 void   ps_key(const uint8_t sha1[20], uint8_t pet_id, char slot, char out[16]);
 uint32_t ps_crc32(const uint8_t *data, size_t len);
+// Of the two A/B slots, which holds the newest valid record: 0 = a, 1 = b, -1 = neither.
+// Sequence numbers compare wrap-safely.
+int    ps_pick_newest(bool a_ok, const ps_meta_t *a, bool b_ok, const ps_meta_t *b);
 
 #define PS_SAVE_AFTER_RELEASE_MS 3000u
 #define PS_SAVE_PERIOD_MS        300000u

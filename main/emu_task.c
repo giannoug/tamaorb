@@ -2,6 +2,7 @@
 // Emulator task: runs tamalib in real time on core 1 (spec §8).
 #include "emu_task.h"
 #include "board.h"
+#include "saver.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -43,6 +44,7 @@ static void emu_task(void *arg)
     for (;;) {
         tc_step(256);
         int64_t now = esp_timer_get_time();
+        saver_poll((uint32_t)(now / 1000));
         if (now - stat_t0 >= 60 * 1000000LL) {  // once a minute: pace and load
             double wall = (double)(now - stat_t0) / 1e6;
             double emu = (double)tc_ticks_since(stat_ticks0, tc_tick_counter()) / TC_TICK_HZ;
@@ -55,11 +57,14 @@ static void emu_task(void *arg)
     }
 }
 
-void emu_task_start(const uint16_t *program)
+bool emu_init(const uint16_t *program)
 {
-    if (!tc_init(program, &s_plat)) {
-        ESP_LOGE(TAG, "tc_init failed");
-        return;
-    }
+    if (tc_init(program, &s_plat)) return true;
+    ESP_LOGE(TAG, "tc_init failed");
+    return false;
+}
+
+void emu_start(void)
+{
     xTaskCreatePinnedToCore(emu_task, "emu", 8192, NULL, 10, NULL, 1);
 }
