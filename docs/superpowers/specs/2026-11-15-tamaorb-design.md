@@ -389,6 +389,11 @@ Goal: catch-up well above the current ~29×.
 
 **Later features:** multiple pets per model (several P1s, P2s, …; the save format's pet ID is ready for it), web UI, HTTP API, MCP server, OTA, Angel/Mothra and other models (icon sets, tap sensor on BOOT, 1 MHz OSC3 load), NTP-driven in-game clock set, battery discharge calibration, RGB LED use.
 
+**Owner-requested settings** (to become configurable, e.g. through the web UI; today they're compile-time constants):
+- display brightness and dim level (now 80% and 5%, `main/ui_task.c`);
+- idle-dim and screen-off delays (now 30 s dim on USB; 15 s dim and 30 s off on battery);
+- volume (now the `TAMAORB_VOLUME` build setting, muted by default).
+
 ---
 
 ## 13. Left to the builder
