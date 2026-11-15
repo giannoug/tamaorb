@@ -17,6 +17,7 @@ build/
 sdkconfig
 sdkconfig.old
 managed_components/
+build-host/
 
 # Design specs and plans: kept local
 docs/superpowers/

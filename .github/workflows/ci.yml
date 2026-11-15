@@ -13,3 +13,11 @@ jobs:
         run: |
           . $IDF_PATH/export.sh
           idf.py set-target esp32s3 build
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Host tests (ROM-gated tests skip without ROMs)
+        run: test/host/run.sh

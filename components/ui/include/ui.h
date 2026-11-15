@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Screen rendering and input logic for the 240x240 round display. Portable: no ESP-IDF headers.
+#pragma once
+#include <stdbool.h>
+#include <stdint.h>
+#include "tama_core.h"
+#include "tc_rom.h"
+
+#define UI_W 240
+#define UI_H 240
+
+typedef struct { uint8_t r, g, b; } ui_rgb_t;
+typedef struct { ui_rgb_t bg, ink; uint8_t ghost_pct; } ui_palette_t;
+extern const ui_palette_t UI_PALETTE_CLASSIC;  // bg #B6C19E, ink #1C2518, ghost 11 %
+
+uint16_t ui_rgb565(ui_rgb_t c);
+ui_rgb_t ui_mix(ui_rgb_t a, ui_rgb_t b, uint8_t pct);  // a + (b - a) * pct / 100, rounded to nearest
+
+// Framebuffer: UI_W * UI_H RGB565 pixels in host byte order (the board swaps for the panel).
+void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model,
+                   uint8_t held_mask, bool hints, const ui_palette_t *p);
+
+// ---- Touch (spec §5.2) ----
+typedef struct { uint8_t count; struct { int16_t x, y; } pt[2]; } ui_touch_t;
+// OR of the zone masks of the active points: x < 80 → A, 80..159 → B, >= 160 → C.
+uint8_t ui_touch_buttons(const ui_touch_t *t);
+
+// ---- Screen timeout and BOOT button (spec §5.3–5.4) ----
+typedef struct {
+    bool on;
+    uint32_t last_activity_ms;
+    bool swallowing;        // the touch that woke the screen is not forwarded until released
+    bool boot_was_down;
+    uint32_t boot_down_ms;
+    bool sound_was_on;
+} ui_screen_t;
+typedef struct { uint8_t buttons; bool backlight; } ui_screen_out_t;
+
+void ui_screen_init(ui_screen_t *s, uint32_t now_ms);  // starts on
+ui_screen_out_t ui_screen_update(ui_screen_t *s, uint32_t now_ms, uint8_t touch_buttons,
+                                 bool boot_down, bool sound_on, uint32_t timeout_ms);
+
+// ---- Text screens (spec §5.5; layouts from the design canvas, ASCII only) ----
+// Draws with the 8x8 font; '\n' starts a new line (11 px * scale below). Returns the text width.
+int  ui_draw_text(uint16_t *fb, int x, int y, const char *s, uint8_t scale, uint16_t color);
+int  ui_text_width(const char *line, uint8_t scale);  // first line only; the trailing blank column is excluded
+void ui_render_message(uint16_t *fb, const char *title, const char *body, const ui_palette_t *p);
+void ui_render_catchup(uint16_t *fb, uint64_t done_s, uint64_t total_s, uint32_t eta_s, const ui_palette_t *p);
+void ui_render_low_battery(uint16_t *fb, const ui_palette_t *p);
+void ui_render_picker(uint16_t *fb, const char *const *names, const char *const *subs,
+                      int n, int selected, const ui_palette_t *p);
+
+// Picker geometry, shared with the touch handling that selects entries.
+#define UI_PICKER_X      40
+#define UI_PICKER_W      160
+#define UI_PICKER_TOP    70
+#define UI_PICKER_H      32
+#define UI_PICKER_STEP   37
+#define UI_PICKER_MAX    3
