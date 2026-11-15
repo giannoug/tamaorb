@@ -35,8 +35,16 @@ set(SETTINGS_INC ${COMP}/settings/include)
 set(HOSTLINK_SRC ${COMP}/hostlink/hl_proto.c ${COMP}/hostlink/hl_base64.c)
 set(HOSTLINK_INC ${COMP}/hostlink/include)
 
-set(REMOTE_SRC ${COMP}/remote/rm_look.c ${COMP}/remote/rm_png.c ${COMP}/remote/rm_press.c ${COMP}/remote/rm_save.c)
-set(REMOTE_INC ${COMP}/remote/include)
+FetchContent_Declare(cjson
+    GIT_REPOSITORY https://github.com/DaveGamble/cJSON.git
+    GIT_TAG v1.7.18
+    SOURCE_SUBDIR none)  # only the sources are used, not cJSON's own CMake project
+FetchContent_MakeAvailable(cjson)
+
+set(REMOTE_SRC ${COMP}/remote/rm_look.c ${COMP}/remote/rm_png.c ${COMP}/remote/rm_press.c ${COMP}/remote/rm_save.c
+    ${COMP}/remote/rm_json.c ${COMP}/remote/rm_mcp.c ${cjson_SOURCE_DIR}/cJSON.c)
+set(REMOTE_INC ${COMP}/remote/include ${cjson_SOURCE_DIR})
+set(REMOTE_TEST_SRC ${REMOTE_SRC} ${SETTINGS_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/fake_ops.c)
 
 enable_testing()
 function(tamaorb_test name)
@@ -56,9 +64,10 @@ tamaorb_test(test_ui_text ${UI_SRC})
 tamaorb_test(test_persist ${PERSIST_SRC})
 tamaorb_test(test_settings ${SETTINGS_SRC})
 tamaorb_test(test_hostlink ${HOSTLINK_SRC} ${TAMA_CORE_SRC} ${SETTINGS_SRC})
-tamaorb_test(test_remote_look ${REMOTE_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
-tamaorb_test(test_remote_press ${REMOTE_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
-tamaorb_test(test_remote_save ${REMOTE_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
+tamaorb_test(test_remote_look ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
+tamaorb_test(test_remote_press ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
+tamaorb_test(test_remote_save ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
+tamaorb_test(test_remote_mcp ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
 
 # Eyeballing aid, not a test: build-host/render_preview out.ppm [held_mask]
 add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})

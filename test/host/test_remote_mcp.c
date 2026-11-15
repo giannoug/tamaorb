@@ -1,0 +1,382 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include <stdlib.h>
+#include <string.h>
+#include "unity.h"
+#include "fake_ops.h"
+
+#define INSTR "Read the guide resource for the active model (tamaorb://guide/p1 or tamaorb://guide/p2) before acting."
+
+void setUp(void) { fake_reset(); }
+void tearDown(void) {}
+
+static cJSON *call(const char *body, int *status)
+{
+    char *out = NULL;
+    int st = rm_mcp_handle(&fake_ops, body, body ? strlen(body) : 0, &out);
+    if (status) *status = st;
+    if (!out) return NULL;
+    cJSON *j = cJSON_Parse(out);
+    free(out);
+    TEST_ASSERT_NOT_NULL(j);
+    return j;
+}
+static int err_code(cJSON *r) { return (int)cJSON_GetObjectItem(cJSON_GetObjectItem(r, "error"), "code")->valuedouble; }
+static cJSON *tool(const char *name, const char *args_json)
+{
+    char buf[512];
+    snprintf(buf, sizeof buf, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"%s\",\"arguments\":%s}}", name, args_json);
+    return call(buf, NULL);
+}
+static cJSON *result(cJSON *r) { return cJSON_GetObjectItem(r, "result"); }
+static bool is_error(cJSON *r) { cJSON *e = cJSON_GetObjectItem(result(r), "isError"); return cJSON_IsTrue(e); }
+static const char *text0(cJSON *r)
+{
+    cJSON *c = cJSON_GetArrayItem(cJSON_GetObjectItem(result(r), "content"), 0);
+    return cJSON_GetObjectItem(c, "text")->valuestring;
+}
+
+static void test_initialize_echoes_known_version(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}", NULL);
+    TEST_ASSERT_EQUAL_STRING("2025-06-18", cJSON_GetObjectItem(result(r), "protocolVersion")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("tamaorb", cJSON_GetObjectItem(cJSON_GetObjectItem(result(r), "serverInfo"), "name")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("test", cJSON_GetObjectItem(cJSON_GetObjectItem(result(r), "serverInfo"), "version")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(INSTR, cJSON_GetObjectItem(result(r), "instructions")->valuestring);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItem(cJSON_GetObjectItem(result(r), "capabilities"), "tools"));
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItem(cJSON_GetObjectItem(result(r), "capabilities"), "resources"));
+    TEST_ASSERT_EQUAL_STRING("2.0", cJSON_GetObjectItem(r, "jsonrpc")->valuestring);
+    cJSON_Delete(r);
+}
+
+static void test_initialize_unknown_version(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"1999-01-01\"}}", NULL);
+    TEST_ASSERT_EQUAL_STRING("2025-11-25", cJSON_GetObjectItem(result(r), "protocolVersion")->valuestring);
+    cJSON_Delete(r);
+    r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}", NULL);
+    TEST_ASSERT_EQUAL_STRING("2025-11-25", cJSON_GetObjectItem(result(r), "protocolVersion")->valuestring);
+    cJSON_Delete(r);
+}
+
+static void test_notification_202(void)
+{
+    char *out = (char *)1;
+    const char *b = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}";
+    TEST_ASSERT_EQUAL(202, rm_mcp_handle(&fake_ops, b, strlen(b), &out));
+    TEST_ASSERT_NULL(out);
+}
+
+static void test_parse_error(void)
+{
+    int st;
+    cJSON *r = call("{", &st);
+    TEST_ASSERT_EQUAL(200, st);
+    TEST_ASSERT_EQUAL(-32700, err_code(r));
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(r, "id")));
+    cJSON_Delete(r);
+    r = call(NULL, &st);
+    TEST_ASSERT_EQUAL(-32700, err_code(r));
+    cJSON_Delete(r);
+    r = call("", &st);
+    TEST_ASSERT_EQUAL(-32700, err_code(r));
+    cJSON_Delete(r);
+}
+
+static void test_batch_rejected(void)
+{
+    cJSON *r = call("[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}]", NULL);
+    TEST_ASSERT_EQUAL(-32600, err_code(r));
+    cJSON_Delete(r);
+    r = call("{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"ping\"}", NULL);
+    TEST_ASSERT_EQUAL(-32600, err_code(r));
+    cJSON_Delete(r);
+    r = call("5", NULL);
+    TEST_ASSERT_EQUAL(-32600, err_code(r));
+    cJSON_Delete(r);
+}
+
+static void test_unknown_method(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":\"x\",\"method\":\"nope\"}", NULL);
+    TEST_ASSERT_EQUAL(-32601, err_code(r));
+    TEST_ASSERT_EQUAL_STRING("x", cJSON_GetObjectItem(r, "id")->valuestring);
+    cJSON_Delete(r);
+    r = call("{\"jsonrpc\":\"2.0\",\"id\":42,\"method\":\"ping\"}", NULL);
+    TEST_ASSERT_EQUAL(42, (int)cJSON_GetObjectItem(r, "id")->valuedouble);
+    TEST_ASSERT_NOT_NULL(result(r));
+    cJSON_Delete(r);
+}
+
+static void test_tools_list_names(void)
+{
+    static const char *const want[] = {"look", "press", "status", "get_settings", "set_settings", "list_pets", "switch_pet"};
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", NULL);
+    cJSON *tools = cJSON_GetObjectItem(result(r), "tools");
+    TEST_ASSERT_EQUAL(7, cJSON_GetArraySize(tools));
+    for (int i = 0; i < 7; i++) {
+        cJSON *t = cJSON_GetArrayItem(tools, i);
+        TEST_ASSERT_EQUAL_STRING(want[i], cJSON_GetObjectItem(t, "name")->valuestring);
+        TEST_ASSERT_EQUAL_STRING("object", cJSON_GetObjectItem(cJSON_GetObjectItem(t, "inputSchema"), "type")->valuestring);
+        TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItem(t, "description")));
+    }
+    cJSON_Delete(r);
+}
+
+static void test_look_has_text_and_png(void)
+{
+    cJSON *r = tool("look", "{}");
+    TEST_ASSERT_FALSE(is_error(r));
+    TEST_ASSERT_EQUAL_INT(0, strncmp(text0(r), "#.......", 8));
+    cJSON *img = cJSON_GetArrayItem(cJSON_GetObjectItem(result(r), "content"), 1);
+    TEST_ASSERT_EQUAL_STRING("image", cJSON_GetObjectItem(img, "type")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("image/png", cJSON_GetObjectItem(img, "mimeType")->valuestring);
+    // "iVBORw0KGgo" is base64 of the PNG signature 89 50 4E 47 0D 0A 1A 0A.
+    TEST_ASSERT_EQUAL_INT(0, strncmp(cJSON_GetObjectItem(img, "data")->valuestring, "iVBORw0KGgo", 11));
+    cJSON_Delete(r);
+}
+
+static void test_base64(void)
+{
+    char o[16];
+    TEST_ASSERT_EQUAL(0, rm_base64_encode((const uint8_t *)"", 0, o));
+    TEST_ASSERT_EQUAL(4, rm_base64_encode((const uint8_t *)"f", 1, o));
+    TEST_ASSERT_EQUAL_STRING("Zg==", o);
+    rm_base64_encode((const uint8_t *)"fo", 2, o);
+    TEST_ASSERT_EQUAL_STRING("Zm8=", o);
+    rm_base64_encode((const uint8_t *)"foo", 3, o);
+    TEST_ASSERT_EQUAL_STRING("Zm9v", o);
+    rm_base64_encode((const uint8_t *)"foobar", 6, o);
+    TEST_ASSERT_EQUAL_STRING("Zm9vYmFy", o);
+}
+
+static void test_press_passes_request(void)
+{
+    cJSON *r = tool("press", "{\"buttons\":[\"A\",\"AC\"],\"hold_ms\":100}");
+    TEST_ASSERT_FALSE(is_error(r));
+    TEST_ASSERT_EQUAL(1, fake.press_calls);
+    TEST_ASSERT_EQUAL(2, fake.press_seen.n);
+    TEST_ASSERT_EQUAL(RM_STEP_A, fake.press_seen.steps[0]);
+    TEST_ASSERT_EQUAL(RM_STEP_AC, fake.press_seen.steps[1]);
+    TEST_ASSERT_EQUAL(100, fake.press_seen.hold_ms);
+    TEST_ASSERT_EQUAL(200, fake.press_seen.gap_ms);
+    TEST_ASSERT_EQUAL(2, cJSON_GetArraySize(cJSON_GetObjectItem(result(r), "content")));
+    cJSON_Delete(r);
+    r = tool("press", "{\"buttons\":\"B C\"}");
+    TEST_ASSERT_FALSE(is_error(r));
+    TEST_ASSERT_EQUAL(2, fake.press_seen.n);
+    cJSON_Delete(r);
+}
+
+static void test_press_busy_is_tool_error(void)
+{
+    fake.press_result = RM_ERR_BUSY;
+    cJSON *r = tool("press", "{\"buttons\":\"A\"}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "busy"));
+    cJSON_Delete(r);
+    fake.press_result = RM_ERR_CATCHUP;
+    r = tool("press", "{\"buttons\":\"A\"}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "catching up"));
+    cJSON_Delete(r);
+}
+
+static void test_tool_args_wrong_type(void)
+{
+    cJSON *r = tool("press", "{\"buttons\":5}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "buttons"));
+    TEST_ASSERT_EQUAL(0, fake.press_calls);
+    cJSON_Delete(r);
+}
+
+static void test_press_validated_before_ops(void)
+{
+    cJSON *r = tool("press", "{\"buttons\":\"A\",\"hold_ms\":5000}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "hold_ms"));
+    cJSON_Delete(r);
+    r = tool("press", "{\"buttons\":\"A\",\"gap_ms\":1.5}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "gap_ms"));
+    cJSON_Delete(r);
+    r = tool("press", "{}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_EQUAL(0, fake.press_calls);
+    cJSON_Delete(r);
+}
+
+static void test_unknown_tool(void)
+{
+    cJSON *r = tool("nope", "{}");
+    TEST_ASSERT_TRUE(is_error(r));
+    cJSON_Delete(r);
+}
+
+static void test_set_settings_bad_key_changes_nothing(void)
+{
+    cJSON *r = tool("set_settings", "{\"brightness\":50,\"dim_level\":500}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "dim_level"));
+    TEST_ASSERT_EQUAL(80, fake.settings.brightness);
+    TEST_ASSERT_EQUAL(0, fake.put_calls);
+    cJSON_Delete(r);
+}
+
+static void test_set_settings_ok(void)
+{
+    cJSON *r = tool("set_settings", "{\"brightness\":50,\"palette\":\"night\"}");
+    TEST_ASSERT_FALSE(is_error(r));
+    TEST_ASSERT_EQUAL(1, fake.put_calls);
+    TEST_ASSERT_TRUE(fake.put_display);
+    TEST_ASSERT_EQUAL(50, fake.settings.brightness);
+    TEST_ASSERT_EQUAL(ST_PALETTE_NIGHT, fake.settings.palette);
+    cJSON *s = cJSON_Parse(text0(r));
+    TEST_ASSERT_EQUAL(50, (int)cJSON_GetObjectItem(s, "brightness")->valuedouble);
+    cJSON_Delete(s);
+    cJSON_Delete(r);
+    r = tool("set_settings", "{\"volume\":10}");
+    TEST_ASSERT_FALSE(fake.put_display);
+    cJSON_Delete(r);
+    r = tool("set_settings", "{\"brightness\":50}");  // unchanged
+    TEST_ASSERT_FALSE(fake.put_display);
+    cJSON_Delete(r);
+}
+
+static void test_patch_settings_types(void)
+{
+    st_settings_t s;
+    st_defaults(&s, 50);
+    bool d = false;
+    cJSON *p = cJSON_Parse("{\"brightness\":1.5}");
+    TEST_ASSERT_EQUAL_STRING("brightness", rm_json_patch_settings(p, &s, &d));
+    cJSON_Delete(p);
+    p = cJSON_Parse("{\"brightness\":\"60\"}");  // string for a numeric key is passed as-is and accepted
+    TEST_ASSERT_NULL(rm_json_patch_settings(p, &s, &d));
+    TEST_ASSERT_EQUAL(60, s.brightness);
+    cJSON_Delete(p);
+    p = cJSON_Parse("{\"name\":true}");
+    TEST_ASSERT_EQUAL_STRING("name", rm_json_patch_settings(p, &s, &d));
+    cJSON_Delete(p);
+    p = cJSON_Parse("{\"bogus\":1}");
+    TEST_ASSERT_EQUAL_STRING("bogus", rm_json_patch_settings(p, &s, &d));
+    cJSON_Delete(p);
+    p = cJSON_Parse("[1]");
+    TEST_ASSERT_EQUAL_STRING("", rm_json_patch_settings(p, &s, &d));
+    cJSON_Delete(p);
+    TEST_ASSERT_EQUAL_STRING("", rm_json_patch_settings(NULL, &s, &d));
+}
+
+static void test_status_and_pets_json(void)
+{
+    fake.status.last_save_known = false;
+    cJSON *r = tool("status", "{}");
+    cJSON *s = cJSON_Parse(text0(r));
+    TEST_ASSERT_EQUAL_STRING("P1", cJSON_GetObjectItem(s, "model")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("run", cJSON_GetObjectItem(s, "phase")->valuestring);
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(s, "last_save_unix")));
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(s, "usb")));
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItem(s, "catchup_speed"));
+    cJSON_Delete(s);
+    cJSON_Delete(r);
+    r = tool("list_pets", "{}");
+    cJSON *a = cJSON_Parse(text0(r));
+    TEST_ASSERT_EQUAL(2, cJSON_GetArraySize(a));
+    TEST_ASSERT_EQUAL_STRING("a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3", cJSON_GetObjectItem(cJSON_GetArrayItem(a, 0), "sha1")->valuestring);
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(cJSON_GetArrayItem(a, 0), "save_unix")));
+    TEST_ASSERT_EQUAL_STRING("P2", cJSON_GetObjectItem(cJSON_GetArrayItem(a, 1), "model")->valuestring);
+    TEST_ASSERT_EQUAL(1700000000, (long)cJSON_GetObjectItem(cJSON_GetArrayItem(a, 1), "save_unix")->valuedouble);
+    cJSON_Delete(a);
+    cJSON_Delete(r);
+}
+
+static void test_switch_pet(void)
+{
+    cJSON *r = tool("switch_pet", "{\"name\":\"other.bin\"}");
+    TEST_ASSERT_FALSE(is_error(r));
+    TEST_ASSERT_EQUAL_STRING("other.bin", fake.switched_to);
+    cJSON_Delete(r);
+    fake.switch_result = RM_ERR_NOTFOUND;
+    r = tool("switch_pet", "{\"name\":\"zzz\"}");
+    TEST_ASSERT_TRUE(is_error(r));
+    cJSON_Delete(r);
+    r = tool("switch_pet", "{}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "name"));
+    cJSON_Delete(r);
+}
+
+static void test_resources(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}", NULL);
+    cJSON *l = cJSON_GetObjectItem(result(r), "resources");
+    TEST_ASSERT_EQUAL(2, cJSON_GetArraySize(l));
+    TEST_ASSERT_EQUAL_STRING("tamaorb://guide/p1", cJSON_GetObjectItem(cJSON_GetArrayItem(l, 0), "uri")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("text/markdown", cJSON_GetObjectItem(cJSON_GetArrayItem(l, 1), "mimeType")->valuestring);
+    cJSON_Delete(r);
+}
+
+static void test_resources_read_guide(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\",\"params\":{\"uri\":\"tamaorb://guide/p1\"}}", NULL);
+    cJSON *c = cJSON_GetArrayItem(cJSON_GetObjectItem(result(r), "contents"), 0);
+    TEST_ASSERT_EQUAL_STRING("# P1 guide", cJSON_GetObjectItem(c, "text")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("tamaorb://guide/p1", cJSON_GetObjectItem(c, "uri")->valuestring);
+    cJSON_Delete(r);
+    r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\",\"params\":{\"uri\":\"tamaorb://guide/x\"}}", NULL);
+    TEST_ASSERT_EQUAL(-32602, err_code(r));
+    cJSON_Delete(r);
+    r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\",\"params\":{\"uri\":\"tamaorb://guide/p2\"}}", NULL);
+    TEST_ASSERT_EQUAL(-32602, err_code(r));  // p2 has no guide in the fake
+    cJSON_Delete(r);
+    r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\"}", NULL);
+    TEST_ASSERT_EQUAL(-32602, err_code(r));
+    cJSON_Delete(r);
+}
+
+static void test_hostile_input(void)
+{
+    const char *bad[] = {"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":5}", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\"}",
+                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":[]}",
+                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":7}}",
+                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"press\",\"arguments\":5}}",
+                         "{\"jsonrpc\":\"2.0\",\"id\":{},\"method\":\"ping\"}", "null", "\"x\""};
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        char *out = NULL;
+        int st = rm_mcp_handle(&fake_ops, bad[i], strlen(bad[i]), &out);
+        TEST_ASSERT_TRUE(st == 200 || st == 202);
+        if (st == 200) {
+            TEST_ASSERT_NOT_NULL(out);
+            TEST_ASSERT_NOT_NULL(strstr(out, "\"jsonrpc\":\"2.0\""));
+        }
+        free(out);
+    }
+}
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_initialize_echoes_known_version);
+    RUN_TEST(test_initialize_unknown_version);
+    RUN_TEST(test_notification_202);
+    RUN_TEST(test_parse_error);
+    RUN_TEST(test_batch_rejected);
+    RUN_TEST(test_unknown_method);
+    RUN_TEST(test_tools_list_names);
+    RUN_TEST(test_look_has_text_and_png);
+    RUN_TEST(test_base64);
+    RUN_TEST(test_press_passes_request);
+    RUN_TEST(test_press_busy_is_tool_error);
+    RUN_TEST(test_tool_args_wrong_type);
+    RUN_TEST(test_press_validated_before_ops);
+    RUN_TEST(test_unknown_tool);
+    RUN_TEST(test_set_settings_bad_key_changes_nothing);
+    RUN_TEST(test_set_settings_ok);
+    RUN_TEST(test_patch_settings_types);
+    RUN_TEST(test_status_and_pets_json);
+    RUN_TEST(test_switch_pet);
+    RUN_TEST(test_resources);
+    RUN_TEST(test_resources_read_guide);
+    RUN_TEST(test_hostile_input);
+    return UNITY_END();
+}

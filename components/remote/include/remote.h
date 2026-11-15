@@ -60,3 +60,59 @@ const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20]
                           bool (*state_ok)(const uint8_t *payload, size_t len), ps_meta_t *meta_out);
 // e.g. "tamaorb-P1-4b4979cf-2026-11-08.sav" (UTC date of meta->unix_time; "undated" if 0)
 void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[48]);
+
+// ---- Operations table, JSON helpers and the MCP dispatcher (spec §8.1) ----
+#include "cJSON.h"
+#include "settings.h"
+
+typedef enum { RM_OK = 0, RM_ERR_BUSY, RM_ERR_CATCHUP, RM_ERR_NOTFOUND, RM_ERR_BAD, RM_ERR_IO } rm_err_t;
+typedef struct {
+    char name[64];
+    tc_model_t model;
+    uint8_t sha1[20];
+    bool active, has_save, save_trusted;
+    int64_t save_unix;
+} rm_pet_t;
+typedef struct {
+    char name[33], version[32], rom_name[64], wifi_ssid[33], ip[16];
+    tc_model_t model;
+    rm_phase_t phase;
+    uint8_t catchup_pct;
+    uint32_t uptime_s, batt_mv, heap_free, heap_min;
+    uint8_t batt_pct;
+    int8_t rssi;
+    bool usb, wifi, time_trusted, sd_present, restart_pending, last_save_known;
+    int64_t unix_time, last_save_unix;
+    float catchup_speed;
+} rm_status_t;
+typedef struct {
+    void (*look)(void *ctx, rm_look_t *out);
+    rm_err_t (*press)(void *ctx, const rm_press_req_t *req);  // blocks until done (<= 10 s); req is validated
+    void (*status)(void *ctx, rm_status_t *out);
+    void (*get_settings)(void *ctx, st_settings_t *out);
+    void (*put_settings)(void *ctx, const st_settings_t *s, bool display_changed);
+    int (*list_pets)(void *ctx, rm_pet_t *out, int max);
+    rm_err_t (*switch_pet)(void *ctx, const char *name);  // schedules the restart itself
+    rm_err_t (*export_save)(void *ctx, const uint8_t sha1[20], uint8_t *out, size_t cap, size_t *len, ps_meta_t *meta);
+    rm_err_t (*import_save)(void *ctx, const uint8_t sha1[20], uint8_t *rec, size_t len, rm_restore_mode_t mode);
+    bool (*set_wifi)(void *ctx, const char *ssid, const char *pass);  // schedules the restart itself
+    void (*restart)(void *ctx);                                       // schedules the restart
+    const char *(*guide)(void *ctx, const char *model);               // "p1"|"p2" -> Markdown, NULL if none
+    void *ctx;
+} rm_ops_t;
+
+// Shared by MCP and REST. Result objects are cJSON trees; the caller deletes them (NULL on out of memory).
+cJSON *rm_json_settings(const st_settings_t *s);  // numbers as numbers, enums and strings as strings
+// Applies a JSON object patch all-or-nothing to *s. NULL ok, else the first bad key ("" if not an object).
+// *display_changed (may be NULL) is true iff a display key's value changed.
+const char *rm_json_patch_settings(const cJSON *patch, st_settings_t *s, bool *display_changed);
+cJSON *rm_json_status(const rm_status_t *st);
+cJSON *rm_json_pets(const rm_pet_t *p, int n);
+// buttons (string "A AC" or array), hold_ms, gap_ms, settle_ms. NULL ok, else the bad field.
+// Does not range-check: run rm_press_validate on the result.
+const char *rm_json_press_req(const cJSON *args, rm_press_req_t *out);
+// Standard base64 with padding. Needs 4*ceil(len/3)+1 bytes in out; returns the length.
+size_t rm_base64_encode(const uint8_t *in, size_t len, char *out);
+
+// Returns the HTTP status (200 or 202). *out is a malloc'd JSON body, NULL for 202.
+int rm_mcp_handle(const rm_ops_t *ops, const char *body, size_t len, char **out);
