@@ -7,7 +7,7 @@
 #define INSTR "Read the guide resource for the active model (tamaorb://guide/p1 or tamaorb://guide/p2) before acting."
 
 void setUp(void) { fake_reset(); }
-void tearDown(void) {}
+void tearDown(void) { rm_set_alloc(NULL); }
 
 static cJSON *call(const char *body, int *status)
 {
@@ -385,6 +385,25 @@ static void test_depth_limit(void)
     TEST_ASSERT_FALSE(rm_json_depth_ok("[[[", 3, 2));
 }
 
+static void *failing_alloc(size_t n) { (void)n; return NULL; }
+
+static void test_tools_out_of_memory(void)
+{
+    rm_set_alloc(failing_alloc);  // only remote's big buffers fail; cJSON still allocates
+    cJSON *r = tool("look", "{}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_EQUAL_STRING("could not render the screen", text0(r));
+    cJSON_Delete(r);
+    r = tool("list_pets", "{}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_EQUAL_STRING("out of memory", text0(r));
+    cJSON_Delete(r);
+    r = tool("press", "{\"buttons\":\"A\"}");  // the press runs; only the look after it fails
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_EQUAL(1, fake.press_calls);
+    cJSON_Delete(r);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -411,5 +430,6 @@ int main(void)
     RUN_TEST(test_resources_read_guide);
     RUN_TEST(test_hostile_input);
     RUN_TEST(test_depth_limit);
+    RUN_TEST(test_tools_out_of_memory);
     return UNITY_END();
 }

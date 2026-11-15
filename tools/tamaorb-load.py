@@ -8,7 +8,8 @@ Each worker thread loops over GET /api/status, GET /api/look and POST /mcp (tool
 --large adds two 16 KB-class bodies per loop: a PATCH /api/settings padded with whitespace to
 exactly 16384 bytes (the cap; it re-sends a current value, so nothing changes) and a 16385-byte
 PUT of a save, which must get 413. Prints requests=<n> failures=<n> and the ball's heap_min,
-and exits 1 if any request failed. Standard library only.
+and exits 1 if any request failed or heap_min is under 20 KB (spec §10.3). Pace is checked in the
+serial log. Standard library only.
 """
 import argparse
 import json
@@ -19,6 +20,7 @@ import urllib.error
 import urllib.request
 
 BODY_MAX = 16384
+HEAP_MIN_FLOOR = 20480  # internal RAM, spec §10.3
 MCP_LOOK = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                        "params": {"name": "look", "arguments": {}}}).encode()
 
@@ -75,7 +77,12 @@ def main(argv=None):
     ap.add_argument("--large", action="store_true", help="add the 16384-byte PATCH and the 16385-byte PUT (413)")
     a = ap.parse_args(argv)
     base = "http://" + a.host
-    loop = requests_for(base, a.large)
+    try:
+        loop = requests_for(base, a.large)
+    except Exception as e:  # --large reads the current settings first
+        print("fail GET /api/settings: %s: %s" % (type(e).__name__, e), file=sys.stderr)
+        print("requests=1 failures=1")
+        return 1
 
     lock = threading.Lock()
     counts = {"requests": 0, "failures": 0}
@@ -116,6 +123,9 @@ def main(argv=None):
         print("heap_min=%d heap_free=%d uptime_s=%d" % (st["heap_min"], st["heap_free"], st["uptime_s"]))
     except Exception as e:
         print("status after the run failed: %s" % e, file=sys.stderr)
+        return 1
+    if st["heap_min"] < HEAP_MIN_FLOOR:
+        print("heap_min %d is under the %d floor" % (st["heap_min"], HEAP_MIN_FLOOR), file=sys.stderr)
         return 1
     return 1 if counts["failures"] else 0
 

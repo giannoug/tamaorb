@@ -14,7 +14,7 @@ void setUp(void)
     test_hex20("09e5101b37636a314fc599d5d69b4846721b3c88", fake.pets[0].sha1);
     test_hex20("4b4979cf92dc9d2fb6d7295a38f209f3da144f72", fake.pets[1].sha1);
 }
-void tearDown(void) {}
+void tearDown(void) { rm_set_alloc(NULL); }  // a failed assertion must not leave a test allocator behind
 
 static rm_resp_t resp;
 static void rfree(void) { free(resp.body); resp.body = NULL; }
@@ -377,7 +377,7 @@ static void test_big_buffers_come_from_rm_alloc(void)
     rm_set_alloc(failing_alloc);
     go(RM_GET, "/api/look", NULL, NULL, NULL);
     TEST_ASSERT_EQUAL(500, resp.status);
-    rm_set_alloc(NULL);  // back to malloc
+    rm_set_alloc(NULL);  // back to malloc (tearDown also resets it)
     go(RM_GET, "/api/look", NULL, NULL, NULL);
     TEST_ASSERT_EQUAL(200, resp.status);
 }
