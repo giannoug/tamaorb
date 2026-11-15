@@ -2,4 +2,5 @@
 idf_component_register(
     SRCS "hl_proto.c" "hl_base64.c"
     INCLUDE_DIRS "include"
+    REQUIRES settings
     PRIV_REQUIRES tama_core)

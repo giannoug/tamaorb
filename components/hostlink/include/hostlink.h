@@ -10,10 +10,13 @@
 //   @TO RM <name>                     -> @TO OK | @TO ERR name|notfound
 //   @TO WIFI <ssid_b64> [<pass_b64>]  -> @TO OK | @TO ERR data|io
 //   @TO STATUS                        -> @TO STATUS <key=value ...>
+//   @TO GET                           -> @TO SET <key>=<value> per setting, then @TO OK
+//   @TO SET k=v [k=v ...]             -> @TO OK | @TO ERR <first bad key> | @TO ERR data (all or nothing)
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "settings.h"
 
 #define HL_MAX_LINE   1100
 #define HL_MAX_CHUNK  768
@@ -28,6 +31,8 @@ typedef struct {
     bool (*remove)(void *ctx, const char *name);
     bool (*wifi)(void *ctx, const char *ssid, const char *pass);
     void (*status)(void *ctx, char *out, size_t cap);        // "rom=P1 wifi=1 ..."
+    void (*get_settings)(void *ctx, st_settings_t *out);
+    void (*put_settings)(void *ctx, const st_settings_t *s, bool display_changed);
     void *ctx;
 } hl_ops_t;
 

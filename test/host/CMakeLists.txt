@@ -52,7 +52,7 @@ tamaorb_test(test_ui_screen ${UI_SRC})
 tamaorb_test(test_ui_text ${UI_SRC})
 tamaorb_test(test_persist ${PERSIST_SRC})
 tamaorb_test(test_settings ${SETTINGS_SRC})
-tamaorb_test(test_hostlink ${HOSTLINK_SRC} ${TAMA_CORE_SRC})
+tamaorb_test(test_hostlink ${HOSTLINK_SRC} ${TAMA_CORE_SRC} ${SETTINGS_SRC})
 
 # Eyeballing aid, not a test: build-host/render_preview out.ppm [held_mask]
 add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})
