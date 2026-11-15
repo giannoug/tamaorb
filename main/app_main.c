@@ -7,6 +7,7 @@
 #include "emu_task.h"
 #include "rom_store.h"
 #include "saver.h"
+#include "power.h"
 #include "hostlink_task.h"
 #include "net.h"
 #include "nvs_flash.h"
@@ -44,8 +45,11 @@ static tc_model_t choose_rom(void)
     }
 }
 
+static void save_for_power(void) { saver_request_and_wait(3000); }
+
 void app_main(void)
 {
+    power_early_boot_check();  // asleep for low battery and USB still absent: back to sleep
     ESP_LOGI(TAG, "TamaOrb %s", esp_app_get_description()->version);
     ESP_ERROR_CHECK(board_init());
     esp_err_t nvs = nvs_flash_init();  // default partition: Wi-Fi calibration and credentials
@@ -86,4 +90,5 @@ void app_main(void)
         meta.time_trusted = false;
     }
     emu_start(gap_s, meta.unix_time, meta.time_trusted);
+    power_start(save_for_power, ui_task_show_low_battery);
 }

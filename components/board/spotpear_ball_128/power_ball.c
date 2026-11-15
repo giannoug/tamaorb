@@ -10,10 +10,19 @@
 static adc_oneshot_unit_handle_t s_adc;
 static adc_cali_handle_t s_cali;
 
-esp_err_t ball_power_init(void)
+static bool s_usb_gpio;
+
+static void usb_gpio_init(void)
 {
+    if (s_usb_gpio) return;
     gpio_config_t usb = { .pin_bit_mask = 1ULL << PIN_USB_SENSE, .mode = GPIO_MODE_INPUT };
     gpio_config(&usb);
+    s_usb_gpio = true;
+}
+
+esp_err_t ball_power_init(void)
+{
+    usb_gpio_init();
     adc_oneshot_unit_init_cfg_t uc = { .unit_id = ADC_UNIT_1 };
     esp_err_t err = adc_oneshot_new_unit(&uc, &s_adc);
     if (err != ESP_OK) return err;
@@ -39,4 +48,8 @@ uint32_t board_battery_mv(void)
     return (uint32_t)(sum / 8) * 2;  // resistor divider halves the cell voltage
 }
 
-bool board_usb_present(void) { return gpio_get_level(PIN_USB_SENSE) == 1; }
+bool board_usb_present(void)  // usable before board_init (early low-battery check)
+{
+    usb_gpio_init();
+    return gpio_get_level(PIN_USB_SENSE) == 1;
+}

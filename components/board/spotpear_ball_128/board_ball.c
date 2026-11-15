@@ -22,6 +22,14 @@ static void backlight_init(void)
 void board_backlight_set(uint8_t pct)
 {
     if (pct > 100) pct = 100;
+    if (pct == 0) {
+        // Off: stop the PWM with the pin high (backlight is active low) and latch the pad, so it
+        // can't float during automatic light sleep, which isolates GPIOs by default.
+        ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);  // LEDC idle 0 -> inverted -> pin high
+        gpio_hold_en(PIN_LCD_BL);
+        return;
+    }
+    gpio_hold_dis(PIN_LCD_BL);
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, (1023u * pct) / 100u);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
 }

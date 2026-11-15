@@ -19,6 +19,8 @@
 
 static const char *TAG = "audio";
 static esp_codec_dev_handle_t s_dev;
+static i2s_chan_handle_t s_tx;
+static bool s_tx_enabled;
 static TaskHandle_t s_task;
 static volatile uint32_t s_freq_hz;
 static volatile bool s_on;
@@ -64,6 +66,8 @@ esp_err_t ball_audio_init(void)
     std.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
     ESP_RETURN_ON_ERROR(i2s_channel_init_std_mode(tx, &std), TAG, "i2s std");
     ESP_RETURN_ON_ERROR(i2s_channel_enable(tx), TAG, "i2s enable");
+    s_tx = tx;
+    s_tx_enabled = true;
 
     audio_codec_i2c_cfg_t i2c_cfg = { .port = I2C_NUM_0, .addr = ES8311_CODEC_DEFAULT_ADDR, .bus_handle = bus };
     audio_codec_i2s_cfg_t i2s_cfg = { .port = I2S_NUM_0, .tx_handle = tx };
@@ -100,5 +104,8 @@ void board_volume_set(uint8_t pct)
     if (pct > 100) pct = 100;
     s_muted = pct == 0;
     amp(!s_muted);  // muted: amp off, no hum
+    // While enabled, the I2S channel holds a power lock that blocks light sleep.
+    if (s_tx && s_muted && s_tx_enabled) { i2s_channel_disable(s_tx); s_tx_enabled = false; }
+    if (s_tx && !s_muted && !s_tx_enabled) { i2s_channel_enable(s_tx); s_tx_enabled = true; }
     if (s_dev && pct) esp_codec_dev_set_out_vol(s_dev, pct);
 }

@@ -10,6 +10,7 @@
 #include "tama_core.h"
 #include "ui.h"
 #include "emu_task.h"
+#include "power.h"
 
 #define LOOP_MS        30
 #define SCREEN_TIMEOUT 30000
@@ -18,6 +19,9 @@
 static const char *TAG = "ui";
 static tc_model_t s_model;
 static uint16_t *s_fb;
+static volatile bool s_low_battery;
+
+void ui_task_show_low_battery(void) { s_low_battery = true; }
 
 static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 
@@ -65,10 +69,19 @@ static void ui_task(void *arg)
                                                board_boot_down(), tone.on, SCREEN_TIMEOUT);
         tc_post_buttons(out.buttons);
 
+        if (s_low_battery) {
+            ui_render_low_battery(s_fb, &UI_PALETTE_CLASSIC);
+            board_display_flush(s_fb);
+            board_backlight_set(BACKLIGHT_PCT);
+            power_screen_on(true);
+            vTaskSuspend(NULL);  // the power task puts the device to sleep
+        }
+
         bool redraw = false;
         if (out.backlight != backlight) {
             backlight = out.backlight;
             redraw = backlight;
+            power_screen_on(backlight);  // no light sleep while the backlight PWM must run
             if (!backlight) board_backlight_set(0);
         }
         if (backlight && (tc_frame_changed(&frame_seq) || out.buttons != shown_held || redraw)) {

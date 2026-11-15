@@ -4,3 +4,4 @@
 
 // Starts the UI task (core 0): touch → buttons, screen timeout, rendering.
 void ui_task_start(tc_model_t model);
+void ui_task_show_low_battery(void);  // any task: show the low-battery screen until reset
