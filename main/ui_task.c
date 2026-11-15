@@ -11,12 +11,13 @@
 #include "ui.h"
 #include "emu_task.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include "esp_system.h"
 #include "rom_store.h"
-#include "saver.h"
 #include "settings_store.h"
 #include "power.h"
+#include "press_task.h"
+#include "rom_switch.h"
 
 #define LOOP_MS        30
 
@@ -109,8 +110,11 @@ static void ui_task(void *arg)
         bool usb = board_usb_present();
         if (usb && !usb_was) ui_screen_wake(&screen, now_ms());
         usb_was = usb;
+        // Agent presses go through tc_post_remote_buttons, never the touch path: they aren't activity.
+        // Their beeps wake the screen only with agent_feedback = visible (spec §8.2).
+        bool sound_quiet = press_window_active() && cfg.agent_feedback != ST_AGENT_VISIBLE;
         ui_screen_out_t out = ui_screen_update(&screen, now_ms(), ui_touch_track(&tracker, &t),
-                                               board_boot_down(), tone.on, usb ? 0 : cfg.off_battery_s * 1000u);
+                                               board_boot_down(), tone.on, sound_quiet, usb ? 0 : cfg.off_battery_s * 1000u);
         tc_post_buttons(out.buttons);
         if (ui_screen_long_press(&screen)) {
             tc_post_buttons(0);
@@ -227,24 +231,29 @@ int ui_pick_rom(const tc_rom_entry_t *roms, int n, int current, bool allow_cance
 }
 
 // BOOT long press during play: pick a ROM; a different one is saved-then-rebooted into (spec §7.3).
+// The switch itself is shared with the remote API (rom_switch_to); the messages stay here.
 static void picker_from_play(void)
 {
     static tc_rom_entry_t roms[16];
     uint8_t active[20];
-    static uint8_t rom[TC_ROM_BYTES];
     int n = rom_store_scan(roms, 16), current = -1;
-    if (rom_store_cached(rom, active))
+    uint8_t *rom = malloc(TC_ROM_BYTES);  // only to learn the active SHA-1
+    if (rom && rom_store_cached(rom, active))
         for (int i = 0; i < n; i++)
             if (!memcmp(roms[i].sha1, active, 20)) current = i;
+    free(rom);
     int pick = ui_pick_rom(roms, n, current, true);
     if (pick < 0 || pick == current) return;
     ui_message("Switching", "Saving your pet...");
-    if (!saver_request_and_wait(3000)) {
+    esp_err_t err = rom_switch_to(roms[pick].name);
+    if (err == ESP_OK) {
+        for (;;) vTaskDelay(pdMS_TO_TICKS(1000));  // keep this message up until the restart
+    }
+    if (err == ESP_FAIL) {
         ui_message("Not switching", "Couldn't save your\npet, so it stays.");
         vTaskDelay(pdMS_TO_TICKS(2500));
         return;
     }
-    if (rom_store_read_sd(roms[pick].name, rom) && rom_store_set_active(rom) == ESP_OK) esp_restart();
     ui_message("Switch failed", "Could not read\nthat ROM.");
     vTaskDelay(pdMS_TO_TICKS(2000));
 }

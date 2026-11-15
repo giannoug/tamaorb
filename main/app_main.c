@@ -12,6 +12,8 @@
 #include "rom_store.h"
 #include "saver.h"
 #include "power.h"
+#include "press_task.h"
+#include "remote_ops.h"
 #include "hostlink_task.h"
 #include "net.h"
 #include "nvs_flash.h"
@@ -19,6 +21,7 @@
 #include "tc_time.h"
 #include "settings_store.h"
 #include "ui_task.h"
+#include "web.h"
 
 static const char *TAG = "tamaorb";
 
@@ -86,11 +89,9 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(nvs);
     ESP_ERROR_CHECK(settings_init());
-    {
-        st_settings_t st;
-        settings_get(&st);
-        board_volume_set(st.volume);
-    }
+    st_settings_t st;
+    settings_get(&st);  // name and ntp apply from boot to boot; everything else is read live
+    board_volume_set(st.volume);
     ESP_ERROR_CHECK(ui_init());
     ESP_ERROR_CHECK(rom_store_init());
     if (!rom_store_nvs_ok()) {
@@ -98,7 +99,7 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
     saver_set_time_source(net_now);
-    net_start();
+    net_start(st.name, st.ntp);
 
     tc_model_t model = choose_rom();
     hostlink_task_start(model);  // also serves the no-ROM case, so a ROM can be pushed
@@ -129,6 +130,8 @@ void app_main(void)
         meta.unix_time = 0;
         meta.time_trusted = false;
     }
+    press_task_start();
+    web_start(remote_ops_init(model, sha1), st.name);  // the same SHA-1 the saver loaded
     emu_start(gap_s, meta.unix_time, meta.time_trusted);
     power_start(save_for_power, ui_task_show_low_battery);
 }

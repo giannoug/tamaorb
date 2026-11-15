@@ -22,6 +22,9 @@ typedef struct {
 // seq u32, unix_time i64, rom_sha1[20], payload_len u16, payload, crc32 u32 (IEEE, over everything before it).
 size_t ps_record_encode(const ps_meta_t *m, const uint8_t *payload, size_t len, uint8_t *out, size_t cap);
 bool   ps_record_decode(const uint8_t *rec, size_t rec_len, ps_meta_t *m, const uint8_t **payload, size_t *len);
+// Patches time, trust and seq in an encoded record in place and recomputes the CRC.
+// unix_time NULL keeps the record's time and trust (trusted is ignored). False if rec doesn't decode.
+bool   ps_record_restamp(uint8_t *rec, size_t len, const int64_t *unix_time, bool trusted, uint32_t seq);
 // NVS key, max 15 chars: "s" + first 10 hex digits of sha1 + "_" + pet digit + slot ('a' or 'b').
 void   ps_key(const uint8_t sha1[20], uint8_t pet_id, char slot, char out[16]);
 uint32_t ps_crc32(const uint8_t *data, size_t len);

@@ -16,7 +16,13 @@ void tearDown(void) {}
 static ui_screen_out_t step(uint32_t dt, uint8_t touch, bool boot, bool sound)
 {
     now += dt;
-    return ui_screen_update(&s, now, touch, boot, sound, TIMEOUT);
+    return ui_screen_update(&s, now, touch, boot, sound, false, TIMEOUT);
+}
+
+static ui_screen_out_t step_quiet(uint32_t dt, bool sound)
+{
+    now += dt;
+    return ui_screen_update(&s, now, 0, false, sound, true, 0);
 }
 
 static void go_dark(void)
@@ -129,14 +135,14 @@ static void test_resume_swallows_held_touch(void)
 static void test_no_timeout_when_zero(void)
 {
     now += 10 * TIMEOUT;
-    TEST_ASSERT_TRUE(ui_screen_update(&s, now, 0, false, false, 0).backlight);
+    TEST_ASSERT_TRUE(ui_screen_update(&s, now, 0, false, false, false, 0).backlight);
 }
 
 static void test_boot_still_toggles_without_timeout(void)
 {
-    ui_screen_update(&s, now += 10, 0, true, false, 0);
-    TEST_ASSERT_FALSE(ui_screen_update(&s, now += 200, 0, false, false, 0).backlight);
-    TEST_ASSERT_FALSE(ui_screen_update(&s, now += 60000, 0, false, false, 0).backlight);  // stays off by hand
+    ui_screen_update(&s, now += 10, 0, true, false, false, 0);
+    TEST_ASSERT_FALSE(ui_screen_update(&s, now += 200, 0, false, false, false, 0).backlight);
+    TEST_ASSERT_FALSE(ui_screen_update(&s, now += 60000, 0, false, false, false, 0).backlight);  // stays off by hand
 }
 
 static void test_wake_turns_screen_on(void)
@@ -168,9 +174,42 @@ static void test_dark_screen_is_not_dimmed(void)
     TEST_ASSERT_FALSE(ui_screen_dimmed(&s, now, 15000));
 }
 
+static void test_quiet_sound_does_not_wake(void)
+{
+    go_dark();
+    TEST_ASSERT_FALSE(step_quiet(10, true).backlight);
+    TEST_ASSERT_FALSE(step_quiet(500, true).backlight);
+}
+
+static void test_quiet_sound_does_not_undim(void)
+{
+    TEST_ASSERT_TRUE(step_quiet(31000, false).backlight);
+    TEST_ASSERT_TRUE(ui_screen_dimmed(&s, now, 30000));
+    step_quiet(10, true);
+    step_quiet(500, true);
+    TEST_ASSERT_TRUE(ui_screen_dimmed(&s, now, 30000));
+}
+
+static void test_loud_sound_still_wakes(void)
+{
+    go_dark();
+    TEST_ASSERT_TRUE(step(10, 0, false, true).backlight);
+}
+
+static void test_quiet_beep_is_not_a_later_onset(void)
+{
+    go_dark();
+    step_quiet(10, true);
+    TEST_ASSERT_FALSE(step(10, 0, false, true).backlight);  // same beep, now unmuted: still not an onset
+}
+
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_quiet_sound_does_not_wake);
+    RUN_TEST(test_quiet_sound_does_not_undim);
+    RUN_TEST(test_loud_sound_still_wakes);
+    RUN_TEST(test_quiet_beep_is_not_a_later_onset);
     RUN_TEST(test_timeout_turns_off);
     RUN_TEST(test_touch_passes_while_on);
     RUN_TEST(test_wake_touch_swallowed);

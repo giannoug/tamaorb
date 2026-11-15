@@ -15,6 +15,8 @@ void        tc_sha1(const uint8_t *data, size_t len, uint8_t out[20]);
 tc_model_t  tc_rom_identify(const uint8_t *data, size_t len, uint8_t sha1_out[20]);
 // len must be TC_ROM_BYTES; each word is big-endian 16-bit masked to 12 bits.
 bool        tc_rom_decode(const uint8_t *data, size_t len, uint16_t *words_out);
+// P1/P2/TEST from the known SHA-1 table, else UNKNOWN.
+tc_model_t  tc_model_from_sha1(const uint8_t sha1[20]);
 const char *tc_model_name(tc_model_t m);
 
 // ---- Active ROM selection (spec §7.3) ----

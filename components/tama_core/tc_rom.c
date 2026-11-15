@@ -9,15 +9,20 @@ static const struct { uint8_t sha1[20]; tc_model_t model; } KNOWN[] = {
     {{0x6e,0x13,0xd0,0x15,0x11,0x3e,0x16,0x19,0x8c,0x00,0x59,0xb9,0xd0,0xc3,0x8d,0x70,0x27,0xae,0x73,0x24}, TC_MODEL_TEST_ROM},
 };
 
+tc_model_t tc_model_from_sha1(const uint8_t sha1[20])
+{
+    for (size_t i = 0; i < sizeof KNOWN / sizeof KNOWN[0]; i++)
+        if (memcmp(sha1, KNOWN[i].sha1, 20) == 0) return KNOWN[i].model;
+    return TC_MODEL_UNKNOWN;
+}
+
 tc_model_t tc_rom_identify(const uint8_t *data, size_t len, uint8_t sha1_out[20])
 {
     uint8_t h[20];
     tc_sha1(data, len, h);
     if (sha1_out) memcpy(sha1_out, h, 20);
     if (len != TC_ROM_BYTES) return TC_MODEL_UNKNOWN;
-    for (size_t i = 0; i < sizeof KNOWN / sizeof KNOWN[0]; i++)
-        if (memcmp(h, KNOWN[i].sha1, 20) == 0) return KNOWN[i].model;
-    return TC_MODEL_UNKNOWN;
+    return tc_model_from_sha1(h);
 }
 
 bool tc_rom_decode(const uint8_t *data, size_t len, uint16_t *words_out)

@@ -11,5 +11,7 @@ esp_err_t settings_init(void);
 void settings_get(st_settings_t *out);
 // Stores in RAM, schedules the NVS write, bumps the sequence numbers.
 void settings_put(const st_settings_t *s, bool display_changed);
+// True iff the stored name or ntp differs from the boot value, whoever changed it (web, MCP or USB). Cheap.
+bool settings_restart_pending(void);
 uint32_t settings_seq(void);          // bumps on every put
 uint32_t settings_display_seq(void);  // bumps only when display_changed

@@ -143,6 +143,14 @@ static void test_distinct_valid_dedups_and_filters(void)
     TEST_ASSERT_EQUAL(1, tc_rom_distinct_valid(sd, 5, idx, 1));  // respects max
 }
 
+static void test_model_from_sha1(void)
+{
+    uint8_t h[20], z[20] = {0};
+    test_hex20("4b4979cf92dc9d2fb6d7295a38f209f3da144f72", h);
+    TEST_ASSERT_EQUAL(TC_MODEL_P1, tc_model_from_sha1(h));
+    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_model_from_sha1(z));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -162,5 +170,6 @@ int main(void)
     RUN_TEST(test_select_ignores_unknown);
     RUN_TEST(test_select_nothing);
     RUN_TEST(test_distinct_valid_dedups_and_filters);
+    RUN_TEST(test_model_from_sha1);
     return UNITY_END();
 }

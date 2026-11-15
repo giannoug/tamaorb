@@ -12,3 +12,5 @@ void emu_start(uint64_t catchup_s, int64_t saved_unix, bool saved_trusted);
 emu_phase_t emu_phase(void);
 // While catching up: seconds replayed, total, and estimated seconds left.
 void emu_catchup_progress(uint64_t *done_s, uint64_t *total_s, uint32_t *eta_s);
+// Last measured catch-up speed (x real time) this boot, else 24.0f (the measured v1 figure).
+float emu_catchup_speed(void);

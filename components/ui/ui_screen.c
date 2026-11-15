@@ -16,9 +16,9 @@ static void wake(ui_screen_t *s, uint32_t now_ms)
 }
 
 ui_screen_out_t ui_screen_update(ui_screen_t *s, uint32_t now_ms, uint8_t touch_buttons,
-                                 bool boot_down, bool sound_on, uint32_t timeout_ms)
+                                 bool boot_down, bool sound_on, bool sound_quiet, uint32_t timeout_ms)
 {
-    if (sound_on) {
+    if (sound_on && !sound_quiet) {  // agent-caused (quiet) beeps neither wake nor count as activity
         if (!s->sound_was_on) wake(s, now_ms);  // a beep turns the screen on, without swallowing
         s->last_activity_ms = now_ms;
     }

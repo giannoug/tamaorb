@@ -28,6 +28,9 @@ bool st_set(st_settings_t *s, const char *key, const char *value);
 bool st_set_many(st_settings_t *s, const char *const *keys, const char *const *values, int n, int *bad);
 bool st_is_numeric(const char *key);
 bool st_needs_restart(const char *key);
+// True iff a key that applies after a restart (name, ntp) differs between the values the ball booted with and
+// the current ones. Renaming back to the boot name clears it.
+bool st_restart_pending(const st_settings_t *boot, const st_settings_t *cur);
 bool st_is_display(const char *key);
 uint8_t st_effective_dim(const st_settings_t *s);
 

@@ -148,6 +148,39 @@ static void test_policy_backs_off_after_failure(void)
     TEST_ASSERT_FALSE(ps_policy_due(&p, 330001));
 }
 
+static void test_restamp_time(void)
+{
+    size_t n = encode();
+    int64_t t = 1800000000;
+    TEST_ASSERT_TRUE(ps_record_restamp(rec, n, &t, true, 9));
+    ps_meta_t got; const uint8_t *p; size_t len;
+    TEST_ASSERT_TRUE(ps_record_decode(rec, n, &got, &p, &len));
+    TEST_ASSERT_EQUAL_INT64(1800000000, got.unix_time);
+    TEST_ASSERT_TRUE(got.time_trusted);
+    TEST_ASSERT_EQUAL_UINT32(9, got.seq);
+    TEST_ASSERT_EQUAL(sizeof payload, len);
+    TEST_ASSERT_EQUAL_MEMORY(payload, p, len);
+}
+
+static void test_restamp_keep_time(void)
+{
+    meta.time_trusted = false;
+    size_t n = encode();
+    TEST_ASSERT_TRUE(ps_record_restamp(rec, n, NULL, true, 77));
+    ps_meta_t got; const uint8_t *p; size_t len;
+    TEST_ASSERT_TRUE(ps_record_decode(rec, n, &got, &p, &len));
+    TEST_ASSERT_EQUAL_INT64(1794748000, got.unix_time);
+    TEST_ASSERT_FALSE(got.time_trusted);
+    TEST_ASSERT_EQUAL_UINT32(77, got.seq);
+}
+
+static void test_restamp_corrupt(void)
+{
+    size_t n = encode();
+    rec[PS_HEADER_BYTES + 3] ^= 1;
+    TEST_ASSERT_FALSE(ps_record_restamp(rec, n, NULL, false, 1));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -164,5 +197,8 @@ int main(void)
     RUN_TEST(test_policy_no_save_while_held);
     RUN_TEST(test_pick_newest);
     RUN_TEST(test_policy_backs_off_after_failure);
+    RUN_TEST(test_restamp_time);
+    RUN_TEST(test_restamp_keep_time);
+    RUN_TEST(test_restamp_corrupt);
     return UNITY_END();
 }

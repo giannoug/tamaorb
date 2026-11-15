@@ -18,6 +18,7 @@ static bool g_published_once;
 
 static tc_tone_t g_tone;
 static volatile uint8_t g_posted;
+static volatile uint8_t g_remote;  // agent presses, ORed with the touch mask
 static uint8_t g_applied;
 
 static uint8_t g_boot[1024];
@@ -114,7 +115,7 @@ static void publish(void)
 static void apply_buttons(void)
 {
     lock();
-    uint8_t want = g_posted;
+    uint8_t want = g_posted | g_remote;
     unlock();
     uint8_t diff = want ^ g_applied;
     for (int b = 0; b < 3; b++) {
@@ -199,6 +200,13 @@ void tc_post_buttons(uint8_t mask)
 {
     lock();
     g_posted = mask & 0x07;
+    unlock();
+}
+
+void tc_post_remote_buttons(uint8_t mask)
+{
+    lock();
+    g_remote = mask & 0x07;
     unlock();
 }
 
@@ -295,6 +303,12 @@ bool tc_state_load(const uint8_t *buf, size_t len)
     tamalib_set_exec_mode(EXEC_MODE_RUN); // re-sync timing
     publish();
     return true;
+}
+
+// The state length is fixed for a build; tc_init measured it (g_boot_len), so no walk over live state here.
+bool tc_state_compatible(const uint8_t *buf, size_t len)
+{
+    return buf && g_boot_len && len == g_boot_len && buf[0] == STATE_VERSION;
 }
 
 uint8_t tc_applied_buttons(void) { return g_applied; }

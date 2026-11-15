@@ -171,6 +171,17 @@ bool st_needs_restart(const char *key)
     return e && (e->kind == K_NAME || e->kind == K_NTP);
 }
 
+bool st_restart_pending(const st_settings_t *boot, const st_settings_t *cur)
+{
+    for (int i = 0; i < st_key_count(); i++) {
+        const char *k = st_key(i);
+        char a[80], b[80];
+        if (st_needs_restart(k) && st_get(boot, k, a, sizeof a) && st_get(cur, k, b, sizeof b) && strcmp(a, b))
+            return true;
+    }
+    return false;
+}
+
 bool st_is_display(const char *key)
 {
     return key && (strcmp(key, "brightness") == 0 || strcmp(key, "dim_level") == 0 || strcmp(key, "palette") == 0);
