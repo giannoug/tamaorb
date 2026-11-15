@@ -203,7 +203,7 @@ dialog h2{font-size:19px}
     </div>
   </div>
   <div class="banner row" id="rpend" role="status" hidden>
-    <span>Saved. The name and time server apply after a restart.</span>
+    <span id="rptxt">Saved. The name and time server apply after a restart.</span>
     <button type="button" class="btn primary" id="restart1">Restart now</button>
   </div>
   <div class="sep" style="display:flex;flex-direction:column;gap:12px;padding-top:14px">
@@ -286,7 +286,7 @@ var MSG={
   name:'Only letters, digits and dashes, not at the start or end (1 to 32)',ntp:'Only letters, digits, dots and dashes (1 to 63)',
   palette:'Not a known palette',agent_feedback:'Not a known choice',ssid:'Enter a network name (up to 32 characters)',password:'8 to 63 characters, or empty'
 };
-var S=null,good=null,st=null,pets=[],confirmSha=null,restartPending=false;
+var runName='',S=null,good=null,st=null,pets=[],confirmSha=null,restartPending=false;
 var polls=0,fails=0,lost=false,petsAt=0,petsSig='',lastPhase='',cu=null,overlay=false,gerrT=0;
 
 /* ---------- formatting ---------- */
@@ -346,7 +346,7 @@ function render(){
   ['dim_usb_s','dim_battery_s','off_battery_s'].forEach(function(k){if(document.activeElement!==$(k))$(k).value=S[k]});
   hints();
   ['name','ntp'].forEach(function(k){if(document.activeElement!==$(k))$(k).value=S[k]});
-  if(!st)$('host').textContent=S.name+'.local';
+  pendName();
 }
 function hints(){
   $('h-dim_usb_s').textContent=S.dim_usb_s===0?'Never dims. On USB the screen never turns off.':'On USB the screen never turns off. 0 = never dim.';
@@ -423,14 +423,21 @@ function pump(now){
     inflight=false;pend=null;S=Object.assign({},good);render();gerr('Couldn’t reach the ball to save that.');touchSave();
   });
 }
-function setPending(p){restartPending=!!p;$('rpend').hidden=!restartPending}
+function setPending(p){restartPending=!!p;$('rpend').hidden=!restartPending;pendName()}
+function pendName(){
+  var n=S&&runName&&S.name!==runName?' The ball will be at '+S.name+'.local after the restart.':'';
+  $('rptxt').textContent='Saved. The name and time server apply after a restart.'+n;
+}
 
 /* ---------- status ---------- */
 function tile(l,v,s){return h('div',{class:'tile'},h('div',{class:'l'},l),h('div',{class:'v'},v),h('div',{class:'s'},s))}
 function renderStatus(){
   var s=st,t=[];
   document.title='TamaOrb · '+s.name;
-  $('host').textContent=s.name+'.local';
+  if(!runName)runName=/\.local$/i.test(location.hostname)?location.hostname.slice(0,-6).toLowerCase():s.name;
+  document.title='TamaOrb \u00b7 '+runName;
+  $('host').textContent=runName+'.local';
+  pendName();
   var phase=s.phase==='catch-up'?'catching up':s.phase==='boot'?'starting':'running';
   t.push(tile('Pet',s.model,(s.rom_name||'')+' · '+phase));
   if(s.usb)t.push(tile('Power','USB','Battery '+(s.batt_mv/1000).toFixed(2)+' V'));
@@ -441,7 +448,7 @@ function renderStatus(){
   t.push(tile('Uptime',hms(s.uptime_s),'Firmware '+s.version));
   $('tiles').replaceChildren.apply($('tiles'),t);
   $('wifitxt').textContent=s.wifi?'Connected to '+s.wifi_ssid:'Not connected';
-  $('mcp').textContent='claude mcp add --transport http '+s.name+' http://'+s.name+'.local/mcp';
+  $('mcp').textContent='claude mcp add --transport http '+runName+' http://'+runName+'.local/mcp';
   if(s.restart_pending&&!restartPending)setPending(true);
   // catch-up banner
   var c=s.phase==='catch-up';
@@ -570,11 +577,11 @@ $('rd-c').addEventListener('click',function(){$('rd').close()});
 
 /* ---------- restart overlay ---------- */
 var dotT=0,ovT=0;
-function restarting(newHost){
+function restarting(){
   overlay=true;
   var up=st?st.uptime_s:Infinity,sawDown=false,t0=Date.now(),host=location.hostname,jump=null;
-  if(newHost&&/\.local$/i.test(host)&&newHost!==host)jump=newHost;
-  $('ov-t').textContent='Restarting '+(st?st.name:'the ball');
+  if(S&&/\.local$/i.test(host)&&S.name+'.local'!==host.toLowerCase())jump=S.name+'.local';  // renamed: the old name stops resolving
+  $('ov-t').textContent='Restarting '+(runName||'the ball');
   $('ov-slow').hidden=true;
   var ov=$('ov');if(!ov.open)ov.showModal();
   var n=0,dots=$('dots').children;
@@ -594,8 +601,7 @@ function restarting(newHost){
   ovT=setTimeout(next,2000);
 }
 function doRestart(){
-  var nm=S&&st&&S.name!==st.name?S.name:null;
-  api('POST','/api/restart',{}).then(function(r){if(r.ok)restarting(nm);else gerr('Couldn’t restart: '+whyText(r)+'.')},function(){gerr('Couldn’t reach the ball to restart it.')});
+  api('POST','/api/restart',{}).then(function(r){if(r.ok)restarting();else gerr('Couldn’t restart: '+whyText(r)+'.')},function(){gerr('Couldn’t reach the ball to restart it.')});
 }
 $('restart1').addEventListener('click',doRestart);
 $('restart2').addEventListener('click',doRestart);
