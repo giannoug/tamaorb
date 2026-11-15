@@ -5,12 +5,14 @@
 
 ## Buttons
 
-- **A** selects the next icon. From the plain pet view the first A selects food; the selected icon is the one named in `icons:`.
+`press` takes a `buttons` argument: a string such as "A A B" or an array ["A","A","B"]. It returns an error while the ball is booting or catching up, so wait and retry.
+
+- **A** moves the selection to the next icon. From the plain pet view (`icons: none`) the first A lights the first icon, food. Each further A lights the next one, so the selected icon is the single name shown in `icons:`. A lit name there means "selected" unless it is `attention`, which lights by itself.
 - **B** opens the selected icon.
-- **C** cancels or goes back. Press C until `icons: none` to reach the base state.
+- **C** cancels. Inside a submenu or screen it usually goes back one level; with only an icon selected it usually clears the selection. Pressing C until `icons: none` and the pet is shown is a safe way back, and it does not feed or change anything.
 - **AC** is not needed. Avoid it.
 
-Press one step at a time and look in between; a stray B can feed, play or medicate by accident.
+Send one press per call and `look` after every single press. If the screen does not match what you expect, stop and press C.
 
 ## The eight icons, in order
 
@@ -27,12 +29,12 @@ I confirmed that A steps food, light, game, medicine, bathroom, meter in that or
 
 ## What the pet needs
 
-- **Hungry or unhappy:** food. A meal mainly fills the hunger hearts, a snack mainly cheers the pet up, and snacks usually add weight, so prefer meals and use snacks sparingly.
+- **Feeding, step by step.** Press A until `icons: food` (look to confirm). Press B: a food menu opens; look and read it. The first option is usually the meal, and A moves between options, so check which one the screen shows as selected before going on. When the meal is selected, press B to feed and look to see the eating animation and the hunger hearts change. C backs out without feeding. If the menu does not look like two choices, press C and stop. A meal mainly fills hunger hearts; a snack mainly cheers the pet up and usually adds weight, so prefer meals.
 - **Droppings** (a small pile beside the pet): bathroom. Ignored, they tend to make the pet sick.
 - **Sick** (a skull-like shape on screen): medicine. It may take more than one dose.
-- **Asleep** (picture mostly still or empty): turn the light off, then back on when it wakes. Check with `look`; the lit icon list will not tell you the light state, only the picture.
+- **Asleep** (picture mostly still or empty): turn the light off, then back on when it wakes. Judge by the picture; `icons:` does not report the light state.
 - **Low happy hearts:** game. Pick left or right with A, confirm with B, and read the result on screen.
-- **Attention lit, no obvious need:** the pet may be asking for discipline. Check the meter screens first; use discipline only when nothing else explains the call.
+- **Attention lit.** Usual causes, all hedged: low hunger hearts, low happy hearts, sickness, droppings, the light on at bedtime, or a "fake" call that wants discipline. Check the screen and the meter first and fix the real need. Discipline is only for a call with no real need behind it. Disciplining a pet that was calling for food, medicine, the toilet or sleep may do harm and lower its mood. If you are sure: press A until `icons: discipline` (it is presumably after meter, which I did not step past), press B, and look at the result. Press C if unsure.
 
 ## Meter screens
 

@@ -21,6 +21,8 @@ Use this guide when the ball is running P2 (`status` reports `model: P2`). It is
 - **Food:** meal and snack may behave differently. Check the hunger hearts before and after to see what the action did.
 - **Buttons:** AC may act as a sound toggle on some versions. Avoid it.
 
+- **Food flow:** believed similar to P1 (A to `food`, B opens a menu, A chooses, B feeds, C backs out). Verify by looking after each press.
+
 ## Routine
 
 1. `look`. If `phase` is not `run`, wait.
