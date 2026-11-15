@@ -299,17 +299,17 @@ static void h_save_put(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha
     ps_meta_t meta;
     const char *bad = rm_save_check(q->body, q->body_len, sha, q->state_ok, &meta);
     if (bad) { set_err(r, 400, "invalid", bad); return; }
+    // The ROM need not be on the card (spec 7.3): the pet list only decides "restarting".
     rm_pet_t pet;
     int f = find_pet(ops, sha, &pet);
     if (f < 0) { set_json(r, 500, NULL); return; }
-    if (!f) { set_err(r, 404, "not found", NULL); return; }
     uint8_t *rec = malloc(q->body_len);
     if (!rec) { set_json(r, 500, NULL); return; }
     memcpy(rec, q->body, q->body_len);
     rm_err_t e = ops->import_save(ops->ctx, sha, rec, q->body_len, mode);
     free(rec);
     if (e != RM_OK) { err_from(r, e); return; }
-    set_ok(r, pet.active, true);
+    set_ok(r, f && pet.active, true);
 }
 
 // ---- router ----

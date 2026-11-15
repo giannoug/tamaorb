@@ -272,6 +272,20 @@ static void test_save_upload_active_restarts(void)
     cJSON_Delete(j);
 }
 
+static void test_save_upload_rom_not_on_card(void)
+{
+    uint8_t sha[20], rec[128];
+    test_hex20(SHA_OTHER, sha);
+    memset(fake.pets[1].sha1, 0x11, 20);  // the P1 ROM is no longer listed
+    size_t n = make_record(sha, rec, sizeof rec);
+    put_rec(SHA_OTHER, "mode=frozen", rec, n, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL(1, fake.import_calls);
+    cJSON *j = json();
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(j, "restarting")));
+    cJSON_Delete(j);
+}
+
 static void test_save_download_disposition(void)
 {
     fake.export_len = 12;
@@ -363,6 +377,7 @@ int main(void)
     RUN_TEST(test_save_upload_bad_record);
     RUN_TEST(test_save_upload_ok_and_errors);
     RUN_TEST(test_save_upload_active_restarts);
+    RUN_TEST(test_save_upload_rom_not_on_card);
     RUN_TEST(test_save_download_disposition);
     RUN_TEST(test_pets_and_switch);
     RUN_TEST(test_switch_catching_up_409);
