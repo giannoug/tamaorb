@@ -49,3 +49,14 @@ void rm_press_begin(rm_press_t *p, const rm_press_req_t *r, uint32_t now_ms);
 uint8_t rm_press_mask(const rm_press_t *p, uint32_t now_ms);
 bool rm_press_done(const rm_press_t *p, uint32_t now_ms);
 bool rm_press_window(const rm_press_t *p, uint32_t now_ms);
+
+// ---- Save backup / restore (spec §7.3) ----
+#include "persist.h"
+typedef enum { RM_RESTORE_FROZEN, RM_RESTORE_REPLAY } rm_restore_mode_t;
+bool rm_restore_mode_parse(const char *s, rm_restore_mode_t *out);  // "frozen" | "replay"
+// NULL ok, else "record" (CRC/format/size) | "rom" (sha1 mismatch) | "model" (not P1/P2) | "pet" (pet_id != 0)
+// | "state" (state_ok rejected the payload; state_ok may be NULL). meta_out is filled when the record decodes.
+const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20],
+                          bool (*state_ok)(const uint8_t *payload, size_t len), ps_meta_t *meta_out);
+// e.g. "tamaorb-P1-4b4979cf-2026-11-08.sav" (UTC date of meta->unix_time; "undated" if 0)
+void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[48]);

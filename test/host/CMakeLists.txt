@@ -35,7 +35,7 @@ set(SETTINGS_INC ${COMP}/settings/include)
 set(HOSTLINK_SRC ${COMP}/hostlink/hl_proto.c ${COMP}/hostlink/hl_base64.c)
 set(HOSTLINK_INC ${COMP}/hostlink/include)
 
-set(REMOTE_SRC ${COMP}/remote/rm_look.c ${COMP}/remote/rm_png.c ${COMP}/remote/rm_press.c)
+set(REMOTE_SRC ${COMP}/remote/rm_look.c ${COMP}/remote/rm_png.c ${COMP}/remote/rm_press.c ${COMP}/remote/rm_save.c)
 set(REMOTE_INC ${COMP}/remote/include)
 
 enable_testing()
@@ -58,6 +58,7 @@ tamaorb_test(test_settings ${SETTINGS_SRC})
 tamaorb_test(test_hostlink ${HOSTLINK_SRC} ${TAMA_CORE_SRC} ${SETTINGS_SRC})
 tamaorb_test(test_remote_look ${REMOTE_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
 tamaorb_test(test_remote_press ${REMOTE_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
+tamaorb_test(test_remote_save ${REMOTE_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
 
 # Eyeballing aid, not a test: build-host/render_preview out.ppm [held_mask]
 add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})
