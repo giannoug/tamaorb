@@ -70,7 +70,7 @@ AI agents connect through the MCP server on the ball itself:
 claude mcp add --transport http tamaorb http://tamaorb.local/mcp
 ```
 
-The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, and a how-to-play guide per model. Agent button beeps are quieter by default (`agent_feedback`).
+The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, and a how-to-play guide per model. By default, beeps caused by agent presses play at normal volume but don't wake or undim the screen; `agent_feedback=silent` also mutes them and `visible` lets them wake the screen.
 
 **If `tamaorb.local` doesn't resolve,** use the ball's IP address instead: `http://<ip>/` for the panel, and `claude mcp add --transport http tamaorb http://<ip>/mcp` for agents. Some routers stop forwarding mDNS names about 2 minutes after the ball boots, typically when the PC and the ball are on different subnets. To find the IP:
 
