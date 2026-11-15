@@ -7,6 +7,8 @@
 #include "emu_task.h"
 #include "rom_store.h"
 #include "saver.h"
+#include "net.h"
+#include "nvs_flash.h"
 #include "tc_rom.h"
 #include "ui_task.h"
 
@@ -44,7 +46,15 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "TamaOrb %s", esp_app_get_description()->version);
     ESP_ERROR_CHECK(board_init());
+    esp_err_t nvs = nvs_flash_init();  // default partition: Wi-Fi calibration and credentials
+    if (nvs == ESP_ERR_NVS_NO_FREE_PAGES || nvs == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvs = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(nvs);
     ESP_ERROR_CHECK(rom_store_init());
+    saver_set_time_source(net_now);
+    net_start();
 
     tc_model_t model = choose_rom();
     if (model == TC_MODEL_UNKNOWN) {
