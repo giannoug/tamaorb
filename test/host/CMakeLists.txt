@@ -23,10 +23,13 @@ set_source_files_properties(${TAMALIB_SRC} PROPERTIES COMPILE_OPTIONS "-Wno-mayb
 set(TAMA_CORE_SRC ${COMP}/tama_core/tc_rom.c ${COMP}/tama_core/tc_sha1.c ${COMP}/tama_core/tama_core.c ${COMP}/tama_core/tc_time.c ${TAMALIB_SRC})
 set(TAMA_CORE_INC ${COMP}/tama_core/include ${COMP}/tamalib ${COMP}/tamalib/upstream)
 
+set(UI_SRC ${COMP}/ui/ui_palette.c ${COMP}/ui/ui_pet.c ${COMP}/ui/ui_icons.c ${COMP}/ui/ui_font.c)
+set(UI_INC ${COMP}/ui/include)
+
 enable_testing()
 function(tamaorb_test name)
     add_executable(${name} ${CMAKE_CURRENT_SOURCE_DIR}/${name}.c ${CMAKE_CURRENT_SOURCE_DIR}/test_support.c ${ARGN})
-    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC})
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui)
     target_link_libraries(${name} PRIVATE unity)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
@@ -34,3 +37,8 @@ endfunction()
 tamaorb_test(test_rom ${TAMA_CORE_SRC})
 tamaorb_test(test_core ${TAMA_CORE_SRC})
 tamaorb_test(test_time ${TAMA_CORE_SRC})
+tamaorb_test(test_ui_render ${UI_SRC})
+
+# Eyeballing aid, not a test: build-host/render_preview out.ppm [held_mask]
+add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})
+target_include_directories(render_preview PRIVATE ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui)
