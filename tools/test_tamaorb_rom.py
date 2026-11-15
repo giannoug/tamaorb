@@ -24,6 +24,11 @@ class FakePort:
         self.replies = list(replies)
         self.written = []
         self.pending = []
+        self.resets = 0
+
+    def reset_input_buffer(self):
+        self.resets += 1
+        self.pending.clear()
 
     def write(self, data):
         self.written.append(data.decode().rstrip("\n"))
@@ -155,12 +160,16 @@ def multi_port(replies):
     return port
 
 
+ALL_SETTINGS = ["brightness=80", "dim_level=5", "dim_usb_s=30", "dim_battery_s=15", "off_battery_s=30", "volume=0",
+                "palette=classic", "name=tamaorb", "ntp=pool.ntp.org", "agent_feedback=quiet"]
+
+
 def test_get_prints_settings(monkeypatch, capsys):
-    port = multi_port(["@TO SET brightness=80", "@TO OK"])
+    port = multi_port(["@TO SET " + p for p in ALL_SETTINGS] + ["@TO OK"])
     monkeypatch.setattr(tool, "open_port", lambda name: port)
     assert tool.main(["get"]) == 0
     assert port.written == ["@TO GET"]
-    assert capsys.readouterr().out == "brightness=80\n"
+    assert capsys.readouterr().out == "\n".join(ALL_SETTINGS) + "\n"
 
 
 def test_set_sends_pairs(monkeypatch, capsys):
@@ -176,3 +185,80 @@ def test_set_rejected_exit_code(monkeypatch, capsys):
     monkeypatch.setattr(tool, "open_port", lambda name: port)
     assert tool.main(["set", "dim_level=999"]) == 1
     assert "rejected: dim_level" in capsys.readouterr().err
+
+
+class FragmentPort(FakePort):
+    """Like multi_port, but every line arrives in pieces with read timeouts (b"") in between, the way pyserial's
+    readline() returns a partial line when its 0.2 s timeout expires mid-line."""
+
+    def __init__(self, answer):
+        super().__init__([])
+        self.answer = answer  # request line -> reply lines
+
+    def write(self, data):
+        line = data.decode().rstrip("\n")
+        self.written.append(line)
+        for reply in ["I (1) x: noise"] + self.answer(line):
+            raw = reply.encode() + b"\n"
+            cut = max(1, len(raw) // 2)
+            self.pending += [raw[:3], b"", raw[3:cut], b"", raw[cut:]] if len(raw) > 4 else [raw[:1], b"", raw[1:]]
+
+
+def test_get_joins_fragmented_lines():
+    port = FragmentPort(lambda req: ["@TO SET " + p for p in ALL_SETTINGS] + ["@TO OK"])
+    assert tool.Link(port, timeout=1).get() == ALL_SETTINGS
+    assert port.written == ["@TO GET"]
+
+
+def test_set_ok_split_is_success():
+    port = FragmentPort(lambda req: ["@TO OK"])
+    tool.Link(port, timeout=1).set(["dim_level=5"])
+    assert port.written == ["@TO SET dim_level=5"]
+
+
+def test_set_err_split_is_reported():
+    port = FragmentPort(lambda req: ["@TO ERR dim_level"])
+    with pytest.raises(tool.ToolError, match="rejected: dim_level"):
+        tool.Link(port, timeout=1).set(["dim_level=999"])
+
+
+def test_push_with_fragmented_replies():
+    def answer(req):
+        if req.startswith("@TO D "):
+            return [f"@TO OK {req.split(' ')[2]}"]
+        return ["@TO OK P1"] if req == "@TO END" else ["@TO OK"]
+
+    port = FragmentPort(answer)
+    assert tool.Link(port, timeout=1).push(tool.Rom("tama.bin", FAKE, "P1")) == "P1"
+    assert len(port.written) == 18
+
+
+def test_get_missing_key_retries_then_fails():
+    short = ["@TO SET " + p for p in ALL_SETTINGS if not p.startswith("ntp=")] + ["@TO OK"]
+    port = FragmentPort(lambda req: short)
+    with pytest.raises(tool.ToolError, match="missing ntp"):
+        tool.Link(port, timeout=1).get()
+    assert port.written == ["@TO GET", "@TO GET"]
+
+
+def test_get_retry_recovers():
+    replies = [["@TO SET brightness=80", "@TO OK"], ["@TO SET " + p for p in ALL_SETTINGS] + ["@TO OK"]]
+    port = FragmentPort(lambda req: replies.pop(0))
+    assert tool.Link(port, timeout=1).get() == ALL_SETTINGS
+
+
+def test_input_is_flushed_before_each_command():
+    port = FragmentPort(lambda req: ["@TO OK"])
+    port.pending = [b"@TO OK\n"]  # stale reply from an interrupted run
+    link = tool.Link(port, timeout=1)
+    link._buf = b"@TO SET dim_"  # and a stale partial line
+    link.remove("a.bin")
+    link.remove("b.bin")
+    assert port.resets == 2 and not port.pending and link._buf == b""
+
+
+def test_partial_line_at_deadline_is_no_reply():
+    port = FakePort([])
+    port.pending = [b"@TO O"]
+    with pytest.raises(tool.ToolError, match="no reply"):
+        tool.Link(port, timeout=0.05)._reply()

@@ -31,6 +31,9 @@ KNOWN = {
 }
 ROM_BYTES = 12288
 CHUNK = 768
+# Every key "@TO GET" lists (components/settings/st_settings.c); a listing missing any is incomplete.
+SETTINGS_KEYS = ("brightness", "dim_level", "dim_usb_s", "dim_battery_s", "off_battery_s", "volume", "palette",
+                 "name", "ntp", "agent_feedback")
 
 
 class ToolError(Exception):
@@ -95,19 +98,32 @@ class Link:
         self.port = port
         self.timeout = timeout
         self.rebooting = False
+        self._buf = b""
 
     def _send(self, line):
+        # Every reply to the previous request has been read by now: anything waiting is log output or a
+        # leftover from an interrupted run, and must not be taken for this request's reply.
+        self.port.reset_input_buffer()
+        self._buf = b""
         self.port.write((line + "\n").encode())
         self.port.flush()
+
+    def _line(self, deadline):
+        """Next whole line, or None at the deadline. readline() returns a partial line when the port's
+        timeout expires mid-line, so the pieces are joined until the newline arrives."""
+        while True:
+            nl = self._buf.find(b"\n")
+            if nl >= 0:
+                line, self._buf = self._buf[:nl], self._buf[nl + 1:]
+                return line.decode(errors="replace").strip()
+            if time.monotonic() >= deadline:
+                return None
+            self._buf += self.port.readline()
 
     def _reply(self):
         """Next protocol line; log output from the device is skipped."""
         deadline = time.monotonic() + self.timeout
-        while time.monotonic() < deadline:
-            raw = self.port.readline()
-            if not raw:
-                continue
-            line = raw.decode(errors="replace").strip()
+        while (line := self._line(deadline)) is not None:
             if line.startswith("@TO ERR"):
                 raise ToolError(f"device error: {line[8:]}")
             if line.startswith("@TO "):
@@ -153,7 +169,7 @@ class Link:
         self._send(f"@TO WIFI {b(ssid)} {b(password)}" if password else f"@TO WIFI {b(ssid)}")
         self._expect("@TO OK")
 
-    def get(self):
+    def _get_once(self):
         self._send("@TO GET")
         pairs = []
         while True:
@@ -162,6 +178,15 @@ class Link:
                 return pairs
             if line.startswith("@TO SET "):
                 pairs.append(line[8:])
+
+    def get(self):
+        """All settings as "key=value"; asks twice before giving up on a listing with keys missing."""
+        for _ in range(2):
+            pairs = self._get_once()
+            missing = [k for k in SETTINGS_KEYS if k not in {p.partition("=")[0] for p in pairs}]
+            if not missing:
+                return pairs
+        raise ToolError(f"incomplete settings listing from the device (missing {', '.join(missing)})")
 
     def set(self, pairs):
         self._send("@TO SET " + " ".join(pairs))
