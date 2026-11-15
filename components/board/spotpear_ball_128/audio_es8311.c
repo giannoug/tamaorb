@@ -22,6 +22,7 @@ static esp_codec_dev_handle_t s_dev;
 static TaskHandle_t s_task;
 static volatile uint32_t s_freq_hz;
 static volatile bool s_on;
+static volatile bool s_muted;
 
 static void amp(bool on) { gpio_set_level(PIN_AMP_EN, on); }
 
@@ -30,7 +31,7 @@ static void writer(void *arg)
     static int16_t buf[CHUNK];
     uint32_t phase = 0;  // 16.16 fixed point position within one period
     for (;;) {
-        if (!s_on || s_freq_hz == 0) {
+        if (!s_on || s_freq_hz == 0 || s_muted) {
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
             continue;
         }
@@ -80,10 +81,9 @@ esp_err_t ball_audio_init(void)
     if (!s_dev) return ESP_FAIL;
     esp_codec_dev_sample_info_t fs = { .bits_per_sample = 16, .channel = 1, .sample_rate = RATE };
     if (esp_codec_dev_open(s_dev, &fs) != ESP_CODEC_DEV_OK) return ESP_FAIL;
-    board_volume_set(30);
-    // The amp stays on: switching it on per beep swallowed the ROM's ~54 ms key clicks
-    // (measured). Between sounds the I2S line carries digital silence (auto_clear).
-    amp(true);
+    // While unmuted the amp stays on: switching it on per beep swallowed the ROM's ~54 ms key
+    // clicks (measured). Between sounds the I2S line carries digital silence (auto_clear).
+    board_volume_set(CONFIG_TAMAORB_VOLUME);
     xTaskCreatePinnedToCore(writer, "audio", 3072, NULL, 8, &s_task, 0);
     return ESP_OK;
 }
@@ -97,5 +97,8 @@ void board_tone(uint32_t freq_hz, bool on)
 
 void board_volume_set(uint8_t pct)
 {
-    if (s_dev) esp_codec_dev_set_out_vol(s_dev, pct > 100 ? 100 : pct);
+    if (pct > 100) pct = 100;
+    s_muted = pct == 0;
+    amp(!s_muted);  // muted: amp off, no hum
+    if (s_dev && pct) esp_codec_dev_set_out_vol(s_dev, pct);
 }
