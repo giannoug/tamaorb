@@ -165,12 +165,15 @@ static esp_err_t mcp_get(httpd_req_t *req)
     return send_plain(req, 405);  // no SSE stream (spec §8.1)
 }
 
+extern const uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");
+extern const uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
+
 static esp_err_t page_get(httpd_req_t *req)
 {
-    // Task 11 replaces this with the embedded panel.
     httpd_resp_set_type(req, "text/html");
-    return httpd_resp_sendstr(req, "<!doctype html><meta charset=utf-8><title>TamaOrb</title>"
-                                   "<p>TamaOrb is up. The API is at <a href=/api/status>/api/status</a>.</p>");
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    return httpd_resp_send(req, (const char *)index_html_gz_start, index_html_gz_end - index_html_gz_start);
 }
 
 esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
@@ -195,6 +198,7 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
     cfg.lru_purge_enable = true;
     // The spike's 6 KB overflowed under load: MCP look (1 KB text + 1.6 KB PNG raster on the stack) left 56 bytes.
     cfg.stack_size = 8192;
+    cfg.max_uri_handlers = 12;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     httpd_handle_t h;
     err = httpd_start(&h, &cfg);
@@ -211,7 +215,10 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
         { .uri = "/api/*", .method = HTTP_PUT, .handler = api_handler },
         { .uri = "/api/*", .method = HTTP_PATCH, .handler = api_handler },
     };
-    for (size_t i = 0; i < sizeof uris / sizeof *uris; i++) httpd_register_uri_handler(h, &uris[i]);
+    for (size_t i = 0; i < sizeof uris / sizeof *uris; i++) {
+        esp_err_t re = httpd_register_uri_handler(h, &uris[i]);
+        if (re != ESP_OK) ESP_LOGE(TAG, "register %s: %s", uris[i].uri, esp_err_to_name(re));
+    }
     ESP_LOGI(TAG, "serving http://%s.local/", s_host);
     return ESP_OK;
 }

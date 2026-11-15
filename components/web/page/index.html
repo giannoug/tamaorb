@@ -1,0 +1,647 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TamaOrb</title>
+<style>
+:root{
+--ground:#F2F3EC;--surface:#FFFFFF;--surface-2:#F6F7F1;--ink:#1C2518;--muted:#556050;
+--accent:#3D5A2A;--on-accent:#FFFFFF;--accent-tint:#EEF2E4;
+--line:#D8DDCC;--line-soft:#E3E7D8;--line-control:#B7C0A6;--line-option:#C9CFBE;
+--info-bg:#E6EBD9;--info-line:#C5CFB0;
+--busy-bg:#F6E8CB;--busy-line:#E2C88F;--busy-ink:#4A3608;--busy-bar:#8A6414;--busy-track:#EAD6A8;
+--code-bg:#1C2518;--code-ink:#DDE6C8;
+--accent-hover:#2F4720;--line-hover:#8E9A7C;--disabled-bg:#DCE1D0;--disabled-ink:#6E7766;
+--error:#9B2C1A;--error-bg:#F8E3DD;--error-line:#E3A99B;--error-ink:#6E1E10;
+--ok:#3D7A2A;--pending:#B98A1E;--scrim:rgba(28,37,24,.45);
+--mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+.page{max-width:840px;margin:0 auto;padding:24px 16px 40px;display:flex;flex-direction:column;gap:16px}
+h1,h2{margin:0}
+h1{font-size:22px;line-height:1.2;font-weight:700;letter-spacing:-.01em}
+h2{font-size:17px;font-weight:650}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)}
+.hint{font-size:13px;color:var(--muted)}
+[hidden]{display:none!important}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 8px}
+.brand{display:flex;align-items:center;gap:12px}
+.brand div{display:flex;flex-direction:column}
+.brand .mono{font-size:13px;color:var(--muted)}
+.save{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.save i{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.save.saving i{background:var(--pending)}
+.save.lost{color:var(--error);font-weight:500}
+.save.lost i{background:var(--error)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.cardhead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.tile{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile .l{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font-size:19px;font-weight:650;overflow-wrap:anywhere}
+.tile .s{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.banner{border-radius:8px;padding:10px 12px;border:1px solid var(--info-line);background:var(--info-bg)}
+.banner.row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.busy{background:var(--busy-bg);border:1px solid var(--busy-line);color:var(--busy-ink)}
+.err{background:var(--error-bg);border:1px solid var(--error-line);color:var(--error-ink)}
+#catch{border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.bar{height:8px;background:var(--busy-track);border-radius:4px;overflow:hidden}
+.bar div{height:8px;background:var(--busy-bar)}
+.btn{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line-control);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.btn:hover{border-color:var(--line-hover);background:var(--surface-2)}
+.btn.primary{border-color:var(--accent);background:var(--accent);color:var(--on-accent);font-weight:600}
+.btn.primary:hover{border-color:var(--accent-hover);background:var(--accent-hover)}
+.btn:disabled,.btn.primary:disabled{border-color:var(--disabled-bg);background:var(--disabled-bg);color:var(--disabled-ink);cursor:default}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.btn svg{flex:none}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btns.end{justify-content:flex-end}
+.petrow{border:1px solid var(--line-soft);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
+.petrow.open{background:#FBFAF3}
+.pettop{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.petid{display:flex;align-items:center;gap:12px;min-width:0}
+.petid>div{display:flex;flex-direction:column;min-width:0}
+.disc{width:44px;height:44px;border-radius:50%;background:#B6C19E;border:2px solid var(--ink);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex:none}
+.petname{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.petname b{font-family:var(--mono);font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.badge{font-size:12px;font-weight:600;background:var(--accent);color:var(--on-accent);border-radius:999px;padding:2px 8px}
+.row{display:flex;flex-wrap:wrap;gap:8px 24px;align-items:center}
+.row>label,.row>.lg{flex:1 1 200px;display:flex;flex-direction:column}
+.row>label b,.row>.lg b,.lbl{font-weight:600}
+.ctl{flex:2 1 280px;display:flex;align-items:center;gap:12px}
+.ctl input[type=range]{flex:1;min-width:0;accent-color:var(--accent);height:32px;margin:0}
+output{min-width:56px;text-align:right;font-family:var(--mono);font-size:14px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field label{font-weight:600}
+.in{min-height:44px;padding:0 10px;border:1px solid var(--line-control);border-radius:8px;font:inherit;font-family:var(--mono);color:var(--ink);background:var(--surface);min-width:0}
+.in.bad,.sfx.bad{border:2px solid var(--error)}
+.sfx{display:flex;border:1px solid var(--line-control);border-radius:8px;overflow:hidden;min-height:44px}
+.sfx .in{flex:1;border:0;border-radius:0}
+.sfx span{display:flex;align-items:center;padding:0 10px;background:var(--ground);color:var(--muted);font-family:var(--mono);font-size:14px}
+.row>.ferr{flex-basis:100%}
+.ferr{font-size:13px;color:var(--error);font-weight:500}
+.num{display:flex;align-items:center;gap:8px}
+.num .in{width:96px}
+.sep{border-top:1px solid var(--line-soft);padding-top:16px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.cols.w{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+fieldset{border:0;margin:0;padding:0;min-width:0}
+legend{padding:0}
+.opts{display:flex;flex-wrap:wrap;gap:10px}
+.sw{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border-radius:10px;cursor:pointer;background:var(--surface);border:1px solid var(--line-option);margin:1px}
+.sw.on{border:2px solid var(--ink);margin:0}
+.sw input,.sw.on input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.sw:has(:focus-visible){outline:3px solid var(--accent);outline-offset:2px}
+.sw .lcd{width:84px;height:44px;border-radius:6px;display:flex;align-items:center;justify-content:center}
+.sw .px{display:grid;grid-template-columns:repeat(16,4px);grid-auto-rows:4px;gap:1px}
+.sw span{font-size:14px;font-weight:500}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:10px;cursor:pointer;background:var(--surface);border:1px solid var(--line-option);margin:1px}
+.opt.on{background:var(--accent-tint);border:2px solid var(--accent);margin:0}
+.opt input{accent-color:var(--accent);width:18px;height:18px;margin:2px 0 0;flex:none}
+.opt span{display:flex;flex-direction:column;gap:2px}
+.opt b{font-weight:600}
+.opt small{font-size:13px;color:var(--muted)}
+.dlg .opt small{font-size:14px}
+.cmd{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+code.line{flex:1 1 320px;min-width:0;background:var(--code-bg);color:var(--code-ink);border-radius:8px;padding:12px 14px;font-family:var(--mono);font-size:13px;overflow-x:auto;white-space:nowrap}
+.wifi{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px}
+footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted);padding:4px 2px}
+dialog{border:0;padding:0;background:transparent;max-width:none;max-height:100vh;width:100%;color:var(--ink);overflow:auto}
+dialog::backdrop{background:var(--scrim)}
+dialog .box{margin:24px auto;width:calc(100% - 32px);max-width:560px;background:var(--surface);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:16px;box-shadow:0 12px 40px rgba(28,37,24,.25)}
+dialog h2{font-size:19px}
+.file{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:10px;padding:12px;display:flex;align-items:center;gap:12px}
+.file div{display:flex;flex-direction:column;min-width:0}
+.file b{font-family:var(--mono);font-size:14px;font-weight:600;overflow-wrap:anywhere}
+#ov .box{max-width:440px;align-items:center;text-align:center;padding:26px 22px;gap:14px}
+.dots{display:grid;grid-template-columns:repeat(5,8px);gap:4px}
+.dots i{width:8px;height:8px;background:var(--info-line)}
+.dots i.on{background:var(--ink)}
+@media(max-width:480px){.card{padding:16px}.btn{padding:0 12px}}
+</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <div class="brand">
+    <svg id="orb" width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+      <circle cx="20" cy="20" r="18" id="orbbg" fill="#B6C19E" stroke="#1C2518" stroke-width="2"/>
+      <g id="orbink" fill="#1C2518"><rect x="13" y="15" width="3" height="3"/><rect x="24" y="15" width="3" height="3"/><rect x="15" y="24" width="10" height="2"/><rect x="13" y="22" width="2" height="2"/><rect x="25" y="22" width="2" height="2"/></g>
+    </svg>
+    <div><h1>TamaOrb</h1><span class="mono" id="host">tamaorb.local</span></div>
+  </div>
+  <div class="save" id="save" role="status" aria-live="polite"><i></i><span id="savetxt">All changes saved on the ball</span></div>
+</header>
+
+<div id="top" aria-live="polite">
+  <div id="catch" class="busy" role="status" hidden>
+    <div><b id="cutitle">Catching up on missed time</b></div>
+    <div class="bar"><div id="cubar" style="width:0"></div></div>
+    <div id="cutxt" style="font-size:14px"></div>
+  </div>
+</div>
+<div id="gerr" class="banner err" role="alert" hidden></div>
+
+<section class="card" aria-labelledby="h-status">
+  <h2 id="h-status">Status</h2>
+  <div class="grid" id="tiles"></div>
+</section>
+
+<section class="card" aria-labelledby="h-pets">
+  <div class="cardhead"><h2 id="h-pets">Pets</h2><div class="hint">ROMs on the SD card. Add or remove them over USB.</div></div>
+  <div id="pets" style="display:flex;flex-direction:column;gap:12px"><div class="muted">Loading…</div></div>
+  <input type="file" id="file" accept=".sav,application/octet-stream" hidden>
+</section>
+
+<section class="card" style="gap:18px" aria-labelledby="h-display">
+  <h2 id="h-display">Display</h2>
+  <div class="row">
+    <label for="brightness"><b>Brightness</b><span class="hint">When the screen is on</span></label>
+    <div class="ctl"><input id="brightness" type="range" min="1" max="100" value="80"><output for="brightness" id="o-brightness">80 %</output></div>
+    <div class="ferr" id="e-brightness" hidden></div>
+  </div>
+  <div class="row">
+    <label for="dim_level"><b>Dim level</b><span class="hint">When idle; never above brightness</span></label>
+    <div class="ctl"><input id="dim_level" type="range" min="0" max="80" value="5"><output for="dim_level" id="o-dim_level">5 %</output></div>
+    <div class="ferr" id="e-dim_level" hidden></div>
+  </div>
+  <fieldset class="row" style="align-items:flex-start">
+    <legend class="lg" style="float:left;flex:1 1 200px;display:flex;flex-direction:column;margin-bottom:8px"><b>LCD colours</b><span class="hint">Changes the ball's screen right away</span></legend>
+    <div class="opts ctl" style="flex-wrap:wrap" id="palettes"></div>
+    <div class="ferr" id="e-palette" hidden></div>
+  </fieldset>
+  <div class="cols sep" id="delays"></div>
+</section>
+
+<section class="card" aria-labelledby="h-sound">
+  <h2 id="h-sound">Sound</h2>
+  <div class="row">
+    <label for="volume"><b>Volume</b><span class="hint">The speaker is loud; 1 % is comfortable</span></label>
+    <div class="ctl"><input id="volume" type="range" min="0" max="100" value="1"><output for="volume" id="o-volume">1 %</output></div>
+    <div class="ferr" id="e-volume" hidden></div>
+  </div>
+</section>
+
+<section class="card" style="gap:16px" aria-labelledby="h-net">
+  <h2 id="h-net">Network</h2>
+  <div class="cols w">
+    <div class="field">
+      <label for="name">Device name</label>
+      <div class="sfx" id="sfx-name"><input class="in" id="name" type="text" spellcheck="false" autocapitalize="off" maxlength="32" aria-describedby="e-name"><span>.local</span></div>
+      <div class="hint" id="h-name">Letters, digits and dashes</div>
+      <div class="ferr" id="e-name" hidden></div>
+    </div>
+    <div class="field">
+      <label for="ntp">Time server (NTP)</label>
+      <input class="in" id="ntp" type="text" spellcheck="false" autocapitalize="off" maxlength="63" aria-describedby="e-ntp">
+      <div class="hint" id="h-ntp">Your router works too</div>
+      <div class="ferr" id="e-ntp" hidden></div>
+    </div>
+  </div>
+  <div class="banner row" id="rpend" role="status" hidden>
+    <span>Saved. The name and time server apply after a restart.</span>
+    <button type="button" class="btn primary" id="restart1">Restart now</button>
+  </div>
+  <div class="sep" style="display:flex;flex-direction:column;gap:12px;padding-top:14px">
+    <div class="pettop">
+      <div style="display:flex;flex-direction:column"><b>Wi-Fi</b><span class="hint" id="wifitxt">&nbsp;</span></div>
+      <div class="btns">
+        <button type="button" class="btn" id="openwifi">Change Wi-Fi…</button>
+        <button type="button" class="btn" id="restart2">Restart the ball</button>
+      </div>
+    </div>
+    <form class="wifi" id="wifi" hidden autocomplete="off">
+      <div class="cols w">
+        <div class="field"><label for="ssid">Network name</label><input class="in" style="font-family:inherit" id="ssid" type="text" autocomplete="off" maxlength="32" aria-describedby="e-ssid"><div class="ferr" id="e-ssid" hidden></div></div>
+        <div class="field"><label for="pass">Password</label><input class="in" style="font-family:inherit" id="pass" type="password" autocomplete="new-password" maxlength="63" aria-describedby="e-password h-pass"><div class="hint" id="h-pass">8 to 63 characters, or empty for an open network</div><div class="ferr" id="e-password" hidden></div></div>
+      </div>
+      <div class="hint">The ball restarts to join the new network. If it can't, set Wi-Fi over USB with <code class="mono">tamaorb-rom.py wifi</code>.</div>
+      <div class="btns end"><button type="button" class="btn" id="cancelwifi">Cancel</button><button type="submit" class="btn primary">Join and restart</button></div>
+    </form>
+  </div>
+</section>
+
+<section class="card" style="gap:16px" aria-labelledby="h-agents">
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <h2 id="h-agents">Agents</h2>
+    <div class="muted" style="font-size:14px">An agent on your network can read the pet's screen, press buttons and change these settings. Add the ball to Claude Code once:</div>
+  </div>
+  <div class="cmd">
+    <code class="line" id="mcp" tabindex="0">claude mcp add --transport http tamaorb http://tamaorb.local/mcp</code>
+    <button type="button" class="btn" id="copy"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M10.5 5V3.5A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5H5"/></svg><span id="copytxt">Copy</span></button>
+  </div>
+  <fieldset style="display:flex;flex-direction:column;gap:10px">
+    <legend style="margin-bottom:10px;display:flex;flex-direction:column"><b>When an agent presses buttons</b><span class="hint">Presses never wake the screen. Most presses make the pet click; choose what those clicks do.</span></legend>
+    <div class="cols" id="fx"></div>
+    <div class="ferr" id="e-agent_feedback" hidden></div>
+  </fieldset>
+</section>
+
+<footer><span>TamaOrb · GPL-3.0-or-later · No ROMs included</span><span>Tamagotchi is a trademark of Bandai. Not affiliated.</span></footer>
+</div>
+
+<dialog id="rd" class="dlg" aria-labelledby="rd-t"><div class="box">
+  <div style="display:flex;flex-direction:column;gap:4px"><h2 id="rd-t"></h2><div class="muted" id="rd-s" style="font-size:14px"></div></div>
+  <div class="file"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3D5A2A" stroke-width="1.6" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><div><b id="rd-f"></b><span class="hint" id="rd-m"></span></div></div>
+  <fieldset style="display:flex;flex-direction:column;gap:10px"><legend id="rd-l" style="margin-bottom:10px;font-weight:600"></legend><div id="rd-o" style="display:flex;flex-direction:column;gap:10px"></div></fieldset>
+  <div class="banner busy" id="rd-w" role="alert" style="font-size:14px" hidden></div>
+  <div class="banner err" id="rd-e" role="alert" style="font-size:14px" hidden></div>
+  <div class="btns end"><button type="button" class="btn" id="rd-c">Cancel</button><button type="button" class="btn primary" id="rd-ok">Restore and restart</button></div>
+</div></dialog>
+
+<dialog id="ov" aria-labelledby="ov-t"><div class="box" role="status">
+  <div class="dots" id="dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <h2 id="ov-t">Restarting</h2>
+  <div class="muted">Waiting for the ball to come back. This page reconnects by itself; if the pet has time to catch up, you'll see its progress at the top.</div>
+  <div class="muted" id="ov-slow" hidden>Still waiting. If the ball can't join the network, set Wi-Fi over USB with <code class="mono">tamaorb-rom.py wifi</code>.</div>
+  <button type="button" class="btn" id="ov-back">Back to the panel</button>
+</div></dialog>
+
+<script>
+(function(){
+'use strict';
+var $=function(i){return document.getElementById(i)};
+function h(t,a){var e=document.createElement(t),k=Array.prototype.slice.call(arguments,2);
+  for(var n in a||{}){var v=a[n];if(v==null||v===false)continue;
+    if(n==='class')e.className=v;else if(n.slice(0,2)==='on')e.addEventListener(n.slice(2),v);else e.setAttribute(n,v===true?'':v)}
+  k.forEach(function f(c){if(Array.isArray(c))c.forEach(f);else if(c!=null&&c!==false)e.append(c)});return e}
+function api(method,path,body,raw){
+  var o={method:method,cache:'no-store'},c=new AbortController(),t=setTimeout(function(){c.abort()},method==='GET'?4000:15000);
+  o.signal=c.signal;
+  if(body!==undefined){o.body=raw?body:JSON.stringify(body);o.headers={'Content-Type':raw?'application/octet-stream':'application/json'}}
+  return fetch(path,o).then(function(r){clearTimeout(t);return r.json().catch(function(){return{}}).then(function(j){return{ok:r.ok,status:r.status,j:j}})},
+    function(e){clearTimeout(t);throw e});
+}
+
+var PAL={classic:{bg:'#B6C19E',ink:'#1C2518',name:'Classic'},neutral:{bg:'#C4C6BD',ink:'#22241F',name:'Neutral'},night:{bg:'#18201A',ink:'#A9D38E',name:'Night'}};
+var FX=[['quiet','Quiet','Clicks play. The screen stays as it is.'],['silent','Silent','No clicks either. A call from the pet during an agent’s presses is silent too; the attention icon still shows.'],['visible','Visible','Clicks play and wake the screen, like any beep.']];
+var PET=['..#..........#..','..#..##..##..#..','.#...##..##...#.','.#............#.','.#....#..#....#.','.#.....##.....#.','.#............#.','..#..........#..'];
+var MSG={
+  brightness:'Between 1 and 100',dim_level:'Between 0 and 100',volume:'Between 0 and 100',
+  dim_usb_s:'0 (never) or 5 to 3600 seconds',dim_battery_s:'0 (never) or 5 to 3600 seconds',off_battery_s:'10 to 3600 seconds',
+  name:'Only letters, digits and dashes, not at the start or end (1 to 32)',ntp:'Only letters, digits, dots and dashes (1 to 63)',
+  palette:'Not a known palette',agent_feedback:'Not a known choice',ssid:'Enter a network name (up to 32 characters)',password:'8 to 63 characters, or empty'
+};
+var S=null,good=null,st=null,pets=[],confirmSha=null,restartPending=false;
+var polls=0,fails=0,lost=false,petsAt=0,petsSig='',lastPhase='',cu=null,overlay=false,gerrT=0;
+
+/* ---------- formatting ---------- */
+function plural(n,w){return n+' '+w+(n===1?'':'s')}
+function span(s){ // a duration in seconds, said briefly
+  s=Math.max(0,Math.round(s));
+  if(s<60)return'under a minute';
+  if(s<3600)return plural(Math.round(s/60),'minute');
+  if(s<172800)return plural(Math.round(s/3600),'hour');
+  return plural(Math.round(s/86400),'day');
+}
+function hm(s){s=Math.round(s/60);return s<60?s+' min':Math.floor(s/60)+' h '+(s%60)+' min'}
+function est(s){ // catch-up time for s seconds of missed time
+  var sp=st&&st.catchup_speed>0?st.catchup_speed:24,t=s/sp;
+  if(t<90)return'about a minute';
+  if(t<5400)return'about '+Math.round(t/60)+' minutes';
+  return'about '+plural(Math.round(t/3600),'hour');
+}
+function clockOk(){return st&&st.time_trusted}
+function nowU(){return st.unix_time}
+function ago(u){var d=nowU()-u;return d<60?'just now':span(d)+' ago'}
+function hms(s){var d=Math.floor(s/86400),hh=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
+  return d?d+' d '+hh+' h':hh?hh+' h '+m+' min':m+' min'}
+function dateStr(u){return new Date(u*1000).toLocaleString([],{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}
+
+/* ---------- save indicator and banners ---------- */
+var saveT=0,saving=false;
+function indicator(){
+  var e=$('save'),t=$('savetxt');
+  e.className='save'+(lost?' lost':saving?' saving':'');
+  t.textContent=lost?'Can’t reach the ball. Retrying…':saving?'Saving on the ball…':'All changes saved on the ball';
+}
+function touchSave(){saving=true;indicator();clearTimeout(saveT);saveT=setTimeout(function(){saving=false;indicator()},2000)}
+function gerr(m){var e=$('gerr');e.textContent=m;e.hidden=!m;clearTimeout(gerrT);if(m)gerrT=setTimeout(function(){gerr('')},12000)}
+function ferr(k,m){
+  var e=$('e-'+k);if(!e)return;e.textContent=m||'';e.hidden=!m;
+  var c=$(k==='password'?'pass':k);if(c){if(m)c.setAttribute('aria-invalid','true');else c.removeAttribute('aria-invalid')}
+  var b=k==='name'?$('sfx-name'):c;if(b&&b.classList)b.classList.toggle('bad',!!m);
+  var hh=$('h-'+k);if(hh)hh.hidden=!!m&&k!=='password';
+}
+var ERR={busy:'the ball is busy, try again in a moment',catching:'the ball is still catching up','catching up':'the ball is still catching up','not found':'it wasn’t found on the ball',origin:'this page was opened from another address',invalid:'the ball didn’t accept that',failed:'the ball failed to do it'};
+function whyText(r){return ERR[(r.j&&r.j.error)||'']||'the ball answered '+r.status}
+
+/* ---------- settings ---------- */
+var NUMKEYS=['brightness','dim_level','volume'];
+function render(){
+  if(!S)return;
+  var b=S.brightness,dim=Math.min(S.dim_level,b);
+  $('brightness').value=b;$('o-brightness').textContent=b+' %';
+  $('dim_level').max=b;$('dim_level').value=dim;$('o-dim_level').textContent=dim+' %';
+  $('volume').value=S.volume;$('o-volume').textContent=S.volume===0?'Muted':S.volume+' %';
+  var pal=PAL[S.palette]||PAL.classic;
+  $('orbbg').setAttribute('fill',pal.bg);$('orbink').setAttribute('fill',pal.ink);
+  setIcon(pal);
+  document.querySelectorAll('#palettes .sw').forEach(function(l){var on=l.dataset.id===S.palette;l.classList.toggle('on',on);l.firstChild.checked=on});
+  document.querySelectorAll('#fx .opt').forEach(function(l){var on=l.dataset.id===S.agent_feedback;l.classList.toggle('on',on);l.firstChild.checked=on});
+  ['dim_usb_s','dim_battery_s','off_battery_s'].forEach(function(k){if(document.activeElement!==$(k))$(k).value=S[k]});
+  hints();
+  ['name','ntp'].forEach(function(k){if(document.activeElement!==$(k))$(k).value=S[k]});
+  if(!st)$('host').textContent=S.name+'.local';
+}
+function hints(){
+  $('h-dim_usb_s').textContent=S.dim_usb_s===0?'Never dims. On USB the screen never turns off.':'On USB the screen never turns off. 0 = never dim.';
+  $('h-dim_battery_s').textContent=S.dim_battery_s!==0&&S.dim_battery_s>=S.off_battery_s?'Longer than the off delay, so it just turns off.':'0 = never dim';
+}
+var iconEl=null;
+function setIcon(p){
+  var s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="'+p.bg+'" stroke="#1C2518" stroke-width="2"/><g fill="'+p.ink+'"><rect x="13" y="15" width="3" height="3"/><rect x="24" y="15" width="3" height="3"/><rect x="15" y="24" width="10" height="2"/><rect x="13" y="22" width="2" height="2"/><rect x="25" y="22" width="2" height="2"/></g></svg>';
+  if(!iconEl){iconEl=h('link',{rel:'icon'});document.head.append(iconEl)}
+  iconEl.href='data:image/svg+xml,'+encodeURIComponent(s);
+}
+function buildControls(){
+  var pl=$('palettes');
+  Object.keys(PAL).forEach(function(id){
+    var p=PAL[id],gh=mix(p.bg,p.ink,.11),cells=[];
+    for(var y=0;y<8;y++)for(var x=0;x<16;x++)cells.push(h('i',{style:'background:'+(PET[y][x]==='#'?p.ink:gh)}));
+    var inp=h('input',{type:'radio',name:'palette',value:id,onchange:function(){change({palette:id})}});
+    pl.append(h('label',{class:'sw','data-id':id},inp,h('div',{class:'lcd',style:'background:'+p.bg},h('div',{class:'px'},cells)),h('span',null,p.name)));
+  });
+  var fx=$('fx');
+  FX.forEach(function(f){
+    fx.append(h('label',{class:'opt','data-id':f[0]},h('input',{type:'radio',name:'agentfx',value:f[0],onchange:function(){change({agent_feedback:f[0]})}}),h('span',null,h('b',null,f[1]),h('small',null,f[2]))));
+  });
+  var dl=$('delays');
+  [['dim_usb_s','Dim after, on USB',0],['dim_battery_s','Dim after, on battery',0],['off_battery_s','Screen off, on battery',10]].forEach(function(d){
+    var k=d[0];
+    dl.append(h('div',{class:'field'},h('label',{for:k},d[1]),
+      h('div',{class:'num'},h('input',{class:'in',id:k,type:'number',inputmode:'numeric',min:d[2],max:3600,step:5,'aria-describedby':'e-'+k,onchange:function(e){
+        var v=parseInt(e.target.value,10);if(isNaN(v))v=d[2];var o={};o[k]=v;change(o)}}),h('span',{class:'muted'},'seconds')),
+      h('div',{class:'hint',id:'h-'+k},k==='off_battery_s'?'At least 10 s, to protect the battery':''),h('div',{class:'ferr',id:'e-'+k,hidden:true})));
+  });
+  ['brightness','dim_level','volume'].forEach(function(k){
+    var el=$(k);
+    el.addEventListener('input',function(){
+      var v=+el.value,o={};o[k]=v;S[k]=v;render();queue(o,false)});
+    el.addEventListener('change',function(){var o={};o[k]=+el.value;queue(o,true)});
+  });
+  $('name').addEventListener('change',function(e){
+    var v=e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,32);e.target.value=v;change({name:v})});
+  $('ntp').addEventListener('change',function(e){change({ntp:e.target.value.trim().slice(0,63)})});
+}
+function mix(a,b,t){
+  var A=[1,3,5].map(function(i){return parseInt(a.slice(i,i+2),16)}),B=[1,3,5].map(function(i){return parseInt(b.slice(i,i+2),16)});
+  return'rgb('+A.map(function(v,i){return Math.round(v+(B[i]-v)*t)}).join(',')+')';
+}
+
+/* PATCH queue: one request in flight, at most one every 100 ms while dragging, plus a final one on release. */
+var pend=null,inflight=false,lastSend=0,sendT=0;
+function change(o){Object.keys(o).forEach(function(k){ferr(k,'')});Object.keys(o).forEach(function(k){S[k]=o[k]});render();queue(o,true)}
+function queue(o,now){
+  pend=Object.assign(pend||{},o);touchSave();
+  Object.keys(o).forEach(function(k){ferr(k,'')});
+  pump(now);
+}
+function pump(now){
+  if(inflight||!pend)return;
+  var wait=now?0:Math.max(0,100-(Date.now()-lastSend));
+  clearTimeout(sendT);
+  if(wait>0){sendT=setTimeout(function(){pump(true)},wait);return}
+  var body=pend;pend=null;inflight=true;lastSend=Date.now();
+  api('PATCH','/api/settings',body).then(function(r){
+    inflight=false;
+    if(r.ok&&r.j.settings){
+      good=r.j.settings;
+      if(!pend){S=Object.assign({},good)}
+      setPending(r.j.restart_pending);render();
+    }else{
+      var key=r.j&&r.j.key;
+      pend=null;S=Object.assign({},good);render();
+      if(key&&MSG[key]&&$('e-'+key))ferr(key,MSG[key]);else gerr('Couldn’t save that: '+whyText(r)+'.');
+    }
+    touchSave();pump(false);
+  },function(){
+    inflight=false;pend=null;S=Object.assign({},good);render();gerr('Couldn’t reach the ball to save that.');touchSave();
+  });
+}
+function setPending(p){restartPending=!!p;$('rpend').hidden=!restartPending}
+
+/* ---------- status ---------- */
+function tile(l,v,s){return h('div',{class:'tile'},h('div',{class:'l'},l),h('div',{class:'v'},v),h('div',{class:'s'},s))}
+function renderStatus(){
+  var s=st,t=[];
+  document.title='TamaOrb · '+s.name;
+  $('host').textContent=s.name+'.local';
+  var phase=s.phase==='catch-up'?'catching up':s.phase==='boot'?'starting':'running';
+  t.push(tile('Pet',s.model,(s.rom_name||'')+' · '+phase));
+  if(s.usb)t.push(tile('Power','USB','Battery '+(s.batt_mv/1000).toFixed(2)+' V'));
+  else t.push(tile('Power','Battery '+s.batt_pct+' %',(s.batt_mv/1000).toFixed(2)+' V'+(S?' · screen off after '+S.off_battery_s+' s idle':'')));
+  t.push(tile('Wi-Fi',s.wifi?s.wifi_ssid:'Not connected',s.wifi?'−'+Math.abs(s.rssi)+' dBm · '+s.ip:'No network'));
+  t.push(tile('Time',s.time_trusted?new Date(s.unix_time*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'Unknown',s.time_trusted?'Synced with '+(S?S.ntp:'NTP'):'No NTP yet'));
+  t.push(tile('Last save',s.last_save_known&&s.time_trusted?ago(s.last_save_unix):s.last_save_known?'Unknown time':'None yet',s.sd_present?'SD card present':'No SD card'));
+  t.push(tile('Uptime',hms(s.uptime_s),'Firmware '+s.version));
+  $('tiles').replaceChildren.apply($('tiles'),t);
+  $('wifitxt').textContent=s.wifi?'Connected to '+s.wifi_ssid:'Not connected';
+  $('mcp').textContent='claude mcp add --transport http '+s.name+' http://'+s.name+'.local/mcp';
+  if(s.restart_pending&&!restartPending)setPending(true);
+  // catch-up banner
+  var c=s.phase==='catch-up';
+  $('catch').hidden=!c;
+  if(c){
+    var p=s.catchup_pct,n=Date.now()/1000;
+    if(!cu)cu={p:p,t:n};
+    var left='';
+    if(p>cu.p&&n-cu.t>=10){left=', about '+hm((100-p)*(n-cu.t)/(p-cu.p))+' left'}
+    $('cubar').style.width=p+'%';
+    $('catch').setAttribute('aria-busy','true');
+    $('cutxt').textContent=p+' % done'+left+'. Switching pets and restoring saves wait until it finishes. Settings still work.';
+  }else cu=null;
+  if(s.phase!==lastPhase){lastPhase=s.phase;petsAt=0}
+}
+function failed(){fails++;if(fails>=3&&!lost){lost=true;indicator()}}
+function poll(){
+  if(overlay)return;
+  api('GET','/api/status').then(function(r){
+    if(!r.ok)throw 0;
+    fails=0;if(lost){lost=false;indicator()}
+    st=r.j;renderStatus();renderPets();
+    polls++;
+    if(Date.now()-petsAt>30000)loadPets();
+  }).catch(failed).then(function(){setTimeout(poll,5000)});
+}
+function loadPets(){
+  petsAt=Date.now();
+  return api('GET','/api/pets').then(function(r){if(r.ok&&Array.isArray(r.j)){pets=r.j;renderPets()}},function(){});
+}
+
+/* ---------- pets ---------- */
+function icon(d){var s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('width',16);s.setAttribute('height',16);s.setAttribute('viewBox','0 0 16 16');s.setAttribute('fill','none');s.setAttribute('stroke','currentColor');s.setAttribute('stroke-width','1.6');s.setAttribute('aria-hidden','true');var p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',d);s.append(p);return s}
+function renderPets(){
+  var busy=st&&st.phase==='catch-up',act=pets.filter(function(p){return p.active})[0];
+  var vm=pets.map(function(p){
+    var saved=p.has_save?(clockOk()&&p.save_trusted?'saved '+ago(p.save_unix):'saved, time unknown'):'no save yet';
+    return{p:p,meta:'SHA-1 '+p.sha1.slice(0,8)+'… · '+saved,open:confirmSha===p.sha1,text:confirmText(p,act)};
+  });
+  var sig=JSON.stringify([vm.map(function(v){return[v.p.sha1,v.p.name,v.p.model,v.p.active,v.p.has_save,v.meta,v.open,v.text]}),busy]);
+  if(sig===petsSig)return;
+  petsSig=sig;
+  var box=$('pets'),focus=document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.f;
+  box.replaceChildren();
+  if(!vm.length)box.append(h('div',{class:'muted'},'No ROMs found on the SD card.'));
+  vm.forEach(function(v){
+    var p=v.p;
+    box.append(h('div',{class:'petrow'+(v.open?' open':'')},
+      h('div',{class:'pettop'},
+        h('div',{class:'petid'},h('div',{class:'disc'},p.model==='unknown'?'?':p.model),
+          h('div',null,h('div',{class:'petname'},h('b',null,p.name),p.active&&h('span',{class:'badge'},'On the ball')),h('div',{class:'hint'},v.meta))),
+        h('div',{class:'btns'},
+          !p.active&&h('button',{type:'button',class:'btn primary','data-f':'sw'+p.sha1,disabled:busy,onclick:function(){confirmSha=p.sha1;petsSig='';renderPets()}},'Switch'),
+          (p.has_save||p.active)&&h('a',{class:'btn',href:'/api/pets/'+p.sha1+'/save',download:''},icon('M8 2v8M4.5 7 8 10.5 11.5 7M3 13.5h10'),'Back up save'),
+          h('button',{type:'button',class:'btn',disabled:busy,'data-f':'rs'+p.sha1,onclick:function(){pickRestore(p)}},icon('M8 11V3M4.5 6 8 2.5 11.5 6M3 13.5h10'),'Restore…'))),
+      v.open&&h('div',{class:'banner busy'},h('div',null,v.text),
+        h('div',{class:'btns end',style:'margin-top:10px'},
+          h('button',{type:'button',class:'btn',onclick:function(){confirmSha=null;petsSig='';renderPets()}},'Cancel'),
+          h('button',{type:'button',class:'btn primary',onclick:function(){doSwitch(p)}},'Switch and restart')))));
+  });
+  if(focus){var f=box.querySelector('[data-f="'+focus+'"]');if(f)f.focus()}
+}
+function confirmText(p,act){
+  var m=p.model==='unknown'?p.name:p.model;
+  var t='Switch to '+m+'? The ball saves '+(act?(act.model==='unknown'?act.name:act.model):'the current pet')+' and restarts';
+  if(p.has_save&&p.save_trusted&&clockOk()){
+    var age=Math.max(0,nowU()-p.save_unix);
+    return t+', then catches '+m+' up on the '+span(age)+' since its last save. That takes '+est(age)+', and the ball can’t be played meanwhile.';
+  }
+  return t+' into '+m+'.';
+}
+function doSwitch(p){
+  confirmSha=null;petsSig='';renderPets();
+  api('POST','/api/pets/switch',{name:p.name}).then(function(r){
+    if(r.ok)restarting();else gerr('Couldn’t switch pets: '+whyText(r)+'.');
+  },function(){gerr('Couldn’t reach the ball to switch pets.')});
+}
+
+/* ---------- restore ---------- */
+var target=null,pick=null;
+function pickRestore(p){target=p;$('file').value='';$('file').click()}
+$('file').addEventListener('change',function(){
+  var f=$('file').files[0];if(!f||!target)return;
+  var p=target;
+  if(f.size>16384||f.size<20){gerr('That file isn’t a TamaOrb save.');return}
+  f.slice(0,20).arrayBuffer().then(function(ab){
+    var d=new DataView(ab);
+    if(d.getUint32(0,true)!==0x42524F54){gerr('That file isn’t a TamaOrb save.');return}
+    var t=Number(d.getBigInt64(12,true)),trusted=(d.getUint8(6)&1)===1;
+    openRestore(p,f,t,trusted);
+  },function(){gerr('Couldn’t read that file.')});
+});
+function openRestore(p,f,t,trusted){
+  var m=p.model==='unknown'?p.name:p.model,mode='frozen',known=clockOk()&&trusted&&t>0,age=known?Math.max(0,nowU()-t):0;
+  $('rd-t').textContent='Restore '+m+'’s save';
+  $('rd-s').textContent=p.active?'This replaces the '+m+' pet on the ball. The ball restarts into it.':'This replaces the saved '+m+' pet. The ball keeps running its current pet.';
+  $('rd-f').textContent=f.name;
+  $('rd-m').textContent=t>0?'Saved '+dateStr(t)+(known?' · '+ago(t):trusted?'':' · clock was not synced'):'No save time';
+  $('rd-l').textContent=known?'What about the '+span(age)+' since this save?':'What about the time since this save?';
+  $('rd-e').hidden=true;
+  var defs=[['frozen','Resume as saved','The pet carries on exactly as it was, as if it had been paused. No catch-up.'],
+    ['replay','Replay the missed time','The pet lives through '+(known?'the '+span(age):'the time')+', as if it had been on the ball all along.']];
+  function warn(){
+    var w=$('rd-w');w.hidden=mode!=='replay';
+    w.textContent=known?'About '+est(age).replace('about ','')+' of catch-up at '+Math.round(st.catchup_speed||24)+'× real time. The ball shows progress and can’t be played until it’s done.'+(age>=7*86400?' The pet may not survive a week alone.':''):'The ball replays from the save’s own time. It shows progress and can’t be played until it’s done.';
+  }
+  var o=$('rd-o');o.replaceChildren();
+  defs.forEach(function(d){
+    var inp=h('input',{type:'radio',name:'restore',value:d[0],checked:d[0]===mode,onchange:function(){mode=d[0];o.querySelectorAll('.opt').forEach(function(l){l.classList.toggle('on',l.firstChild.checked)});warn()}});
+    o.append(h('label',{class:'opt'+(d[0]===mode?' on':'')},inp,h('span',null,h('b',null,d[1]),h('small',null,d[2]))));
+  });
+  warn();
+  var ok=$('rd-ok');ok.disabled=false;
+  ok.onclick=function(){
+    ok.disabled=true;
+    f.arrayBuffer().then(function(buf){return api('PUT','/api/pets/'+p.sha1+'/save?mode='+mode,buf,true)}).then(function(r){
+      if(r.ok){$('rd').close();if(r.j.restarting)restarting();else{loadPets();gerr('');}return}
+      ok.disabled=false;
+      var k=r.j&&r.j.key,RM={record:'That file isn’t a valid TamaOrb save.',rom:'That save belongs to a different ROM.',model:'That save is for a different model.',pet:'That save isn’t for this pet.',state:'This firmware can’t use that save.',mode:'Pick one of the two options.'};
+      $('rd-e').textContent=(k&&RM[k])||'Couldn’t restore: '+whyText(r)+'.';$('rd-e').hidden=false;
+    },function(){ok.disabled=false;$('rd-e').textContent='Couldn’t reach the ball.';$('rd-e').hidden=false});
+  };
+  $('rd').showModal();
+}
+$('rd-c').addEventListener('click',function(){$('rd').close()});
+
+/* ---------- restart overlay ---------- */
+var dotT=0,ovT=0;
+function restarting(newHost){
+  overlay=true;
+  var up=st?st.uptime_s:Infinity,sawDown=false,t0=Date.now(),host=location.hostname,jump=null;
+  if(newHost&&/\.local$/i.test(host)&&newHost!==host)jump=newHost;
+  $('ov-t').textContent='Restarting '+(st?st.name:'the ball');
+  $('ov-slow').hidden=true;
+  var ov=$('ov');if(!ov.open)ov.showModal();
+  var n=0,dots=$('dots').children;
+  clearInterval(dotT);dotT=setInterval(function(){n=(n+1)%5;for(var i=0;i<5;i++)dots[i].classList.toggle('on',i===n)},300);
+  function done(){clearInterval(dotT);clearTimeout(ovT);overlay=false}
+  $('ov-back').onclick=function(){done();ov.close();fails=0;poll()};
+  ov.oncancel=function(e){e.preventDefault()};
+  function next(){
+    if(!overlay)return;
+    if(Date.now()-t0>40000)$('ov-slow').hidden=false;
+    var p=jump?fetch('http://'+jump+'/api/status',{mode:'no-cors',cache:'no-store'}).then(function(){return{ok:true,j:{uptime_s:0}}}):api('GET','/api/status');
+    p.then(function(r){
+      if(r.ok&&(sawDown||(r.j.uptime_s<up)||Date.now()-t0>15000)){done();if(jump)location.href='http://'+jump+'/';else location.reload()}
+      else ovT=setTimeout(next,2000);
+    },function(){sawDown=true;ovT=setTimeout(next,2000)});
+  }
+  ovT=setTimeout(next,2000);
+}
+function doRestart(){
+  var nm=S&&st&&S.name!==st.name?S.name:null;
+  api('POST','/api/restart',{}).then(function(r){if(r.ok)restarting(nm);else gerr('Couldn’t restart: '+whyText(r)+'.')},function(){gerr('Couldn’t reach the ball to restart it.')});
+}
+$('restart1').addEventListener('click',doRestart);
+$('restart2').addEventListener('click',doRestart);
+
+/* ---------- Wi-Fi ---------- */
+$('openwifi').addEventListener('click',function(){$('wifi').hidden=false;$('openwifi').hidden=true;$('ssid').value=st&&st.wifi?st.wifi_ssid:'';$('ssid').focus()});
+function closeWifi(){$('wifi').hidden=true;$('openwifi').hidden=false;$('pass').value='';ferr('ssid','');ferr('password','');$('openwifi').focus()}
+$('cancelwifi').addEventListener('click',closeWifi);
+$('wifi').addEventListener('submit',function(e){
+  e.preventDefault();
+  var ssid=$('ssid').value,pw=$('pass').value;
+  ferr('ssid','');ferr('password','');
+  if(!ssid||ssid.length>32){ferr('ssid',MSG.ssid);$('ssid').focus();return}
+  if(pw&&(pw.length<8||pw.length>63)){ferr('password',MSG.password);$('pass').focus();return}
+  var body={ssid:ssid,password:pw};
+  $('pass').value='';  // the password lives only in this request body
+  api('POST','/api/wifi',body).then(function(r){
+    body=null;
+    if(r.ok){$('wifi').hidden=true;$('openwifi').hidden=false;restarting()}
+    else{var k=r.j&&r.j.key;if(k==='ssid'||k==='password')ferr(k,MSG[k]);else gerr('Couldn’t save Wi-Fi: '+whyText(r)+'.')}
+  },function(){body=null;gerr('Couldn’t reach the ball.')});
+});
+
+/* ---------- copy ---------- */
+var copyT=0;
+$('copy').addEventListener('click',function(){
+  var el=$('mcp'),txt=el.textContent;
+  function mark(m){$('copytxt').textContent=m;clearTimeout(copyT);copyT=setTimeout(function(){$('copytxt').textContent='Copy'},1500)}
+  function fallback(){
+    var r=document.createRange();r.selectNodeContents(el);var s=getSelection();s.removeAllRanges();s.addRange(r);
+    var ok=false;try{ok=document.execCommand('copy')}catch(x){}
+    mark(ok?'Copied':'Press Ctrl+C');
+  }
+  if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(txt).then(function(){mark('Copied')},fallback);
+  else fallback();
+});
+
+/* ---------- start ---------- */
+buildControls();
+indicator();
+api('GET','/api/settings').then(function(r){
+  if(r.ok&&r.j.settings){good=r.j.settings;S=Object.assign({},good);setPending(r.j.restart_pending);render();if(st)renderStatus()}
+  else gerr('Couldn’t load the settings.');
+},function(){gerr('Couldn’t reach the ball.')});
+poll();
+})();
+</script>
+</body>
+</html>
