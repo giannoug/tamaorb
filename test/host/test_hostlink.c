@@ -14,7 +14,8 @@ static char stored_name[64], wifi_ssid[64], wifi_pass[64];
 static size_t stored_len;
 
 static void reply(void *ctx, const char *line) { snprintf(last, sizeof last, "%s", line); replies++; }
-static bool store(void *ctx, const char *name, const uint8_t *d, size_t n) { snprintf(stored_name, sizeof stored_name, "%s", name); stored_len = n; return true; }
+static hl_store_result_t store_result = HL_STORE_OK;
+static hl_store_result_t store(void *ctx, const char *name, const uint8_t *d, size_t n) { snprintf(stored_name, sizeof stored_name, "%s", name); stored_len = n; return store_result; }
 static void list(void *ctx, hl_emit_fn emit, void *e) { emit(e, "tama.bin P1 4b4979cf92dc9d2fb6d7295a38f209f3da144f72"); }
 static bool rm(void *ctx, const char *name) { return strcmp(name, "tama.bin") == 0; }
 static bool wifi(void *ctx, const char *ssid, const char *pass) { snprintf(wifi_ssid, 64, "%s", ssid); snprintf(wifi_pass, 64, "%s", pass); return true; }
@@ -30,6 +31,7 @@ void setUp(void)
     replies = 0;
     last[0] = stored_name[0] = '\0';
     stored_len = 0;
+    store_result = HL_STORE_OK;
 }
 void tearDown(void) { free(s); }
 
@@ -163,6 +165,14 @@ static void test_list_rm_status(void)
     TEST_ASSERT_EQUAL_STRING("@TO ERR cmd", last);
 }
 
+static void test_put_reboot_announced(void)
+{
+    static uint8_t rom[TC_ROM_BYTES];
+    if (!test_load_file("tama.bin", rom, sizeof rom)) TEST_IGNORE_MESSAGE("ROM not present");
+    store_result = HL_STORE_OK_REBOOT;
+    TEST_ASSERT_EQUAL_STRING("@TO OK P1 REBOOT", upload("tama.bin", rom, sizeof rom, NULL));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -170,6 +180,7 @@ int main(void)
     RUN_TEST(test_b64_roundtrip);
     RUN_TEST(test_put_unknown_rom_rejected);
     RUN_TEST(test_put_roundtrip_p1);
+    RUN_TEST(test_put_reboot_announced);
     RUN_TEST(test_put_bad_sha_rejected);
     RUN_TEST(test_chunk_out_of_order);
     RUN_TEST(test_chunk_without_put);

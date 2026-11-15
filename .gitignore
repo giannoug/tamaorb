@@ -18,3 +18,6 @@ sdkconfig
 sdkconfig.old
 managed_components/
 build-host/
+
+# Python bytecode
+__pycache__/

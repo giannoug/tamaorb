@@ -90,9 +90,10 @@ static void end(hl_session_t *s, hl_emit_fn reply, void *rctx)
     tc_model_t m = tc_rom_identify(s->data, s->size, h);
     if (memcmp(h, s->sha1, 20) != 0) { reply(rctx, "@TO ERR sha1"); return; }
     if (m != TC_MODEL_P1 && m != TC_MODEL_P2) { reply(rctx, "@TO ERR unknown"); return; }
-    if (!s->ops->store(s->ops->ctx, s->name, s->data, s->size)) { reply(rctx, "@TO ERR io"); return; }
+    hl_store_result_t r = s->ops->store(s->ops->ctx, s->name, s->data, s->size);
+    if (r == HL_STORE_FAIL) { reply(rctx, "@TO ERR io"); return; }
     char line[32];
-    snprintf(line, sizeof line, "@TO OK %s", tc_model_name(m));
+    snprintf(line, sizeof line, "@TO OK %s%s", tc_model_name(m), r == HL_STORE_OK_REBOOT ? " REBOOT" : "");
     reply(rctx, line);
 }
 

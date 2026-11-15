@@ -135,6 +135,19 @@ static void test_pick_newest(void)
     TEST_ASSERT_EQUAL(0, ps_pick_newest(true, &a, true, &b));
 }
 
+static void test_policy_backs_off_after_failure(void)
+{
+    ps_policy_t p;
+    ps_policy_init(&p, 0);
+    TEST_ASSERT_TRUE(ps_policy_due(&p, 300000));
+    ps_policy_failed(&p, 300000);
+    TEST_ASSERT_FALSE(ps_policy_due(&p, 300001));
+    TEST_ASSERT_FALSE(ps_policy_due(&p, 329999));
+    TEST_ASSERT_TRUE(ps_policy_due(&p, 330000));
+    ps_policy_saved(&p, 330000);
+    TEST_ASSERT_FALSE(ps_policy_due(&p, 330001));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -150,5 +163,6 @@ int main(void)
     RUN_TEST(test_policy_periodic);
     RUN_TEST(test_policy_no_save_while_held);
     RUN_TEST(test_pick_newest);
+    RUN_TEST(test_policy_backs_off_after_failure);
     return UNITY_END();
 }

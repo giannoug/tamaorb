@@ -34,7 +34,7 @@ static void deep_sleep(void)
 
 void power_early_boot_check(void)
 {
-    if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER && !board_usb_present()) deep_sleep();
+    if ((esp_sleep_get_wakeup_causes() & BIT(ESP_SLEEP_WAKEUP_TIMER)) && !board_usb_present()) deep_sleep();
 }
 
 static void monitor(void *arg)
@@ -42,9 +42,9 @@ static void monitor(void *arg)
     int low = 0;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(10000));
-        uint32_t mv = board_battery_mv();
+        uint32_t mv = board_battery_mv();  // 0 = unknown (ADC unavailable): never treated as empty
         bool usb = board_usb_present();
-        low = (!usb && mv < POWER_LOW_MV) ? low + 1 : 0;
+        low = (!usb && mv && mv < POWER_LOW_MV) ? low + 1 : 0;
         if (low < POWER_LOW_READS) continue;
 
         ESP_LOGW(TAG, "battery critical (%lu mV): saving and sleeping", (unsigned long)mv);

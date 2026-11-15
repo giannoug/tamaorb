@@ -41,7 +41,7 @@ static volatile emu_phase_t s_phase = EMU_BOOT;
 static uint64_t s_catchup_s;
 static int64_t s_saved_unix;
 static bool s_saved_trusted;
-static volatile uint64_t s_done_s, s_total_s;
+static volatile uint32_t s_done_s, s_total_s;  // 32-bit: read from the other core without tearing
 static volatile uint32_t s_eta_s;
 static int64_t s_catchup_t0, s_last_progress_save;
 
@@ -57,8 +57,9 @@ void emu_catchup_progress(uint64_t *done_s, uint64_t *total_s, uint32_t *eta_s)
 static bool catchup_cb(uint64_t done_ticks, uint64_t total_ticks, void *ctx)
 {
     int64_t now = esp_timer_get_time();
-    s_done_s = done_ticks / TC_TICK_HZ;
-    s_total_s = total_ticks / TC_TICK_HZ;
+    s_done_s = (uint32_t)(done_ticks / TC_TICK_HZ);
+    s_total_s = (uint32_t)(total_ticks / TC_TICK_HZ);
+    saver_serve_request_at(tc_progress_unix(s_saved_unix, done_ticks), s_saved_trusted);  // low battery / reboot
     double elapsed = (double)(now - s_catchup_t0) / 1e6;
     double rate = elapsed > 0 ? (double)done_ticks / elapsed : 0;  // ticks per wall second
     s_eta_s = rate > 0 ? (uint32_t)((double)(total_ticks - done_ticks) / rate) : 0;

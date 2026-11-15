@@ -187,13 +187,15 @@ The detailed hardware notes above should live in `docs/hardware/spotpear-ball-12
 
 ### 6.3 Where it saves
 
-- A dedicated raw flash partition (e.g. `saves`, 256 KB) used as a **ring of slots**. Each slot holds a sequence number, ROM SHA-1, timestamp, payload and CRC.
-- On boot, load the newest slot with a valid CRC for the active ROM. A torn write simply falls back to the previous slot.
-- Writes are spread across the partition, so there's no flash-wear concern for decades.
-- Exact slot and sector layout is the builder's call.
+- A dedicated NVS partition (`tamaorb`, 384 KB), **two alternating keys per pet** (A/B). See ADR 0004.
+- Each record holds a sequence number, the ROM's SHA-1, a pet ID, the timestamp and whether it was trusted, the payload, and a CRC.
+- On boot, load the newest record with a valid CRC that this build can load. If it can't be loaded, fall back to the other slot. If neither can be loaded, keep numbering from the highest sequence and overwrite the older slot first.
+- NVS keeps a key's old value if power fails mid-write and spreads the wear; the A/B keys and CRC are defence in depth.
 - Saves are **per ROM** (keyed by SHA-1), so a P1 pet and a P2 pet each persist.
-- Each save also carries a **pet ID**, always 0 in v1. That lets the next version hold several pets per model without changing the save format. **(builder's call)**
+- Each save also carries a **pet ID**, always 0 in v1. That lets the next version hold several pets per model without changing the save format.
+- If the partition can't be opened, it is **never erased**: saving is turned off and a message says so.
 - **Saves never go to the SD card.**
+- A save that keeps failing is retried after 30 s, not on every loop.
 
 ### 6.4 Boot and catch-up sequence
 

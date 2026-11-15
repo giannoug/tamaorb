@@ -4,6 +4,7 @@
 #include <string.h>
 #include "esp_app_desc.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "board.h"
@@ -108,6 +109,8 @@ void app_main(void)
     uint64_t gap_s = 0;
     if (saver_load(sha1, &meta) == ESP_OK) {
         int64_t now = 0;
+        // After deep sleep the RTC ran on its RC oscillator (several % drift): prefer NTP if it comes.
+        if (esp_reset_reason() == ESP_RST_DEEPSLEEP && net_configured()) net_wait_fresh_sync(15000);
         bool trusted = net_now(&now);
         if (!trusted && net_configured()) trusted = net_wait_time(15000) && net_now(&now);
         if (!tc_gap_seconds(meta.unix_time, meta.time_trusted, now, trusted, &gap_s)) {

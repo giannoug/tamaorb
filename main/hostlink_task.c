@@ -19,17 +19,18 @@ static const char *TAG = "hostlink";
 static tc_model_t s_model;
 static bool s_reboot;
 
-static bool op_store(void *ctx, const char *name, const uint8_t *data, size_t len)
+static hl_store_result_t op_store(void *ctx, const char *name, const uint8_t *data, size_t len)
 {
     if (rom_store_sd_present()) {
-        if (rom_store_write_sd(name, data, len) != ESP_OK) return false;
-        if (s_model == TC_MODEL_UNKNOWN) s_reboot = true;  // nothing running yet: reboot to pick it up
-        return true;
+        if (rom_store_write_sd(name, data, len) != ESP_OK) return HL_STORE_FAIL;
+        if (s_model != TC_MODEL_UNKNOWN) return HL_STORE_OK;
+        s_reboot = true;  // nothing running yet: reboot to pick it up
+        return HL_STORE_OK_REBOOT;
     }
     // No SD card: the pushed ROM becomes the active one (spec §7.3), applied by a reboot.
-    if (rom_store_set_active(data) != ESP_OK) return false;
+    if (rom_store_set_active(data) != ESP_OK) return HL_STORE_FAIL;
     s_reboot = true;
-    return true;
+    return HL_STORE_OK_REBOOT;
 }
 
 static void op_list(void *ctx, hl_emit_fn emit, void *ectx)
@@ -92,7 +93,7 @@ static void hostlink_task(void *arg)
             }
             if (s_reboot) {
                 ESP_LOGI(TAG, "saving and rebooting to apply");
-                saver_request_and_wait(3000);
+                if (!saver_request_and_wait(3000)) ESP_LOGW(TAG, "save before reboot failed; rebooting anyway");
                 esp_restart();
             }
         } else if (n < sizeof line - 1) {

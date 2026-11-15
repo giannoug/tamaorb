@@ -131,6 +131,18 @@ static void test_select_nothing(void)
     TEST_ASSERT_EQUAL(TC_SEL_NO_ROM, tc_rom_select(false, NULL, 0, &idx));
 }
 
+static void test_distinct_valid_dedups_and_filters(void)
+{
+    tc_rom_entry_t sd[5] = { entry("junk.bin", TC_MODEL_UNKNOWN, 9), entry("tama.bin", TC_MODEL_P1, 1),
+                             entry("copy.bin", TC_MODEL_P1, 1), entry("tamag2.bin", TC_MODEL_P2, 2),
+                             entry("test.bin", TC_MODEL_TEST_ROM, 3) };
+    int idx[5];
+    TEST_ASSERT_EQUAL(2, tc_rom_distinct_valid(sd, 5, idx, 5));
+    TEST_ASSERT_EQUAL(1, idx[0]);
+    TEST_ASSERT_EQUAL(3, idx[1]);
+    TEST_ASSERT_EQUAL(1, tc_rom_distinct_valid(sd, 5, idx, 1));  // respects max
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -149,5 +161,6 @@ int main(void)
     RUN_TEST(test_select_duplicates_count_once);
     RUN_TEST(test_select_ignores_unknown);
     RUN_TEST(test_select_nothing);
+    RUN_TEST(test_distinct_valid_dedups_and_filters);
     return UNITY_END();
 }

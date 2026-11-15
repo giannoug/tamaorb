@@ -9,17 +9,21 @@
 #include <unistd.h>
 #include "board.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "roms";
 static bool s_sd;
 static bool s_nvs_ok;
+static SemaphoreHandle_t s_scan_lock;
 
 bool rom_store_nvs_ok(void) { return s_nvs_ok; }
 
 esp_err_t rom_store_init(void)
 {
+    s_scan_lock = xSemaphoreCreateMutex();
     // Never erase this partition: it holds every pet. If it can't be opened (e.g. older firmware
     // booted on newer NVS data), run with saves off and say so.
     esp_err_t err = nvs_flash_init_partition(ROM_STORE_PARTITION);
@@ -54,8 +58,10 @@ int rom_store_scan(tc_rom_entry_t *out, int max)
     if (!s_sd) return 0;
     DIR *d = opendir(ROM_STORE_DIR);
     if (!d) return 0;
-    static uint8_t buf[TC_ROM_BYTES];
+    static uint8_t buf[TC_ROM_BYTES];  // shared: the UI picker and hostlink LIST can scan at once
+    xSemaphoreTake(s_scan_lock, portMAX_DELAY);
     int n = 0;
+    bool have_unknown = false;  // keep one unknown dump (to name it); more would crowd out real ROMs
     struct dirent *e;
     while (n < max && (e = readdir(d))) {
         size_t len = strlen(e->d_name);
@@ -64,11 +70,17 @@ int rom_store_scan(tc_rom_entry_t *out, int max)
         struct stat st;
         if (!path_for(e->d_name, path, sizeof path) || stat(path, &st) != 0 || st.st_size != TC_ROM_BYTES) continue;
         if (!rom_store_read_sd(e->d_name, buf)) continue;
-        tc_rom_entry_t *r = &out[n++];
-        snprintf(r->name, sizeof r->name, "%s", e->d_name);
+        tc_rom_entry_t *r = &out[n];
         r->model = tc_rom_identify(buf, sizeof buf, r->sha1);
+        if (r->model == TC_MODEL_UNKNOWN || r->model == TC_MODEL_TEST_ROM) {
+            if (have_unknown) continue;
+            have_unknown = true;
+        }
+        snprintf(r->name, sizeof r->name, "%s", e->d_name);
+        n++;
     }
     closedir(d);
+    xSemaphoreGive(s_scan_lock);
     return n;
 }
 

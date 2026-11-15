@@ -17,6 +17,7 @@ static bool (*s_now)(int64_t *);
 static ps_policy_t s_policy;
 static uint8_t s_prev_buttons;
 static volatile bool s_requested;
+static volatile bool s_last_ok;
 static SemaphoreHandle_t s_done;
 static bool s_policy_ready;
 
@@ -115,7 +116,7 @@ bool saver_request_and_wait(uint32_t timeout_ms)
     if (!s_done) return false;
     xSemaphoreTake(s_done, 0);
     s_requested = true;
-    return xSemaphoreTake(s_done, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+    return xSemaphoreTake(s_done, pdMS_TO_TICKS(timeout_ms)) == pdTRUE && s_last_ok;
 }
 
 void saver_poll(uint32_t now_ms)
@@ -130,7 +131,17 @@ void saver_poll(uint32_t now_ms)
     if (s_requested || ps_policy_due(&s_policy, now_ms)) {
         bool requested = s_requested;
         s_requested = false;
-        if (save_now() == ESP_OK) ps_policy_saved(&s_policy, now_ms);
+        s_last_ok = save_now() == ESP_OK;
+        if (s_last_ok) ps_policy_saved(&s_policy, now_ms);
+        else ps_policy_failed(&s_policy, now_ms);  // don't hammer a failing NVS every loop
         if (requested && s_done) xSemaphoreGive(s_done);
     }
+}
+
+void saver_serve_request_at(int64_t unix_s, bool trusted)
+{
+    if (!s_requested) return;
+    s_requested = false;
+    s_last_ok = saver_save_at(unix_s, trusted) == ESP_OK;
+    if (s_done) xSemaphoreGive(s_done);
 }

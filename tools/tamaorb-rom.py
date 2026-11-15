@@ -16,6 +16,7 @@ import base64
 import getpass
 import hashlib
 import pathlib
+import re
 import sys
 import time
 import zipfile
@@ -41,13 +42,25 @@ class Rom:
     model: str
 
 
+def device_name(name):
+    """A name the device accepts: [A-Za-z0-9._-], ending in lowercase .bin, at most 48 chars."""
+    stem = pathlib.PurePath(name).name
+    if stem.lower().endswith(".bin"):
+        stem = stem[:-4]
+    stem = re.sub(r"[^A-Za-z0-9._-]", "_", stem).lstrip(".") or "rom"
+    return stem[:44] + ".bin"
+
+
 def _identify(name, data):
     sha = hashlib.sha1(data).hexdigest()
     model = KNOWN.get(sha) if len(data) == ROM_BYTES else None
     if not model:
         print(f"  skipping {name}: not a supported P1/P2 dump (sha1 {sha[:10]}...)")
         return None
-    return Rom(pathlib.PurePath(name).name, data, model)
+    clean = device_name(name)
+    if clean != pathlib.PurePath(name).name:
+        print(f"  {pathlib.PurePath(name).name} will be stored as {clean}")
+    return Rom(clean, data, model)
 
 
 def roms_from_path(path):
@@ -79,6 +92,7 @@ class Link:
     def __init__(self, port, timeout=5.0):
         self.port = port
         self.timeout = timeout
+        self.rebooting = False
 
     def _send(self, line):
         self.port.write((line + "\n").encode())
@@ -113,7 +127,9 @@ class Link:
         got = self._reply()
         if not got.startswith("@TO OK "):
             raise ToolError(f"unexpected reply: {got!r}")
-        return got[7:]
+        model, _, flag = got[7:].partition(" ")
+        self.rebooting = flag == "REBOOT"
+        return model
 
     def list(self):
         self._send("@TO LIST")
@@ -123,7 +139,7 @@ class Link:
             if line == "@TO OK":
                 return items
             if line.startswith("@TO ITEM "):
-                name, model, sha = line[9:].split(" ")
+                name, model, sha = line[9:].rsplit(" ", 2)  # SD file names may contain spaces
                 items.append((name, model, sha))
 
     def remove(self, name):
@@ -145,7 +161,9 @@ def open_port(name):
 
     s = serial.Serial()
     s.port, s.baudrate, s.timeout = name, 115200, 0.2
-    s.dtr = s.rts = False  # toggling these resets the ESP32-S3
+    # Linux raises DTR and RTS on open; dropping DTR while RTS is high resets the ESP32-S3's
+    # USB-Serial/JTAG (measured). Keeping both high leaves the ball running.
+    s.dtr = s.rts = True
     s.open()
     return s
 
@@ -172,9 +190,14 @@ def main(argv=None):
                 raise ToolError("no supported ROMs found")
         link = Link(open_port(args.port))
         if args.cmd == "push":
-            for rom in roms:
+            for i, rom in enumerate(roms):
                 print(f"{rom.name} ({rom.model}): ", end="", flush=True)
                 print(f"written ({link.push(rom)})")
+                if link.rebooting:
+                    print("no SD card: this ROM is now active and the device is rebooting")
+                    if i + 1 < len(roms):
+                        print("  (without an SD card only one ROM is kept; the rest were not sent)")
+                    break
         elif args.cmd == "list":
             for name, model, sha in link.list():
                 print(f"{name:24} {model:8} {sha}")

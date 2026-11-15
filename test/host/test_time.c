@@ -9,7 +9,9 @@
 static uint64_t fake_now;
 static uint64_t now_us(void) { return fake_now; }
 static void sleep_until_us(uint64_t ts) { if (ts > fake_now) fake_now = ts; }
-static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us };
+static int tone_events;
+static void tone_cb(uint32_t f, bool on) { tone_events++; }
+static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us, .tone = tone_cb };
 static bool have_rom, inited;
 static uint16_t program[TC_ROM_WORDS];
 
@@ -115,6 +117,14 @@ static void test_catchup_converge_replays_its_own_duration(void)
     TEST_ASSERT_TRUE(last_total > 100ull * TC_TICK_HZ);  // the progress total grows with each pass
 }
 
+static void test_catchup_is_silent(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    tone_events = 0;
+    tc_catchup(20ull * TC_TICK_HZ, NULL, NULL, 0);  // the P1 boot sound plays in this window
+    TEST_ASSERT_EQUAL(1, tone_events);               // only the final state, reported once
+}
+
 static void test_catchup_matches_realtime(void)
 {
     if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
@@ -150,6 +160,7 @@ int main(void)
     RUN_TEST(test_catchup_exceeds_wrap);
     RUN_TEST(test_catchup_without_callback);
     RUN_TEST(test_catchup_converge_replays_its_own_duration);
+    RUN_TEST(test_catchup_is_silent);
     RUN_TEST(test_catchup_matches_realtime);
     return UNITY_END();
 }

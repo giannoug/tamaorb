@@ -101,3 +101,45 @@ def test_list_collects_items():
     port.write = write
     items = tool.Link(port, timeout=1).list()
     assert items == [("tama.bin", "P1", FAKE_SHA)]
+
+
+def test_list_handles_spaces_in_names():
+    port = FakePort(["@TO ITEM my tama.bin P1 " + FAKE_SHA])
+    port.replies.append("@TO OK")
+    orig = port.write
+
+    def write(data):
+        orig(data)
+        port.pending.append(port.replies.pop(0).encode() + b"\n")
+
+    port.write = write
+    assert tool.Link(port, timeout=1).list() == [("my tama.bin", "P1", FAKE_SHA)]
+
+
+def test_device_name_is_sanitised():
+    assert tool.device_name("Tama P1 (dump).BIN") == "Tama_P1__dump_.bin"
+    assert tool.device_name("tama.bin") == "tama.bin"
+    assert tool.device_name("x" * 60 + ".bin") == "x" * 44 + ".bin"
+
+
+def test_reboot_reply_is_reported():
+    replies = ["@TO OK"] + [f"@TO OK {i}" for i in range(16)] + ["@TO OK P1 REBOOT"]
+    link = tool.Link(FakePort(replies), timeout=1)
+    assert link.push(tool.Rom("tama.bin", FAKE, "P1")) == "P1"
+    assert link.rebooting
+
+
+def test_open_port_does_not_reset_the_device(monkeypatch):
+    """Measured on the ball: opening with DTR/RTS low resets the ESP32-S3; both high doesn't."""
+    import sys
+    import types
+
+    seen = {}
+
+    class FakeSerial:
+        def open(self):
+            seen["dtr"], seen["rts"] = self.dtr, self.rts
+
+    monkeypatch.setitem(sys.modules, "serial", types.SimpleNamespace(Serial=FakeSerial))
+    tool.open_port("/dev/null")
+    assert seen == {"dtr": True, "rts": True}

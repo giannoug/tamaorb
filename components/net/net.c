@@ -43,17 +43,27 @@ static bool load_credentials(wifi_config_t *cfg)
 {
     nvs_handle_t h;
     if (nvs_open("net", NVS_READONLY, &h) != ESP_OK) return false;
-    size_t sl = sizeof cfg->sta.ssid, pl = sizeof cfg->sta.password;
-    bool ok = nvs_get_str(h, "ssid", (char *)cfg->sta.ssid, &sl) == ESP_OK && sl > 1;
-    if (ok && nvs_get_str(h, "pass", (char *)cfg->sta.password, &pl) != ESP_OK) cfg->sta.password[0] = '\0';
+    // NVS strings carry a terminator; a 32-char SSID / 64-char password fill wifi_config exactly.
+    char ssid[33] = { 0 }, pass[65] = { 0 };
+    size_t sl = sizeof ssid, pl = sizeof pass;
+    bool ok = nvs_get_str(h, "ssid", ssid, &sl) == ESP_OK && sl > 1;
+    if (ok && nvs_get_str(h, "pass", pass, &pl) != ESP_OK) pass[0] = '\0';
     nvs_close(h);
+    memcpy(cfg->sta.ssid, ssid, strnlen(ssid, sizeof cfg->sta.ssid));
+    memcpy(cfg->sta.password, pass, strnlen(pass, sizeof cfg->sta.password));
     return ok;
 }
 
 esp_err_t net_start(void)
 {
-    esp_reset_reason_t r = esp_reset_reason();
-    if (r == ESP_RST_POWERON || r == ESP_RST_BROWNOUT || r == ESP_RST_UNKNOWN) s_time_trust = 0;
+    // Whitelist: only resets that keep the RTC running keep the time trusted.
+    switch (esp_reset_reason()) {
+    case ESP_RST_SW: case ESP_RST_PANIC: case ESP_RST_INT_WDT: case ESP_RST_TASK_WDT: case ESP_RST_WDT:
+    case ESP_RST_DEEPSLEEP: case ESP_RST_USB: case ESP_RST_JTAG:
+        break;
+    default:
+        s_time_trust = 0;
+    }
 
     wifi_config_t cfg = { 0 };
     s_configured = load_credentials(&cfg);
@@ -106,6 +116,11 @@ bool net_wait_time(uint32_t timeout_ms)
     if (s_time_trust == TRUST_MAGIC) return true;
     if (!s_started) return false;
     return esp_netif_sntp_sync_wait(pdMS_TO_TICKS(timeout_ms)) == ESP_OK && s_time_trust == TRUST_MAGIC;
+}
+
+bool net_wait_fresh_sync(uint32_t timeout_ms)
+{
+    return s_started && esp_netif_sntp_sync_wait(pdMS_TO_TICKS(timeout_ms)) == ESP_OK;
 }
 
 bool net_connected(void) { return s_connected; }

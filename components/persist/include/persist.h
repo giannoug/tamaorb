@@ -32,8 +32,11 @@ int    ps_pick_newest(bool a_ok, const ps_meta_t *a, bool b_ok, const ps_meta_t 
 #define PS_SAVE_AFTER_RELEASE_MS 3000u
 #define PS_SAVE_PERIOD_MS        300000u
 
-typedef struct { uint32_t last_save_ms, last_release_ms; bool dirty_input; } ps_policy_t;
+#define PS_RETRY_BACKOFF_MS      30000u
+
+typedef struct { uint32_t last_save_ms, last_release_ms, retry_after_ms; bool dirty_input, backing_off; } ps_policy_t;
 void ps_policy_init(ps_policy_t *p, uint32_t now_ms);
 void ps_policy_on_buttons(ps_policy_t *p, uint32_t now_ms, uint8_t prev_mask, uint8_t mask);
 bool ps_policy_due(const ps_policy_t *p, uint32_t now_ms);
 void ps_policy_saved(ps_policy_t *p, uint32_t now_ms);
+void ps_policy_failed(ps_policy_t *p, uint32_t now_ms);  // no policy save is due for PS_RETRY_BACKOFF_MS

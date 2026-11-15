@@ -48,6 +48,12 @@ static void ui_task(void *arg)
     bool boot_drawn = false;
     power_screen_on(true);  // these screens are lit: no light sleep (it would stop the backlight PWM)
     while (emu_phase() != EMU_RUN) {
+        if (s_low_battery) {
+            ui_render_low_battery(s_fb, &UI_PALETTE_CLASSIC);
+            board_display_flush(s_fb);
+            board_backlight_set(BACKLIGHT_PCT);
+            vTaskSuspend(NULL);  // the power task puts the device to sleep
+        }
         if (emu_phase() == EMU_BOOT && !boot_drawn) {
             ui_render_message(s_fb, "TamaOrb", "Starting...", &UI_PALETTE_CLASSIC);
             board_display_flush(s_fb);
@@ -65,7 +71,11 @@ static void ui_task(void *arg)
         }
         vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
     }
-    ui_screen_init(&screen, now_ms());
+    {
+        ui_touch_tracker_t probe = { 0 };  // a finger held through the catch-up screen isn't a press
+        ui_screen_resume(&screen, now_ms(), board_boot_down(), read_touch_buttons(&probe) != 0);
+    }
+    power_screen_on(false);
     backlight = false;  // force a fresh pet frame and backlight on
     ESP_LOGI(TAG, "showing the pet");
 
@@ -137,8 +147,6 @@ void ui_message(const char *title, const char *body)
     board_backlight_set(BACKLIGHT_PCT);
 }
 
-static bool valid(tc_model_t m) { return m == TC_MODEL_P1 || m == TC_MODEL_P2; }
-
 static uint8_t read_touch_buttons(ui_touch_tracker_t *tr)
 {
     board_touch_t bt;
@@ -150,12 +158,10 @@ static uint8_t read_touch_buttons(ui_touch_tracker_t *tr)
 
 int ui_pick_rom(const tc_rom_entry_t *roms, int n, int current, bool allow_cancel)
 {
-    int idx[16], m = 0, sel = 0;
-    for (int i = 0; i < n && m < 16; i++)
-        if (valid(roms[i].model)) {
-            if (i == current) sel = m;
-            idx[m++] = i;
-        }
+    int idx[16], sel = 0;
+    int m = tc_rom_distinct_valid(roms, n, idx, 16);  // one entry per distinct P1/P2 dump
+    for (int k = 0; k < m; k++)
+        if (current >= 0 && !memcmp(roms[idx[k]].sha1, roms[current].sha1, 20)) sel = k;
     if (!m || !s_fb) return -1;
 
     static char subs[UI_PICKER_MAX][24];
@@ -204,7 +210,11 @@ static void picker_from_play(void)
     int pick = ui_pick_rom(roms, n, current, true);
     if (pick < 0 || pick == current) return;
     ui_message("Switching", "Saving your pet...");
-    saver_request_and_wait(3000);
+    if (!saver_request_and_wait(3000)) {
+        ui_message("Not switching", "Couldn't save your\npet, so it stays.");
+        vTaskDelay(pdMS_TO_TICKS(2500));
+        return;
+    }
     if (rom_store_read_sd(roms[pick].name, rom) && rom_store_set_active(rom) == ESP_OK) esp_restart();
     ui_message("Switch failed", "Could not read\nthat ROM.");
     vTaskDelay(pdMS_TO_TICKS(2000));
