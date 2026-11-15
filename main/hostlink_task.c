@@ -14,6 +14,7 @@
 #include "net.h"
 #include "rom_store.h"
 #include "saver.h"
+#include "settings_store.h"
 
 static const char *TAG = "hostlink";
 static tc_model_t s_model;
@@ -63,7 +64,10 @@ static void op_status(void *ctx, char *out, size_t cap)
              trusted, (unsigned long)board_battery_mv(), board_usb_present(), rom_store_sd_present());
 }
 
-static const hl_ops_t s_ops = { op_store, op_list, op_remove, op_wifi, op_status, NULL };
+static void op_get_settings(void *ctx, st_settings_t *out) { settings_get(out); }
+static void op_put_settings(void *ctx, const st_settings_t *s, bool display) { settings_put(s, display); }
+
+static const hl_ops_t s_ops = { op_store, op_list, op_remove, op_wifi, op_status, op_get_settings, op_put_settings, NULL };
 
 static void reply(void *ctx, const char *line)
 {

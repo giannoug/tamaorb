@@ -3,6 +3,17 @@
 #include "ui_internal.h"
 
 const ui_palette_t UI_PALETTE_CLASSIC = { .bg = { 0xB6, 0xC1, 0x9E }, .ink = { 0x1C, 0x25, 0x18 }, .ghost_pct = 11 };
+const ui_palette_t UI_PALETTE_NEUTRAL = { .bg = { 0xC4, 0xC6, 0xBD }, .ink = { 0x22, 0x24, 0x1F }, .ghost_pct = 11 };
+const ui_palette_t UI_PALETTE_NIGHT = { .bg = { 0x18, 0x20, 0x1A }, .ink = { 0xA9, 0xD3, 0x8E }, .ghost_pct = 11 };
+
+const ui_palette_t *ui_palette_by_id(int id)
+{
+    switch (id) {
+    case 1: return &UI_PALETTE_NEUTRAL;
+    case 2: return &UI_PALETTE_NIGHT;
+    default: return &UI_PALETTE_CLASSIC;
+    }
+}
 
 uint16_t ui_rgb565(ui_rgb_t c)
 {

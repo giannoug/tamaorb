@@ -17,6 +17,7 @@
 #include "nvs_flash.h"
 #include "tc_rom.h"
 #include "tc_time.h"
+#include "settings_store.h"
 #include "ui_task.h"
 
 static const char *TAG = "tamaorb";
@@ -84,6 +85,12 @@ void app_main(void)
         nvs = nvs_flash_init();
     }
     ESP_ERROR_CHECK(nvs);
+    ESP_ERROR_CHECK(settings_init());
+    {
+        st_settings_t st;
+        settings_get(&st);
+        board_volume_set(st.volume);
+    }
     ESP_ERROR_CHECK(ui_init());
     ESP_ERROR_CHECK(rom_store_init());
     if (!rom_store_nvs_ok()) {

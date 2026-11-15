@@ -87,7 +87,7 @@ esp_err_t ball_audio_init(void)
     if (esp_codec_dev_open(s_dev, &fs) != ESP_CODEC_DEV_OK) return ESP_FAIL;
     // While unmuted the amp stays on: switching it on per beep swallowed the ROM's ~54 ms key
     // clicks (measured). Between sounds the I2S line carries digital silence (auto_clear).
-    board_volume_set(CONFIG_TAMAORB_VOLUME);
+    // The volume is applied by main from the stored settings.
     xTaskCreatePinnedToCore(writer, "audio", 3072, NULL, 8, &s_task, 0);
     return ESP_OK;
 }

@@ -12,6 +12,9 @@
 typedef struct { uint8_t r, g, b; } ui_rgb_t;
 typedef struct { ui_rgb_t bg, ink; uint8_t ghost_pct; } ui_palette_t;
 extern const ui_palette_t UI_PALETTE_CLASSIC;  // bg #B6C19E, ink #1C2518, ghost 11 %
+extern const ui_palette_t UI_PALETTE_NEUTRAL, UI_PALETTE_NIGHT;  // #C4C6BD/#22241F, #18201A/#A9D38E
+// 0 classic, 1 neutral, 2 night (the st_palette_t values); anything else gives Classic.
+const ui_palette_t *ui_palette_by_id(int st_palette_id);
 
 uint16_t ui_rgb565(ui_rgb_t c);
 ui_rgb_t ui_mix(ui_rgb_t a, ui_rgb_t b, uint8_t pct);  // a + (b - a) * pct / 100, rounded to nearest

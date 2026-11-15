@@ -15,14 +15,10 @@
 #include "esp_system.h"
 #include "rom_store.h"
 #include "saver.h"
+#include "settings_store.h"
 #include "power.h"
 
 #define LOOP_MS        30
-#define SCREEN_TIMEOUT 30000
-#define BACKLIGHT_PCT  80
-#define DIM_PCT        5
-#define DIM_USB_MS     30000  // plugged in: dim after 30 s idle, never off
-#define DIM_BATTERY_MS 15000  // on battery: dim after 15 s, off at SCREEN_TIMEOUT
 
 static const char *TAG = "ui";
 static tc_model_t s_model;
@@ -46,31 +42,36 @@ static void ui_task(void *arg)
     bool backlight = false;
     bool usb_was = true;  // no wake event for the USB state at boot
     bool dimmed = false;
+    uint8_t shown_level = 0;
 
     // Before the emulator runs: a start-up screen, then the catch-up progress screen.
     uint32_t last_progress_draw = 0;
     bool boot_drawn = false;
+    st_settings_t cfg;
+    settings_get(&cfg);
     power_screen_on(true);  // these screens are lit: no light sleep (it would stop the backlight PWM)
     while (emu_phase() != EMU_RUN) {
+        settings_get(&cfg);
+        const ui_palette_t *pal = ui_palette_by_id(cfg.palette);
         if (s_low_battery) {
-            ui_render_low_battery(s_fb, &UI_PALETTE_CLASSIC);
+            ui_render_low_battery(s_fb, pal);
             board_display_flush(s_fb);
-            board_backlight_set(BACKLIGHT_PCT);
+            board_backlight_set(cfg.brightness);
             vTaskSuspend(NULL);  // the power task puts the device to sleep
         }
         if (emu_phase() == EMU_BOOT && !boot_drawn) {
-            ui_render_message(s_fb, "TamaOrb", "Starting...", &UI_PALETTE_CLASSIC);
+            ui_render_message(s_fb, "TamaOrb", "Starting...", pal);
             board_display_flush(s_fb);
-            board_backlight_set(BACKLIGHT_PCT);
+            board_backlight_set(cfg.brightness);
             boot_drawn = true;
         } else if (emu_phase() == EMU_CATCHUP && now_ms() - last_progress_draw >= 1000) {
             uint64_t done, total;
             uint32_t eta;
             emu_catchup_progress(&done, &total, &eta);
-            ui_render_catchup(s_fb, done, total, eta, &UI_PALETTE_CLASSIC);
+            ui_render_catchup(s_fb, done, total, eta, pal);
             board_display_flush(s_fb);
             ESP_LOGI(TAG, "catch-up screen %llu/%llu s", (unsigned long long)done, (unsigned long long)total);
-            board_backlight_set(BACKLIGHT_PCT);
+            board_backlight_set(cfg.brightness);
             last_progress_draw = now_ms();
         }
         vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
@@ -83,7 +84,20 @@ static void ui_task(void *arg)
     backlight = false;  // force a fresh pet frame and backlight on
     ESP_LOGI(TAG, "showing the pet");
 
+    uint32_t disp_seq = settings_display_seq();
+    uint8_t volume = cfg.volume;
+    int pal_id = cfg.palette;
     for (;;) {
+        settings_get(&cfg);
+        if (settings_display_seq() != disp_seq) {
+            disp_seq = settings_display_seq();
+            ui_screen_wake(&screen, now_ms());
+        }
+        if (cfg.volume != volume) { volume = cfg.volume; board_volume_set(volume); }
+        const ui_palette_t *pal = ui_palette_by_id(cfg.palette);
+        bool pal_changed = (int)cfg.palette != pal_id;
+        pal_id = cfg.palette;
+        uint8_t dim_pct = st_effective_dim(&cfg);
         board_touch_t bt;
         board_touch_read(&bt);
         ui_touch_t t = { .count = bt.count };
@@ -96,7 +110,7 @@ static void ui_task(void *arg)
         if (usb && !usb_was) ui_screen_wake(&screen, now_ms());
         usb_was = usb;
         ui_screen_out_t out = ui_screen_update(&screen, now_ms(), ui_touch_track(&tracker, &t),
-                                               board_boot_down(), tone.on, usb ? 0 : SCREEN_TIMEOUT);
+                                               board_boot_down(), tone.on, usb ? 0 : cfg.off_battery_s * 1000u);
         tc_post_buttons(out.buttons);
         if (ui_screen_long_press(&screen)) {
             tc_post_buttons(0);
@@ -109,9 +123,9 @@ static void ui_task(void *arg)
         }
 
         if (s_low_battery) {
-            ui_render_low_battery(s_fb, &UI_PALETTE_CLASSIC);
+            ui_render_low_battery(s_fb, pal);
             board_display_flush(s_fb);
-            board_backlight_set(BACKLIGHT_PCT);
+            board_backlight_set(cfg.brightness);
             power_screen_on(true);
             vTaskSuspend(NULL);  // the power task puts the device to sleep
         }
@@ -123,17 +137,21 @@ static void ui_task(void *arg)
             power_screen_on(backlight);  // no light sleep while the backlight PWM must run
             if (!backlight) board_backlight_set(0);
         }
-        bool dim = ui_screen_dimmed(&screen, now_ms(), usb ? DIM_USB_MS : DIM_BATTERY_MS);
-        if (backlight && !redraw && dim != dimmed) board_backlight_set(dim ? DIM_PCT : BACKLIGHT_PCT);
+        uint32_t dim_s = usb ? cfg.dim_usb_s : cfg.dim_battery_s;
+        bool dim = ui_screen_dimmed(&screen, now_ms(), dim_s ? dim_s * 1000u : UINT32_MAX);
+        uint8_t level = dim ? dim_pct : cfg.brightness;
+        if (backlight && !redraw && (dim != dimmed || level != shown_level)) board_backlight_set(level);
         dimmed = dim;
+        if (pal_changed) redraw = true;
         if (backlight && (tc_frame_changed(&frame_seq) || out.buttons != shown_held || redraw)) {
             tc_frame_t f;
             tc_get_frame(&f);
-            ui_render_pet(s_fb, &f, s_model, out.buttons, true, &UI_PALETTE_CLASSIC);
+            ui_render_pet(s_fb, &f, s_model, out.buttons, true, pal);
             board_display_flush(s_fb);
             shown_held = out.buttons;
-            if (redraw) board_backlight_set(dimmed ? DIM_PCT : BACKLIGHT_PCT);  // light up only after a fresh frame
+            if (redraw) board_backlight_set(level);  // light up only after a fresh frame
         }
+        if (backlight) shown_level = level;
         vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
     }
 }
@@ -149,9 +167,11 @@ esp_err_t ui_init(void)
 void ui_message(const char *title, const char *body)
 {
     if (!s_fb) return;
-    ui_render_message(s_fb, title, body, &UI_PALETTE_CLASSIC);
+    st_settings_t cfg;
+    settings_get(&cfg);
+    ui_render_message(s_fb, title, body, ui_palette_by_id(cfg.palette));
     board_display_flush(s_fb);
-    board_backlight_set(BACKLIGHT_PCT);
+    board_backlight_set(cfg.brightness);
 }
 
 static uint8_t read_touch_buttons(ui_touch_tracker_t *tr)
@@ -186,9 +206,11 @@ int ui_pick_rom(const tc_rom_entry_t *roms, int n, int current, bool allow_cance
                 snprintf(subs[k], sizeof subs[k], "Gen %d - %.12s", r->model == TC_MODEL_P1 ? 1 : 2, r->name);
                 sp[k] = subs[k];
             }
-            ui_render_picker(s_fb, names, sp, shown, sel - first, &UI_PALETTE_CLASSIC);
+            st_settings_t cfg;
+            settings_get(&cfg);
+            ui_render_picker(s_fb, names, sp, shown, sel - first, ui_palette_by_id(cfg.palette));
             board_display_flush(s_fb);
-            board_backlight_set(BACKLIGHT_PCT);
+            board_backlight_set(cfg.brightness);
             dirty = false;
         }
         uint8_t b = read_touch_buttons(&tr);

@@ -143,3 +143,36 @@ def test_open_port_does_not_reset_the_device(monkeypatch):
     monkeypatch.setitem(sys.modules, "serial", types.SimpleNamespace(Serial=FakeSerial))
     tool.open_port("/dev/null")
     assert seen == {"dtr": True, "rts": True}
+
+
+def multi_port(replies):
+    """FakePort that answers one request with several lines."""
+    port = FakePort([])
+    def write(data):
+        port.written.append(data.decode().rstrip("\n"))
+        port.pending += [b"I (1) x: noise\n"] + [r.encode() + b"\n" for r in replies]
+    port.write = write
+    return port
+
+
+def test_get_prints_settings(monkeypatch, capsys):
+    port = multi_port(["@TO SET brightness=80", "@TO OK"])
+    monkeypatch.setattr(tool, "open_port", lambda name: port)
+    assert tool.main(["get"]) == 0
+    assert port.written == ["@TO GET"]
+    assert capsys.readouterr().out == "brightness=80\n"
+
+
+def test_set_sends_pairs(monkeypatch, capsys):
+    port = multi_port(["@TO OK"])
+    monkeypatch.setattr(tool, "open_port", lambda name: port)
+    assert tool.main(["set", "volume=0", "palette=night"]) == 0
+    assert port.written == ["@TO SET volume=0 palette=night"]
+    assert capsys.readouterr().out == "ok\n"
+
+
+def test_set_rejected_exit_code(monkeypatch, capsys):
+    port = multi_port(["@TO ERR dim_level"])
+    monkeypatch.setattr(tool, "open_port", lambda name: port)
+    assert tool.main(["set", "dim_level=999"]) == 1
+    assert "rejected: dim_level" in capsys.readouterr().err

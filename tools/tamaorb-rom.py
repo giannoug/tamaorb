@@ -7,6 +7,8 @@
   tamaorb-rom.py remove tama.bin
   tamaorb-rom.py wifi "My Network"                    # prompts for the password
   tamaorb-rom.py status
+  tamaorb-rom.py get                                  # all settings as key=value
+  tamaorb-rom.py set brightness=30 palette=night      # all or nothing
 
 Talks the "@TO" line protocol (docs: components/hostlink/include/hostlink.h) over the same
 USB serial port used for flashing. Only P1 and P2 dumps are sent; nothing else leaves the PC.
@@ -151,6 +153,26 @@ class Link:
         self._send(f"@TO WIFI {b(ssid)} {b(password)}" if password else f"@TO WIFI {b(ssid)}")
         self._expect("@TO OK")
 
+    def get(self):
+        self._send("@TO GET")
+        pairs = []
+        while True:
+            line = self._reply()
+            if line == "@TO OK":
+                return pairs
+            if line.startswith("@TO SET "):
+                pairs.append(line[8:])
+
+    def set(self, pairs):
+        self._send("@TO SET " + " ".join(pairs))
+        try:
+            self._expect("@TO OK")
+        except ToolError as e:
+            msg = str(e)
+            if msg.startswith("device error: ") and msg[14:] != "data":
+                raise ToolError(f"rejected: {msg[14:]}") from None
+            raise
+
     def status(self):
         self._send("@TO STATUS")
         return self._reply()[11:]
@@ -181,6 +203,9 @@ def main(argv=None):
     w.add_argument("ssid")
     w.add_argument("--password")
     sub.add_parser("status", help="show device status")
+    sub.add_parser("get", help="print the settings as key=value")
+    st = sub.add_parser("set", help="change settings, e.g. brightness=30 (all or nothing)")
+    st.add_argument("pairs", nargs="+", metavar="key=value")
     args = ap.parse_args(argv)
 
     try:
@@ -210,6 +235,11 @@ def main(argv=None):
             print("saved; the device is rebooting to connect")
         elif args.cmd == "status":
             print(link.status())
+        elif args.cmd == "get":
+            print("\n".join(link.get()))
+        elif args.cmd == "set":
+            link.set(args.pairs)
+            print("ok")
     except (ToolError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

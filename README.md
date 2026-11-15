@@ -54,6 +54,8 @@ tools/tamaorb-rom.py list
 tools/tamaorb-rom.py remove tamag2.bin
 tools/tamaorb-rom.py wifi "My Network"                    # asks for the password; the ball reboots
 tools/tamaorb-rom.py status
+tools/tamaorb-rom.py get                                  # all settings as key=value
+tools/tamaorb-rom.py set brightness=30 palette=night      # all or nothing; applied live, kept across power cuts
 ```
 
 ROMs go to `/tamaorb/roms/` on the microSD card. Without a card, a pushed ROM becomes the active one directly. The active ROM is also kept in internal flash, so the pet survives a missing or failed card.

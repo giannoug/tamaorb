@@ -6,6 +6,7 @@
 #include "test_support.h"
 #include "hostlink.h"
 #include "tc_rom.h"
+#include "settings.h"
 
 static hl_session_t *s;
 static char last[256];
@@ -20,7 +21,12 @@ static void list(void *ctx, hl_emit_fn emit, void *e) { emit(e, "tama.bin P1 4b4
 static bool rm(void *ctx, const char *name) { return strcmp(name, "tama.bin") == 0; }
 static bool wifi(void *ctx, const char *ssid, const char *pass) { snprintf(wifi_ssid, 64, "%s", ssid); snprintf(wifi_pass, 64, "%s", pass); return true; }
 static void status(void *ctx, char *out, size_t cap) { snprintf(out, cap, "rom=P1 wifi=1"); }
-static const hl_ops_t ops = { store, list, rm, wifi, status, NULL };
+static st_settings_t put_val;
+static int put_calls;
+static bool put_display;
+static void get_settings(void *ctx, st_settings_t *out) { st_defaults(out, 50); }
+static void put_settings(void *ctx, const st_settings_t *s_, bool display) { put_val = *s_; put_calls++; put_display = display; }
+static const hl_ops_t ops = { store, list, rm, wifi, status, get_settings, put_settings, NULL };
 
 static void feed(const char *line) { hl_feed_line(s, line, reply, NULL); }
 
@@ -32,6 +38,8 @@ void setUp(void)
     last[0] = stored_name[0] = '\0';
     stored_len = 0;
     store_result = HL_STORE_OK;
+    put_calls = 0;
+    put_display = false;
 }
 void tearDown(void) { free(s); }
 
@@ -173,6 +181,55 @@ static void test_put_reboot_announced(void)
     TEST_ASSERT_EQUAL_STRING("@TO OK P1 REBOOT", upload("tama.bin", rom, sizeof rom, NULL));
 }
 
+static void test_get_lists_all_settings(void)
+{
+    feed("@TO GET");
+    TEST_ASSERT_EQUAL(st_key_count() + 1, replies);
+    TEST_ASSERT_EQUAL_STRING("@TO OK", last);
+    TEST_ASSERT_EQUAL(10, st_key_count());
+}
+
+static char first[256];
+static void reply_first(void *ctx, const char *line) { if (!first[0]) snprintf(first, sizeof first, "%s", line); }
+
+static void test_get_first_is_brightness(void)
+{
+    first[0] = '\0';
+    hl_feed_line(s, "@TO GET", reply_first, NULL);
+    TEST_ASSERT_EQUAL_STRING("@TO SET brightness=80", first);
+}
+
+static void test_set_ok(void)
+{
+    feed("@TO SET volume=0 palette=night");
+    TEST_ASSERT_EQUAL_STRING("@TO OK", last);
+    TEST_ASSERT_EQUAL(1, put_calls);
+    TEST_ASSERT_EQUAL(0, put_val.volume);
+    TEST_ASSERT_EQUAL(ST_PALETTE_NIGHT, put_val.palette);
+    TEST_ASSERT_TRUE(put_display);
+}
+
+static void test_set_non_display_change(void)
+{
+    feed("@TO SET volume=0 brightness=80");
+    TEST_ASSERT_EQUAL_STRING("@TO OK", last);
+    TEST_ASSERT_FALSE(put_display);
+}
+
+static void test_set_bad_value(void)
+{
+    feed("@TO SET volume=5 brightness=0");
+    TEST_ASSERT_EQUAL_STRING("@TO ERR brightness", last);
+    TEST_ASSERT_EQUAL(0, put_calls);
+}
+
+static void test_set_no_equals(void)
+{
+    feed("@TO SET volume");
+    TEST_ASSERT_EQUAL_STRING("@TO ERR data", last);
+    TEST_ASSERT_EQUAL(0, put_calls);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -189,5 +246,11 @@ int main(void)
     RUN_TEST(test_short_upload_rejected);
     RUN_TEST(test_wifi_base64);
     RUN_TEST(test_list_rm_status);
+    RUN_TEST(test_get_lists_all_settings);
+    RUN_TEST(test_get_first_is_brightness);
+    RUN_TEST(test_set_ok);
+    RUN_TEST(test_set_non_display_change);
+    RUN_TEST(test_set_bad_value);
+    RUN_TEST(test_set_no_equals);
     return UNITY_END();
 }

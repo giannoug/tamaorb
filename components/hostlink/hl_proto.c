@@ -107,6 +107,55 @@ static void wifi(hl_session_t *s, char *args, hl_emit_fn reply, void *rctx)
     reply(rctx, s->ops->wifi(s->ops->ctx, ssid, pass) ? "@TO OK" : "@TO ERR io");
 }
 
+static void get_all(hl_session_t *s, hl_emit_fn reply, void *rctx)
+{
+    st_settings_t cur;
+    s->ops->get_settings(s->ops->ctx, &cur);
+    for (int i = 0; i < st_key_count(); i++) {
+        char val[80], line[160];
+        if (!st_get(&cur, st_key(i), val, sizeof val)) continue;
+        snprintf(line, sizeof line, "@TO SET %s=%s", st_key(i), val);
+        reply(rctx, line);
+    }
+    reply(rctx, "@TO OK");
+}
+
+#define HL_MAX_PAIRS 16
+
+static void set_many(hl_session_t *s, char *args, hl_emit_fn reply, void *rctx)
+{
+    const char *keys[HL_MAX_PAIRS], *vals[HL_MAX_PAIRS];
+    int n = 0;
+    for (char *tok = strtok(args, " "); tok; tok = strtok(NULL, " ")) {
+        char *eq = strchr(tok, '=');
+        if (!eq || eq == tok || n == HL_MAX_PAIRS) { reply(rctx, "@TO ERR data"); return; }
+        *eq = '\0';
+        keys[n] = tok;
+        vals[n++] = eq + 1;
+    }
+    if (n == 0) { reply(rctx, "@TO ERR data"); return; }
+    st_settings_t before, after;
+    s->ops->get_settings(s->ops->ctx, &before);
+    after = before;
+    int bad = 0;
+    if (!st_set_many(&after, keys, vals, n, &bad)) {
+        char line[96];
+        snprintf(line, sizeof line, "@TO ERR %.64s", keys[bad]);
+        reply(rctx, line);
+        return;
+    }
+    // Compare through st_get: st_set leaves stale bytes after strings, so no memcmp of structs.
+    bool display = false;
+    for (int i = 0; i < st_key_count() && !display; i++) {
+        char a[80], b[80];
+        if (!st_is_display(st_key(i))) continue;
+        if (st_get(&before, st_key(i), a, sizeof a) && st_get(&after, st_key(i), b, sizeof b) && strcmp(a, b) != 0)
+            display = true;
+    }
+    s->ops->put_settings(s->ops->ctx, &after, display);
+    reply(rctx, "@TO OK");
+}
+
 void hl_feed_line(hl_session_t *s, const char *line, hl_emit_fn reply, void *rctx)
 {
     if (strncmp(line, "@TO ", 4) != 0) return;
@@ -128,6 +177,8 @@ void hl_feed_line(hl_session_t *s, const char *line, hl_emit_fn reply, void *rct
         if (!valid_name(rest)) reply(rctx, "@TO ERR name");
         else reply(rctx, s->ops->remove(s->ops->ctx, rest) ? "@TO OK" : "@TO ERR notfound");
     } else if (!strcmp(buf, "WIFI")) wifi(s, rest, reply, rctx);
+    else if (!strcmp(buf, "GET")) get_all(s, reply, rctx);
+    else if (!strcmp(buf, "SET")) set_many(s, rest, reply, rctx);
     else if (!strcmp(buf, "STATUS")) {
         char st[160], out[180];
         s->ops->status(s->ops->ctx, st, sizeof st);
