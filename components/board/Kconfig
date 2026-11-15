@@ -6,9 +6,11 @@ config TAMAORB_BOARD_SPOTPEAR_BALL_128
     bool "SpotPear 1.28\" AI Voice Robot Ball (ESP32-S3, GC9A01A, CST816D, ES8311)"
 endchoice
 config TAMAORB_VOLUME
-    int "Speaker volume (0 = muted, speaker amp off)"
+    int "Speaker volume (0 = muted)"
     range 0 100
-    default 0
+    default 1
     help
-        0 mutes the sound and switches the speaker amp off, which also removes its idle hum.
+        1 is the quietest setting. While unmuted the speaker amp stays on (switching it per beep
+        swallowed the short key clicks), which leaves a faint hum, inaudible from 10 cm.
+        0 mutes the sound and switches the amp off.
 endmenu

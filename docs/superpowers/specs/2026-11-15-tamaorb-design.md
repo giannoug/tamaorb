@@ -162,8 +162,8 @@ The detailed hardware notes above should live in `docs/hardware/spotpear-ball-12
 
 - Original 1-bit beeps. Generate a square wave at tamalib's requested frequency (given in dHz, so divide by 10 for Hz) while `play_frequency(true)`. Output it over I2S to the ES8311.
 - Buzzer changes go straight from the emulator task to the audio driver. Polling them missed the ROM's ~54 ms key clicks (measured).
-- **Volume is a build setting, `TAMAORB_VOLUME`, default 0 = muted with the amp off.** The owner found the sound annoying; a volume control can come with the web UI. **(owner)**
-- **While unmuted, the amp (GPIO46) stays on.** Switching it on per beep swallowed the short key clicks (measured). The owner hears a faint hum from the always-on amp; to revisit (e.g. mute after a few seconds of silence with enough lead time, or lower amp gain). **(owner: keep for now)**
+- **Volume is a build setting, `TAMAORB_VOLUME`, default 1 (the quietest).** 0 mutes and switches the amp off. A volume control can come with the web UI. **(owner)**
+- **While unmuted, the amp (GPIO46) stays on.** Switching it on per beep swallowed the ROM's ~54 ms key clicks (measured). A faint hum remains, inaudible from 10 cm; the owner accepted it. Gating the amp with a 100 ms playback delay was tried and dropped. **(owner)**
 - Default volume should be low (TamaPoke found the speaker loud).
 - Mute/volume is a compile-time default in v1, adjustable via the future web UI. **(builder's call)**
 
