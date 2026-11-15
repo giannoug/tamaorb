@@ -126,6 +126,27 @@ static void test_resume_swallows_held_touch(void)
     TEST_ASSERT_EQUAL_HEX8(B, step(30, B, false, false).buttons);
 }
 
+static void test_no_timeout_when_zero(void)
+{
+    now += 10 * TIMEOUT;
+    TEST_ASSERT_TRUE(ui_screen_update(&s, now, 0, false, false, 0).backlight);
+}
+
+static void test_boot_still_toggles_without_timeout(void)
+{
+    ui_screen_update(&s, now += 10, 0, true, false, 0);
+    TEST_ASSERT_FALSE(ui_screen_update(&s, now += 200, 0, false, false, 0).backlight);
+    TEST_ASSERT_FALSE(ui_screen_update(&s, now += 60000, 0, false, false, 0).backlight);  // stays off by hand
+}
+
+static void test_wake_turns_screen_on(void)
+{
+    go_dark();
+    ui_screen_wake(&s, now);
+    TEST_ASSERT_TRUE(step(10, 0, false, false).backlight);
+    TEST_ASSERT_EQUAL_HEX8(A, step(30, A, false, false).buttons);  // a wake is not a swallowed touch
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -142,5 +163,8 @@ int main(void)
     RUN_TEST(test_short_press_not_long);
     RUN_TEST(test_resume_ignores_held_boot);
     RUN_TEST(test_resume_swallows_held_touch);
+    RUN_TEST(test_no_timeout_when_zero);
+    RUN_TEST(test_boot_still_toggles_without_timeout);
+    RUN_TEST(test_wake_turns_screen_on);
     return UNITY_END();
 }

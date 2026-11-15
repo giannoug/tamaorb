@@ -41,6 +41,7 @@ static void ui_task(void *arg)
     uint32_t frame_seq = 0;
     uint8_t shown_held = 0xFF;
     bool backlight = false;
+    bool usb_was = true;  // no wake event for the USB state at boot
 
     // Before the emulator runs: a start-up screen, then the catch-up progress screen.
     uint32_t last_progress_draw = 0;
@@ -76,8 +77,12 @@ static void ui_task(void *arg)
         tc_tone_t tone;
         tc_get_tone(&tone);
 
+        // Plugged in: no automatic timeout, and plugging in wakes the screen. On battery: 30 s.
+        bool usb = board_usb_present();
+        if (usb && !usb_was) ui_screen_wake(&screen, now_ms());
+        usb_was = usb;
         ui_screen_out_t out = ui_screen_update(&screen, now_ms(), ui_touch_track(&tracker, &t),
-                                               board_boot_down(), tone.on, SCREEN_TIMEOUT);
+                                               board_boot_down(), tone.on, usb ? 0 : SCREEN_TIMEOUT);
         tc_post_buttons(out.buttons);
         if (ui_screen_long_press(&screen)) {
             tc_post_buttons(0);

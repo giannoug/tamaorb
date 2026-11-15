@@ -6,7 +6,7 @@ Authentic first-generation Tamagotchi emulation for round ESP32-S3 devices. Tama
 
 ## What it does
 
-- **Runs the real ROM in real time, all the time.** The screen turns off after 30 s, but the pet keeps living.
+- **Runs the real ROM in real time, all the time.** On USB power the screen stays on. On battery it turns off after 30 s, but the pet keeps living.
 - **Saves crash-safely:** 3 s after you press a button, and every 5 minutes. The power button can cut power at any moment without losing the pet.
 - **Catches up after power-offs.** On boot it gets the time over Wi-Fi (NTP) and replays the missed time at about 25x speed, with a progress screen. Without Wi-Fi it resumes where it was saved.
 - **Each ROM keeps its own pet.** A pet on the shelf keeps aging and is caught up when you switch back.

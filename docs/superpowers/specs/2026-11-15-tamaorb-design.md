@@ -137,7 +137,9 @@ The detailed hardware notes above should live in `docs/hardware/spotpear-ball-12
 
 ### 5.3 Screen timeout
 
-- The backlight turns off after a timeout (default 30 s, a compile-time setting in v1). **The emulator never pauses.**
+- **On USB power the screen stays on** (no automatic timeout); plugging in USB wakes it. **(owner)**
+- **On battery** the backlight turns off after a timeout (default 30 s, a compile-time setting in v1). **The emulator never pauses.**
+- BOOT can switch the screen off by hand in both cases.
 - While the screen is dark, the **first touch only wakes it** and is never forwarded to the game.
 - When the ROM starts beeping (tamalib turns sound on), the screen wakes automatically. **(builder's call)**
 - While the screen is dark, the UI stops rendering, but the frame state keeps updating.

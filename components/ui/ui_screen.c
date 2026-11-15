@@ -45,7 +45,7 @@ ui_screen_out_t ui_screen_update(ui_screen_t *s, uint32_t now_ms, uint8_t touch_
     }
     s->boot_was_down = boot_down;
 
-    if (s->on && now_ms - s->last_activity_ms >= timeout_ms) s->on = false;
+    if (timeout_ms && s->on && now_ms - s->last_activity_ms >= timeout_ms) s->on = false;
 
     return (ui_screen_out_t){ .buttons = (s->on && !s->swallowing) ? touch_buttons : 0, .backlight = s->on };
 }
@@ -64,3 +64,5 @@ void ui_screen_resume(ui_screen_t *s, uint32_t now_ms, bool boot_down, bool touc
     s->long_fired = boot_down;   // a held press finishes without toggling the screen
     s->swallowing = touch_down;  // a held touch is not forwarded until released
 }
+
+void ui_screen_wake(ui_screen_t *s, uint32_t now_ms) { wake(s, now_ms); }
