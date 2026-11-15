@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "net.h"
+#include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
 #include "esp_attr.h"
@@ -19,6 +20,8 @@ static const char *TAG = "net";
 static RTC_NOINIT_ATTR uint32_t s_time_trust;
 static volatile bool s_connected, s_configured;
 static bool s_started;
+static esp_netif_t *s_sta;
+static char s_ntp[64];  // lwIP's SNTP keeps the pointer, not a copy
 
 static void on_sync(struct timeval *tv)
 {
@@ -54,7 +57,7 @@ static bool load_credentials(wifi_config_t *cfg)
     return ok;
 }
 
-esp_err_t net_start(void)
+esp_err_t net_start(const char *hostname, const char *ntp_server)
 {
     // Whitelist: only resets that keep the RTC running keep the time trusted.
     switch (esp_reset_reason()) {
@@ -74,7 +77,9 @@ esp_err_t net_start(void)
     ESP_ERROR_CHECK(esp_netif_init());
     esp_err_t err = esp_event_loop_create_default();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
-    esp_netif_create_default_wifi_sta();
+    s_sta = esp_netif_create_default_wifi_sta();
+    if (hostname && esp_netif_set_hostname(s_sta, hostname) != ESP_OK)  // before connecting: DHCP sends it
+        ESP_LOGW(TAG, "hostname not set");
     wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&init));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_event, NULL));
@@ -83,7 +88,8 @@ esp_err_t net_start(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
 
-    esp_sntp_config_t sntp = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    snprintf(s_ntp, sizeof s_ntp, "%s", ntp_server && *ntp_server ? ntp_server : "pool.ntp.org");
+    esp_sntp_config_t sntp = ESP_NETIF_SNTP_DEFAULT_CONFIG(s_ntp);
     sntp.sync_cb = on_sync;
     esp_netif_sntp_init(&sntp);
     s_started = true;
@@ -125,3 +131,19 @@ bool net_wait_fresh_sync(uint32_t timeout_ms)
 
 bool net_connected(void) { return s_connected; }
 bool net_configured(void) { return s_configured; }
+
+bool net_ip(char out[16])
+{
+    esp_netif_ip_info_t ip;
+    out[0] = '\0';
+    if (!s_sta || esp_netif_get_ip_info(s_sta, &ip) != ESP_OK || ip.ip.addr == 0) return false;
+    snprintf(out, 16, IPSTR, IP2STR(&ip.ip));
+    return true;
+}
+
+int8_t net_rssi(void)
+{
+    int rssi = 0;
+    if (!s_connected || esp_wifi_sta_get_rssi(&rssi) != ESP_OK) return 0;
+    return (int8_t)rssi;
+}

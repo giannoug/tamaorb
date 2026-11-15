@@ -67,7 +67,8 @@ static void op_status(void *ctx, rm_status_t *st)
     st->wifi = net_connected();
     if (st->wifi && esp_wifi_sta_get_ap_info(&ap) == ESP_OK)
         snprintf(st->wifi_ssid, sizeof st->wifi_ssid, "%.32s", (const char *)ap.ssid);
-    // ip and rssi: filled once net exposes them (Task 10).
+    net_ip(st->ip);
+    st->rssi = net_rssi();
     st->model = s_model;
     st->phase = phase_now(&st->catchup_pct);
     st->uptime_s = (uint32_t)(esp_timer_get_time() / 1000000);
