@@ -42,7 +42,7 @@ FetchContent_Declare(cjson
 FetchContent_MakeAvailable(cjson)
 
 set(REMOTE_SRC ${COMP}/remote/rm_look.c ${COMP}/remote/rm_png.c ${COMP}/remote/rm_press.c ${COMP}/remote/rm_save.c
-    ${COMP}/remote/rm_json.c ${COMP}/remote/rm_mcp.c ${cjson_SOURCE_DIR}/cJSON.c)
+    ${COMP}/remote/rm_json.c ${COMP}/remote/rm_mcp.c ${COMP}/remote/rm_http.c ${cjson_SOURCE_DIR}/cJSON.c)
 set(REMOTE_INC ${COMP}/remote/include ${cjson_SOURCE_DIR})
 set(REMOTE_TEST_SRC ${REMOTE_SRC} ${SETTINGS_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/fake_ops.c)
 
@@ -68,6 +68,7 @@ tamaorb_test(test_remote_look ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PE
 tamaorb_test(test_remote_press ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
 tamaorb_test(test_remote_save ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
 tamaorb_test(test_remote_mcp ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
+tamaorb_test(test_remote_http ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
 
 # Eyeballing aid, not a test: build-host/render_preview out.ppm [held_mask]
 add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})

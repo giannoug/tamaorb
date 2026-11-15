@@ -121,3 +121,28 @@ bool rm_json_depth_ok(const char *body, size_t len, int max_depth);
 
 // Returns the HTTP status (200 or 202). *out is a malloc'd JSON body, NULL for 202.
 int rm_mcp_handle(const rm_ops_t *ops, const char *body, size_t len, char **out);
+
+// ---- REST router and Origin check (spec §7) ----
+typedef enum { RM_GET, RM_POST, RM_PUT, RM_PATCH, RM_OTHER } rm_method_t;
+typedef struct {
+    rm_method_t method;
+    const char *path;
+    const char *query;   // without '?', may be NULL
+    const char *origin;  // NULL if absent
+    const char *self_name, *self_ip;  // for the Origin check
+    const uint8_t *body;
+    size_t body_len;
+    bool (*state_ok)(const uint8_t *payload, size_t len);  // passed through to rm_save_check
+} rm_req_t;
+typedef struct {
+    int status;  // never 0 after rm_http_handle
+    const char *content_type;
+    char disposition[96];  // Content-Disposition value, empty if none
+    uint8_t *body;         // malloc'd, owned by the caller; NULL if empty
+    size_t body_len;
+} rm_resp_t;
+
+// NULL or empty origin: allowed. Otherwise http://<name>, http://<name>.local or http://<ip>, optional :port, any case.
+bool rm_origin_allowed(const char *origin, const char *self_name, const char *self_ip);
+// Applies the Origin check to every non-GET. Bodies are assumed already capped by the caller (16384 bytes).
+void rm_http_handle(const rm_ops_t *ops, const rm_req_t *req, rm_resp_t *resp);
