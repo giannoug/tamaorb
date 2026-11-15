@@ -162,10 +162,10 @@ The detailed hardware notes above should live in `docs/hardware/spotpear-ball-12
 
 - Original 1-bit beeps. Generate a square wave at tamalib's requested frequency (given in dHz, so divide by 10 for Hz) while `play_frequency(true)`. Output it over I2S to the ES8311.
 - Buzzer changes go straight from the emulator task to the audio driver. Polling them missed the ROM's ~54 ms key clicks (measured).
-- **Volume is a build setting, `TAMAORB_VOLUME`, default 1 (the quietest).** 0 mutes and switches the amp off. A volume control can come with the web UI. **(owner)**
+- **Volume is the `volume` setting** (web panel, MCP or `tamaorb-rom.py set volume=…`; see the web panel spec, `2026-11-15-web-panel-design.md` §5). The build setting `TAMAORB_VOLUME` is now only its default, 1 (the quietest). 0 mutes and switches the amp off. **(owner)**
 - **While unmuted, the amp (GPIO46) stays on.** Switching it on per beep swallowed the ROM's ~54 ms key clicks (measured). A faint hum remains, inaudible from 10 cm; the owner accepted it. Gating the amp with a 100 ms playback delay was tried and dropped. **(owner)**
 - Default volume should be low (TamaPoke found the speaker loud).
-- Mute/volume is a compile-time default in v1, adjustable via the future web UI. **(builder's call)**
+- Mute/volume: the compile-time value is the default; the owner changes it live through the web panel or USB (web panel spec §5).
 
 ---
 
@@ -387,12 +387,9 @@ Goal: catch-up well above the current ~29×.
 
 **Known issue in v1** **(decided)**: long catch-ups block the device. A week off takes ≈6 h to replay, a month ≈25 h. There is no skip option, and v1 doesn't design around it. Faster tamalib is the planned fix.
 
-**Later features:** multiple pets per model (several P1s, P2s, …; the save format's pet ID is ready for it), web UI, HTTP API, MCP server, OTA, Angel/Mothra and other models (icon sets, tap sensor on BOOT, 1 MHz OSC3 load), NTP-driven in-game clock set, battery discharge calibration, RGB LED use.
+**Later features:** multiple pets per model (several P1s, P2s, …; the save format's pet ID is ready for it), web UI, HTTP API and MCP server (done: web panel spec), OTA, Angel/Mothra and other models (icon sets, tap sensor on BOOT, 1 MHz OSC3 load), NTP-driven in-game clock set, battery discharge calibration, RGB LED use.
 
-**Owner-requested settings** (to become configurable, e.g. through the web UI; today they're compile-time constants):
-- display brightness and dim level (now 80% and 5%, `main/ui_task.c`);
-- idle-dim and screen-off delays (now 30 s dim on USB; 15 s dim and 30 s off on battery);
-- volume (now the `TAMAORB_VOLUME` build setting, muted by default).
+**Owner-requested settings:** done in the web panel round (`2026-11-15-web-panel-design.md` §5). Brightness, dim level, the idle-dim and screen-off delays, volume, palette, name, NTP server and agent feedback are settings, changed live from the web panel, MCP or `tamaorb-rom.py set`. The old constants (80% and 5%; 30 s dim on USB; 15 s dim and 30 s off on battery; `TAMAORB_VOLUME`) are now the defaults.
 
 ---
 

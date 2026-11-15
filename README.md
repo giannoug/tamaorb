@@ -42,7 +42,7 @@ idf.py set-target esp32s3 build
 idf.py -p /dev/ttyACM0 flash
 ```
 
-Sound is muted by default. Set `TAMAORB_VOLUME` (0–100) in `idf.py menuconfig` → *TamaOrb board*.
+`TAMAORB_VOLUME` (0–100, in `idf.py menuconfig` → *TamaOrb board*) is only the default volume. Change it live from the web panel or with `tamaorb-rom.py set volume=…`.
 
 ## ROMs and Wi-Fi over USB
 
@@ -60,6 +60,27 @@ tools/tamaorb-rom.py set brightness=30 palette=night      # all or nothing; appl
 
 ROMs go to `/tamaorb/roms/` on the microSD card. Without a card, a pushed ROM becomes the active one directly. The active ROM is also kept in internal flash, so the pet survives a missing or failed card.
 
+## Web panel and agents
+
+Once the ball is on Wi-Fi it serves a settings and status page at **`http://tamaorb.local/`** (the name is the `name` setting). It covers status, every setting, Wi-Fi, switching pets, and save backup and restore. The same operations, plus reading the screen (`GET /api/look`) and pressing buttons (`POST /api/press`), are a JSON API under `/api/`.
+
+AI agents connect through the MCP server on the ball itself:
+
+```bash
+claude mcp add --transport http tamaorb http://tamaorb.local/mcp
+```
+
+The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, and a how-to-play guide per model. Agent button beeps are quieter by default (`agent_feedback`).
+
+Without Wi-Fi, the same settings work over the cable:
+
+```bash
+tools/tamaorb-rom.py get
+tools/tamaorb-rom.py set volume=10 agent_feedback=silent
+```
+
+**The panel, API and MCP server are open to anyone on your LAN.** There is no login. Requests from other web sites are refused (Origin check), but anything on the network can read the status and press the buttons. Keep the ball on a network you trust. Design: `docs/superpowers/specs/2026-11-15-web-panel-design.md`; decision: `docs/adr/0005-web-panel-on-device.md`. `tools/tamaorb-load.py --host tamaorb.local` is the load test.
+
 ## Tests
 
 ```bash
@@ -69,7 +90,8 @@ pip install -r tools/requirements.txt && pytest tools
 
 ## Project layout and docs
 
-- `components/tama_core`, `ui`, `persist`, `hostlink`: portable code, host-tested.
+- `components/tama_core`, `ui`, `persist`, `hostlink`, `settings`, `remote`: portable code, host-tested.
+- `components/web`: the HTTP server, the embedded panel page and mDNS.
 - `components/board/spotpear_ball_128`: the only hardware-specific code. Hardware notes are in `docs/hardware/`.
 - `docs/superpowers/specs/`: the design.
 - `docs/adr/`: decisions.
