@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "rom_store.h"
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -120,5 +121,7 @@ esp_err_t rom_store_remove_sd(const char *name)
 {
     char path[128];
     if (!s_sd || !path_for(name, path, sizeof path)) return ESP_ERR_INVALID_STATE;
-    return unlink(path) == 0 ? ESP_OK : ESP_ERR_NOT_FOUND;
+    if (unlink(path) == 0) return ESP_OK;
+    ESP_LOGW(TAG, "remove %s failed: errno %d (%s)", path, errno, strerror(errno));
+    return ESP_ERR_NOT_FOUND;
 }
