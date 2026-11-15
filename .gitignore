@@ -1,0 +1,19 @@
+# Copyrighted ROMs: never commit
+roms/
+*.bin
+!**/test/fixtures/**/*.bin
+
+# Device flash backups (may contain Wi-Fi credentials)
+hw-backup/
+
+# Brainstorming companion scratch
+.superpowers/
+
+# Windows download markers
+*:Zone.Identifier
+
+# ESP-IDF build output
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
