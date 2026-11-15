@@ -26,10 +26,13 @@ set(TAMA_CORE_INC ${COMP}/tama_core/include ${COMP}/tamalib ${COMP}/tamalib/upst
 set(UI_SRC ${COMP}/ui/ui_palette.c ${COMP}/ui/ui_pet.c ${COMP}/ui/ui_icons.c ${COMP}/ui/ui_font.c ${COMP}/ui/ui_touch.c ${COMP}/ui/ui_screen.c ${COMP}/ui/ui_text.c)
 set(UI_INC ${COMP}/ui/include)
 
+set(PERSIST_SRC ${COMP}/persist/ps_record.c ${COMP}/persist/ps_policy.c)
+set(PERSIST_INC ${COMP}/persist/include)
+
 enable_testing()
 function(tamaorb_test name)
     add_executable(${name} ${CMAKE_CURRENT_SOURCE_DIR}/${name}.c ${CMAKE_CURRENT_SOURCE_DIR}/test_support.c ${ARGN})
-    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui)
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui ${PERSIST_INC})
     target_link_libraries(${name} PRIVATE unity)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
@@ -41,6 +44,7 @@ tamaorb_test(test_ui_render ${UI_SRC})
 tamaorb_test(test_ui_touch ${UI_SRC})
 tamaorb_test(test_ui_screen ${UI_SRC})
 tamaorb_test(test_ui_text ${UI_SRC})
+tamaorb_test(test_persist ${PERSIST_SRC})
 
 # Eyeballing aid, not a test: build-host/render_preview out.ppm [held_mask]
 add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})
