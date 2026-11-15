@@ -10,6 +10,7 @@
 
 static const char *TAG = "settings";
 static st_settings_t s_cur;
+static st_settings_t s_boot;  // as loaded at boot: name and ntp take effect from these until a restart
 static st_writer_t s_writer;
 static volatile uint32_t s_seq, s_display_seq;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -71,6 +72,7 @@ esp_err_t settings_init(void)
 {
     st_defaults(&s_cur, CONFIG_TAMAORB_VOLUME);
     load();
+    s_boot = s_cur;
     ESP_LOGI(TAG, "brightness %u dim %u volume %u palette %d", s_cur.brightness, s_cur.dim_level, s_cur.volume, (int)s_cur.palette);
     return xTaskCreatePinnedToCore(writer_task, "settings", 4096, NULL, 3, NULL, 0) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }
@@ -91,6 +93,14 @@ void settings_put(const st_settings_t *s, bool display_changed)
     s_seq++;
     if (display_changed) s_display_seq++;
     taskEXIT_CRITICAL(&s_lock);
+}
+
+bool settings_restart_pending(void)
+{
+    taskENTER_CRITICAL(&s_lock);
+    bool p = st_restart_pending(&s_boot, &s_cur);
+    taskEXIT_CRITICAL(&s_lock);
+    return p;
 }
 
 uint32_t settings_seq(void) { return s_seq; }

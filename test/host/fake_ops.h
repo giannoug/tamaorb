@@ -29,6 +29,7 @@ typedef struct {
     bool wifi_result;
     char wifi_ssid[64], wifi_pass[64];
     int wifi_calls, restart_calls;
+    int status_calls, restart_pending_calls;
 } fake_state_t;
 
 extern fake_state_t fake;

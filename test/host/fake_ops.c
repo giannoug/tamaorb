@@ -20,7 +20,11 @@ static rm_err_t f_press(void *ctx, const rm_press_req_t *req)
     fake.press_calls++;
     return fake.press_result;
 }
-static void f_status(void *ctx, rm_status_t *out) { *out = fake.status; }
+static void f_status(void *ctx, rm_status_t *out)
+{
+    fake.status_calls++;
+    *out = fake.status;
+}
 static void f_get(void *ctx, st_settings_t *out) { *out = fake.settings; }
 static void f_put(void *ctx, const st_settings_t *s, bool display)
 {
@@ -69,7 +73,14 @@ static const char *f_guide(void *ctx, const char *model)
     return strcmp(model, "p1") == 0 ? "# P1 guide" : NULL;
 }
 
-rm_ops_t fake_ops = {f_look, f_press, f_status, f_get, f_put, f_pets, f_switch, f_export, f_import, f_wifi, f_restart, f_guide, NULL};
+static bool f_restart_pending(void *ctx)
+{
+    fake.restart_pending_calls++;
+    return fake.status.restart_pending;
+}
+
+rm_ops_t fake_ops = {f_look, f_press, f_status, f_get, f_put, f_pets, f_switch, f_export, f_import, f_wifi, f_restart, f_guide,
+                     f_restart_pending, NULL};
 
 void fake_reset(void)
 {

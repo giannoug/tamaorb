@@ -160,6 +160,23 @@ static void test_flags(void)
     TEST_ASSERT_FALSE(st_is_numeric("palette"));
 }
 
+static void test_restart_pending_against_boot_values(void)
+{
+    st_settings_t boot, cur;
+    st_defaults(&boot, 50);
+    cur = boot;
+    TEST_ASSERT_FALSE(st_restart_pending(&boot, &cur));
+    TEST_ASSERT_TRUE(st_set(&cur, "brightness", "10"));  // live keys never need a restart
+    TEST_ASSERT_TRUE(st_set(&cur, "palette", "night"));
+    TEST_ASSERT_FALSE(st_restart_pending(&boot, &cur));
+    TEST_ASSERT_TRUE(st_set(&cur, "name", "kitchen"));  // e.g. over USB, which calls settings_put directly
+    TEST_ASSERT_TRUE(st_restart_pending(&boot, &cur));
+    TEST_ASSERT_TRUE(st_set(&cur, "name", "tamaorb"));  // back to the boot name: nothing pending
+    TEST_ASSERT_FALSE(st_restart_pending(&boot, &cur));
+    TEST_ASSERT_TRUE(st_set(&cur, "ntp", "time.example.org"));
+    TEST_ASSERT_TRUE(st_restart_pending(&boot, &cur));
+}
+
 static void test_writer_debounce(void)
 {
     st_writer_t w = {0};
@@ -190,6 +207,7 @@ int main(void)
     RUN_TEST(test_get_roundtrip);
     RUN_TEST(test_effective_dim);
     RUN_TEST(test_flags);
+    RUN_TEST(test_restart_pending_against_boot_values);
     RUN_TEST(test_writer_debounce);
     return UNITY_END();
 }

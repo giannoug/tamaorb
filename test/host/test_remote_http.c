@@ -113,6 +113,19 @@ static void test_patch_settings_ok(void)
     TEST_ASSERT_EQUAL(0, fake.settings.volume);
     cJSON *j = json();
     TEST_ASSERT_EQUAL(0, cJSON_GetObjectItem(cJSON_GetObjectItem(j, "settings"), "volume")->valueint);
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(j, "restart_pending")));
+    cJSON_Delete(j);
+}
+
+static void test_patch_settings_skips_full_status(void)  // a dragged slider PATCHes ~10/s
+{
+    fake.status.restart_pending = true;
+    go(RM_PATCH, "/api/settings", NULL, "http://tamaorb.local", "{\"brightness\":40}");
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL(0, fake.status_calls);
+    TEST_ASSERT_EQUAL(1, fake.restart_pending_calls);
+    cJSON *j = json();
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(j, "restart_pending")));
     cJSON_Delete(j);
 }
 
@@ -404,6 +417,7 @@ int main(void)
     RUN_TEST(test_status_fields);
     RUN_TEST(test_get_settings_restart_pending);
     RUN_TEST(test_patch_settings_ok);
+    RUN_TEST(test_patch_settings_skips_full_status);
     RUN_TEST(test_patch_settings_bad_key_changes_nothing);
     RUN_TEST(test_patch_not_object);
     RUN_TEST(test_unknown_path_404);

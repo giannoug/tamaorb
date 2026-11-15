@@ -26,7 +26,6 @@ extern const char s_guide_p2[] asm("_binary_guide_p2_md_start");
 static tc_model_t s_model;
 static uint8_t s_active[20];
 static char s_rom_name[64];
-static volatile bool s_restart_pending;  // name or ntp changed: applies after the next boot
 
 static rm_phase_t phase_now(uint8_t *pct)
 {
@@ -79,7 +78,7 @@ static void op_status(void *ctx, rm_status_t *st)
     st->heap_min = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
     st->time_trusted = net_now(&st->unix_time);
     st->sd_present = rom_store_sd_present();
-    st->restart_pending = s_restart_pending;
+    st->restart_pending = settings_restart_pending();
     ps_meta_t m;
     if (s_model != TC_MODEL_UNKNOWN && saver_read_newest(s_active, &m, NULL, 0, NULL) == ESP_OK && m.time_trusted) {
         st->last_save_known = true;
@@ -90,13 +89,8 @@ static void op_status(void *ctx, rm_status_t *st)
 
 static void op_get_settings(void *ctx, st_settings_t *out) { settings_get(out); }
 
-static void op_put_settings(void *ctx, const st_settings_t *s, bool display_changed)
-{
-    st_settings_t old;
-    settings_get(&old);
-    if (strcmp(old.name, s->name) || strcmp(old.ntp, s->ntp)) s_restart_pending = true;
-    settings_put(s, display_changed);
-}
+static void op_put_settings(void *ctx, const st_settings_t *s, bool display_changed) { settings_put(s, display_changed); }
+static bool op_restart_pending(void *ctx) { return settings_restart_pending(); }
 
 static void fill_save(rm_pet_t *p)
 {
@@ -215,7 +209,7 @@ static rm_ops_t s_ops = {
     .look = op_look, .press = op_press, .status = op_status, .get_settings = op_get_settings,
     .put_settings = op_put_settings, .list_pets = op_list_pets, .switch_pet = op_switch_pet,
     .export_save = op_export_save, .import_save = op_import_save, .set_wifi = op_set_wifi,
-    .restart = op_restart, .guide = op_guide, .ctx = NULL,
+    .restart = op_restart, .guide = op_guide, .restart_pending = op_restart_pending, .ctx = NULL,
 };
 
 const rm_ops_t *remote_ops_init(tc_model_t model, const uint8_t active_sha1[20])

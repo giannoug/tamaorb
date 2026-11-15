@@ -98,6 +98,7 @@ typedef struct {
     bool (*set_wifi)(void *ctx, const char *ssid, const char *pass);  // schedules the restart itself
     void (*restart)(void *ctx);                                       // schedules the restart
     const char *(*guide)(void *ctx, const char *model);               // "p1"|"p2" -> Markdown, NULL if none
+    bool (*restart_pending)(void *ctx);  // same as status' restart_pending, without the cost of a full status
     void *ctx;
 } rm_ops_t;
 

@@ -153,14 +153,13 @@ static int find_pet(const rm_ops_t *ops, const uint8_t sha[20], rm_pet_t *out)  
 static void settings_reply(const rm_ops_t *ops, rm_resp_t *r)
 {
     st_settings_t s;
-    rm_status_t st;
     ops->get_settings(ops->ctx, &s);
-    ops->status(ops->ctx, &st);
     cJSON *j = cJSON_CreateObject();
     cJSON *sj = rm_json_settings(&s);
     if (!j || !sj) { cJSON_Delete(j); cJSON_Delete(sj); set_json(r, 500, NULL); return; }
     cJSON_AddItemToObject(j, "settings", sj);
-    cJSON_AddBoolToObject(j, "restart_pending", st.restart_pending);
+    // Not ops->status: that reads NVS under the saver mutex, and a dragged slider PATCHes ~10 times a second.
+    cJSON_AddBoolToObject(j, "restart_pending", ops->restart_pending(ops->ctx));
     set_json(r, 200, j);
 }
 
