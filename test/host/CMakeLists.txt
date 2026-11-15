@@ -35,10 +35,13 @@ set(SETTINGS_INC ${COMP}/settings/include)
 set(HOSTLINK_SRC ${COMP}/hostlink/hl_proto.c ${COMP}/hostlink/hl_base64.c)
 set(HOSTLINK_INC ${COMP}/hostlink/include)
 
+set(REMOTE_SRC ${COMP}/remote/rm_look.c ${COMP}/remote/rm_png.c ${COMP}/remote/rm_press.c)
+set(REMOTE_INC ${COMP}/remote/include)
+
 enable_testing()
 function(tamaorb_test name)
     add_executable(${name} ${CMAKE_CURRENT_SOURCE_DIR}/${name}.c ${CMAKE_CURRENT_SOURCE_DIR}/test_support.c ${ARGN})
-    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui ${PERSIST_INC} ${HOSTLINK_INC} ${SETTINGS_INC})
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui ${PERSIST_INC} ${HOSTLINK_INC} ${SETTINGS_INC} ${REMOTE_INC})
     target_link_libraries(${name} PRIVATE unity)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
@@ -53,6 +56,8 @@ tamaorb_test(test_ui_text ${UI_SRC})
 tamaorb_test(test_persist ${PERSIST_SRC})
 tamaorb_test(test_settings ${SETTINGS_SRC})
 tamaorb_test(test_hostlink ${HOSTLINK_SRC} ${TAMA_CORE_SRC} ${SETTINGS_SRC})
+tamaorb_test(test_remote_look ${REMOTE_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
+tamaorb_test(test_remote_press ${REMOTE_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
 
 # Eyeballing aid, not a test: build-host/render_preview out.ppm [held_mask]
 add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})
