@@ -114,6 +114,8 @@ The detailed hardware notes above should live in `docs/hardware/spotpear-ball-12
 - The icon bitmaps are **our own original pixel art**. P1 and P2 share **one set**; the only per-model difference is **Medicine**: a syringe on P1, a bottle and spoon on P2. This was confirmed against TamaTool's `p1-icons.png` and `p2-icons.png`.
 - The icons depict the real concepts, in ROM order: cutlery, bulb, bat and ball, medicine (top row); duck, scale/gauge, scolding mouth, two faces (bottom row). That way players recognise them.
 - **Reference only, never traced:** MAME's `tama.svg` (in the owner's ROM zips) and TamaTool's icon PNGs. Never copy Bandai, MAME or TamaTool artwork.
+- **Keep our own art for now.** **(decided)** The references, their licenses and a CC0 set we could adopt later are recorded in `docs/references/icons/`.
+- **Polish milestone:** redraw at 24×24 cells, 1 device px each, instead of the current rough 12×12 at 2 px.
 - **Visual reference:** the design canvas "TamaOrb Display" (https://claude.ai/artifact/TJ6TCPiuNZTi4x8PnRNLAk, private to the owner). It holds:
   - the pet screen (interactive, 2× scale);
   - three LCD palettes: Classic (default), Neutral and Night;
