@@ -20,7 +20,7 @@
 #define LOOP_MS        30
 #define SCREEN_TIMEOUT 30000
 #define BACKLIGHT_PCT  80
-#define DIM_PCT        10
+#define DIM_PCT        5
 #define DIM_USB_MS     30000  // plugged in: dim after 30 s idle, never off
 #define DIM_BATTERY_MS 15000  // on battery: dim after 15 s, off at SCREEN_TIMEOUT
 
