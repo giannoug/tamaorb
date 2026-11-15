@@ -18,8 +18,10 @@ add_compile_options(-Wall -Wextra -Wno-unused-parameter)
 add_compile_definitions(TC_TESTING TAMAORB_ROM_DIR_DEFAULT="${CMAKE_BINARY_DIR}/roms")
 
 # Portable sources, grouped per component. Later tasks append to these lists.
-set(TAMA_CORE_SRC ${COMP}/tama_core/tc_rom.c ${COMP}/tama_core/tc_sha1.c)
-set(TAMA_CORE_INC ${COMP}/tama_core/include)
+set(TAMALIB_SRC ${COMP}/tamalib/upstream/cpu.c ${COMP}/tamalib/upstream/hw.c ${COMP}/tamalib/upstream/tamalib.c)
+set_source_files_properties(${TAMALIB_SRC} PROPERTIES COMPILE_OPTIONS "-Wno-maybe-uninitialized;-Wno-sign-compare;-Wno-unused-variable;-Wno-unused-but-set-variable")
+set(TAMA_CORE_SRC ${COMP}/tama_core/tc_rom.c ${COMP}/tama_core/tc_sha1.c ${COMP}/tama_core/tama_core.c ${TAMALIB_SRC})
+set(TAMA_CORE_INC ${COMP}/tama_core/include ${COMP}/tamalib ${COMP}/tamalib/upstream)
 
 enable_testing()
 function(tamaorb_test name)
@@ -30,3 +32,4 @@ function(tamaorb_test name)
 endfunction()
 
 tamaorb_test(test_rom ${TAMA_CORE_SRC})
+tamaorb_test(test_core ${TAMA_CORE_SRC})
