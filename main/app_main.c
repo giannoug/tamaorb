@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Boot sequence (spec §6.4). Later tasks add saves, time, catch-up, the picker and power handling.
+#include <stdio.h>
 #include <string.h>
 #include "esp_app_desc.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "board.h"
 #include "emu_task.h"
 #include "rom_store.h"
@@ -20,29 +23,51 @@ static const char *TAG = "tamaorb";
 static uint8_t s_rom[TC_ROM_BYTES];
 static uint16_t s_program[TC_ROM_WORDS];
 
-// Picks the ROM to run. Returns its model, or TC_MODEL_UNKNOWN if there is none.
+static void show_no_rom(const tc_rom_entry_t *roms, int n)
+{
+    for (int i = 0; i < n; i++) {
+        if (roms[i].model != TC_MODEL_UNKNOWN) continue;
+        char body[96], hex[41];
+        for (int k = 0; k < 20; k++) sprintf(hex + 2 * k, "%02x", roms[i].sha1[k]);
+        snprintf(body, sizeof body, "%.19s\nis not a known dump\nSHA-1 %.4s...%.4s", roms[i].name, hex, hex + 36);
+        ui_message("Unknown ROM", body);
+        return;
+    }
+    ui_message("No ROM found", "Put a P1 or P2 dump\nin /tamaorb/roms/\non the SD card, or\npush one over USB.");
+}
+
+// Picks the ROM to run (spec §7.3). Returns its model, or TC_MODEL_UNKNOWN if there is none.
 static tc_model_t choose_rom(void)
 {
-    static tc_rom_entry_t roms[8];
+    static tc_rom_entry_t roms[16];
     uint8_t sha1[20];
-    int n = rom_store_scan(roms, 8), idx = -1;
+    int n = rom_store_scan(roms, 16), idx = -1;
     bool cached = rom_store_cached(s_rom, sha1);
     switch (tc_rom_select(cached, roms, n, &idx)) {
-    case TC_SEL_USE_CACHED:
-        return tc_rom_identify(s_rom, sizeof s_rom, NULL);
+    case TC_SEL_USE_CACHED: {
+        tc_model_t m = tc_rom_identify(s_rom, sizeof s_rom, NULL);
+        if (!rom_store_sd_present()) {
+            char body[80];
+            snprintf(body, sizeof body, "Using the saved copy\nof %s.\nYour pet is fine.", tc_model_name(m));
+            ui_message("No SD card", body);
+            vTaskDelay(pdMS_TO_TICKS(3000));
+        }
+        return m;
+    }
     case TC_SEL_PICKER:
-        // Task 20 adds the on-screen picker; until then take the first valid entry.
-        for (idx = 0; idx < n && roms[idx].model != TC_MODEL_P1 && roms[idx].model != TC_MODEL_P2; idx++) {}
+        idx = ui_pick_rom(roms, n, -1, false);
         /* fall through */
     case TC_SEL_USE_SD:
-        if (idx < n && rom_store_read_sd(roms[idx].name, s_rom) && rom_store_set_active(s_rom) == ESP_OK) {
+        if (idx >= 0 && rom_store_read_sd(roms[idx].name, s_rom) && rom_store_set_active(s_rom) == ESP_OK) {
             ESP_LOGI(TAG, "active ROM: %s", roms[idx].name);
             return roms[idx].model;
         }
-        return TC_MODEL_UNKNOWN;
+        break;
     default:
-        return TC_MODEL_UNKNOWN;
+        break;
     }
+    show_no_rom(roms, n);
+    return TC_MODEL_UNKNOWN;
 }
 
 static void save_for_power(void) { saver_request_and_wait(3000); }
@@ -59,13 +84,14 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(nvs);
     ESP_ERROR_CHECK(rom_store_init());
+    ESP_ERROR_CHECK(ui_init());
     saver_set_time_source(net_now);
     net_start();
 
     tc_model_t model = choose_rom();
     hostlink_task_start(model);  // also serves the no-ROM case, so a ROM can be pushed
     if (model == TC_MODEL_UNKNOWN) {
-        ESP_LOGE(TAG, "no usable ROM");  // Task 20 shows a message screen
+        ESP_LOGW(TAG, "no usable ROM; waiting for one over USB");
         return;
     }
     ESP_LOGI(TAG, "running %s", tc_model_name(model));

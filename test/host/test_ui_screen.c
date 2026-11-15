@@ -91,6 +91,41 @@ static void test_lift_one_of_two(void)
     TEST_ASSERT_EQUAL_HEX8(C, step(30, C, false, false).buttons);
 }
 
+static void test_long_press_once(void)
+{
+    step(10, 0, true, false);
+    for (int t = 0; t < 2500; t += 100) step(100, 0, true, false);
+    TEST_ASSERT_TRUE(ui_screen_long_press(&s));
+    TEST_ASSERT_FALSE(ui_screen_long_press(&s));
+    TEST_ASSERT_TRUE(step(100, 0, false, false).backlight);  // release doesn't toggle
+    TEST_ASSERT_FALSE(ui_screen_long_press(&s));
+}
+
+static void test_short_press_not_long(void)
+{
+    step(10, 0, true, false);
+    step(500, 0, true, false);
+    step(10, 0, false, false);
+    TEST_ASSERT_FALSE(ui_screen_long_press(&s));
+}
+
+static void test_resume_ignores_held_boot(void)
+{
+    ui_screen_resume(&s, now, true, false);
+    TEST_ASSERT_TRUE(step(100, 0, true, false).backlight);
+    TEST_ASSERT_TRUE(step(100, 0, false, false).backlight);  // releasing the cancel press doesn't toggle
+    step(10, 0, true, false);
+    TEST_ASSERT_FALSE(step(100, 0, false, false).backlight);  // the next press does
+}
+
+static void test_resume_swallows_held_touch(void)
+{
+    ui_screen_resume(&s, now, false, true);
+    TEST_ASSERT_EQUAL_HEX8(0, step(30, B, false, false).buttons);
+    TEST_ASSERT_EQUAL_HEX8(0, step(30, 0, false, false).buttons);
+    TEST_ASSERT_EQUAL_HEX8(B, step(30, B, false, false).buttons);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -103,5 +138,9 @@ int main(void)
     RUN_TEST(test_boot_short_toggles);
     RUN_TEST(test_dark_screen_forwards_nothing);
     RUN_TEST(test_lift_one_of_two);
+    RUN_TEST(test_long_press_once);
+    RUN_TEST(test_short_press_not_long);
+    RUN_TEST(test_resume_ignores_held_boot);
+    RUN_TEST(test_resume_swallows_held_touch);
     return UNITY_END();
 }

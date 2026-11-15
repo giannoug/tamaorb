@@ -21,7 +21,11 @@ static bool s_reboot;
 
 static bool op_store(void *ctx, const char *name, const uint8_t *data, size_t len)
 {
-    if (rom_store_sd_present()) return rom_store_write_sd(name, data, len) == ESP_OK;
+    if (rom_store_sd_present()) {
+        if (rom_store_write_sd(name, data, len) != ESP_OK) return false;
+        if (s_model == TC_MODEL_UNKNOWN) s_reboot = true;  // nothing running yet: reboot to pick it up
+        return true;
+    }
     // No SD card: the pushed ROM becomes the active one (spec §7.3), applied by a reboot.
     if (rom_store_set_active(data) != ESP_OK) return false;
     s_reboot = true;
