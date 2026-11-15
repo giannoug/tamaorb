@@ -48,6 +48,12 @@ static void test_gap_clock_backwards(void)
     TEST_ASSERT_EQUAL_UINT64(0, g);
 }
 
+static void test_progress_virtual_time(void)
+{
+    TEST_ASSERT_EQUAL_INT64(1000 + 3600, tc_progress_unix(1000, 3600ull * TC_TICK_HZ));
+    TEST_ASSERT_EQUAL_INT64(1000, tc_progress_unix(1000, TC_TICK_HZ - 1));  // whole seconds only
+}
+
 // Fake tick source: each read after a step jumps 2^31 ticks, so the 32-bit counter wraps
 // every two steps.
 static uint32_t fake_ticks;
@@ -118,6 +124,7 @@ int main(void)
     RUN_TEST(test_gap_untrusted_save);
     RUN_TEST(test_gap_untrusted_now);
     RUN_TEST(test_gap_clock_backwards);
+    RUN_TEST(test_progress_virtual_time);
     RUN_TEST(test_catchup_exceeds_wrap);
     RUN_TEST(test_catchup_without_callback);
     RUN_TEST(test_catchup_matches_realtime);

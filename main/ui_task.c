@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 #include "tama_core.h"
 #include "ui.h"
+#include "emu_task.h"
 
 #define LOOP_MS        30
 #define SCREEN_TIMEOUT 30000
@@ -28,6 +29,29 @@ static void ui_task(void *arg)
     uint32_t frame_seq = 0;
     uint8_t shown_held = 0xFF;
     bool backlight = false;
+
+    // Before the emulator runs: a start-up screen, then the catch-up progress screen.
+    uint32_t last_progress_draw = 0;
+    bool boot_drawn = false;
+    while (emu_phase() != EMU_RUN) {
+        if (emu_phase() == EMU_BOOT && !boot_drawn) {
+            ui_render_message(s_fb, "TamaOrb", "Starting...", &UI_PALETTE_CLASSIC);
+            board_display_flush(s_fb);
+            board_backlight_set(BACKLIGHT_PCT);
+            boot_drawn = true;
+        } else if (emu_phase() == EMU_CATCHUP && now_ms() - last_progress_draw >= 1000) {
+            uint64_t done, total;
+            uint32_t eta;
+            emu_catchup_progress(&done, &total, &eta);
+            ui_render_catchup(s_fb, done, total, eta, &UI_PALETTE_CLASSIC);
+            board_display_flush(s_fb);
+            board_backlight_set(BACKLIGHT_PCT);
+            last_progress_draw = now_ms();
+        }
+        vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
+    }
+    ui_screen_init(&screen, now_ms());
+    backlight = false;  // force a fresh pet frame and backlight on
 
     for (;;) {
         board_touch_t bt;

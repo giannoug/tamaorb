@@ -35,8 +35,56 @@ static void tone(uint32_t freq_dhz, bool on) { board_tone(freq_dhz / 10, on); }
 static const tc_platform_t s_plat = { .now_us = now_us, .sleep_until_us = sleep_until_us, .tone = tone,
                                       .lock = lock, .unlock = unlock };
 
+#define PROGRESS_SAVE_US (120 * 1000000LL)
+
+static volatile emu_phase_t s_phase = EMU_BOOT;
+static uint64_t s_catchup_s;
+static int64_t s_saved_unix;
+static bool s_saved_trusted;
+static volatile uint64_t s_done_s;
+static volatile uint32_t s_eta_s;
+static int64_t s_catchup_t0, s_last_progress_save;
+
+emu_phase_t emu_phase(void) { return s_phase; }
+
+void emu_catchup_progress(uint64_t *done_s, uint64_t *total_s, uint32_t *eta_s)
+{
+    *done_s = s_done_s;
+    *total_s = s_catchup_s;
+    *eta_s = s_eta_s;
+}
+
+static bool catchup_cb(uint64_t done_ticks, uint64_t total_ticks, void *ctx)
+{
+    int64_t now = esp_timer_get_time();
+    s_done_s = done_ticks / TC_TICK_HZ;
+    double elapsed = (double)(now - s_catchup_t0) / 1e6;
+    double rate = elapsed > 0 ? (double)done_ticks / elapsed : 0;  // ticks per wall second
+    s_eta_s = rate > 0 ? (uint32_t)((double)(total_ticks - done_ticks) / rate) : 0;
+    if (now - s_last_progress_save >= PROGRESS_SAVE_US) {
+        saver_save_at(tc_progress_unix(s_saved_unix, done_ticks), s_saved_trusted);
+        s_last_progress_save = now;
+    }
+    vTaskDelay(1);  // let core 1's idle task run (task watchdog) during the full-speed replay
+    return true;
+}
+
+static void run_catchup(void)
+{
+    s_phase = EMU_CATCHUP;
+    s_catchup_t0 = s_last_progress_save = esp_timer_get_time();
+    ESP_LOGI(TAG, "catching up %llu s", (unsigned long long)s_catchup_s);
+    uint64_t ran = tc_catchup(s_catchup_s * TC_TICK_HZ, catchup_cb, NULL, TC_TICK_HZ * 10);
+    double wall = (double)(esp_timer_get_time() - s_catchup_t0) / 1e6;
+    ESP_LOGI(TAG, "caught up %llu s in %.1f s (%.1fx)", (unsigned long long)(ran / TC_TICK_HZ), wall,
+             wall > 0 ? (double)ran / TC_TICK_HZ / wall : 0);
+    saver_request();  // stamp the caught-up state with the current time
+}
+
 static void emu_task(void *arg)
 {
+    if (s_catchup_s) run_catchup();
+    s_phase = EMU_RUN;
     tc_step(1);  // first step after init; start measuring from here
     int64_t stat_t0 = esp_timer_get_time();
     uint32_t stat_ticks0 = tc_tick_counter();
@@ -64,7 +112,10 @@ bool emu_init(const uint16_t *program)
     return false;
 }
 
-void emu_start(void)
+void emu_start(uint64_t catchup_s, int64_t saved_unix, bool saved_trusted)
 {
+    s_catchup_s = catchup_s;
+    s_saved_unix = saved_unix;
+    s_saved_trusted = saved_trusted;
     xTaskCreatePinnedToCore(emu_task, "emu", 8192, NULL, 10, NULL, 1);
 }

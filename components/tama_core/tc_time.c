@@ -9,3 +9,8 @@ bool tc_gap_seconds(int64_t saved_unix, bool saved_trusted, int64_t now_unix, bo
     *gap_s = now_unix > saved_unix ? (uint64_t)(now_unix - saved_unix) : 0;
     return true;
 }
+
+int64_t tc_progress_unix(int64_t saved_unix, uint64_t done_ticks)
+{
+    return saved_unix + (int64_t)(done_ticks / TC_TICK_HZ);
+}

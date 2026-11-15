@@ -10,6 +10,7 @@
 #include "net.h"
 #include "nvs_flash.h"
 #include "tc_rom.h"
+#include "tc_time.h"
 #include "ui_task.h"
 
 static const char *TAG = "tamaorb";
@@ -63,11 +64,24 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "running %s", tc_model_name(model));
     tc_rom_decode(s_rom, sizeof s_rom, s_program);
+    ui_task_start(model);  // shows "Starting" until the emulator runs
     if (!emu_init(s_program)) return;
     uint8_t sha1[20];
     tc_rom_identify(s_rom, sizeof s_rom, sha1);
     ps_meta_t meta;
-    if (saver_load(sha1, &meta) != ESP_OK) ESP_LOGI(TAG, "no save for this ROM; starting fresh");
-    emu_start();
-    ui_task_start(model);
+    uint64_t gap_s = 0;
+    if (saver_load(sha1, &meta) == ESP_OK) {
+        int64_t now = 0;
+        bool trusted = net_now(&now);
+        if (!trusted && net_configured()) trusted = net_wait_time(15000) && net_now(&now);
+        if (!tc_gap_seconds(meta.unix_time, meta.time_trusted, now, trusted, &gap_s)) {
+            gap_s = 0;
+            ESP_LOGI(TAG, "time unknown; resuming where the save left off");
+        }
+    } else {
+        ESP_LOGI(TAG, "no save for this ROM; starting fresh");
+        meta.unix_time = 0;
+        meta.time_trusted = false;
+    }
+    emu_start(gap_s, meta.unix_time, meta.time_trusted);
 }
