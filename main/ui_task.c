@@ -20,6 +20,9 @@
 #define LOOP_MS        30
 #define SCREEN_TIMEOUT 30000
 #define BACKLIGHT_PCT  80
+#define DIM_PCT        10
+#define DIM_USB_MS     30000  // plugged in: dim after 30 s idle, never off
+#define DIM_BATTERY_MS 15000  // on battery: dim after 15 s, off at SCREEN_TIMEOUT
 
 static const char *TAG = "ui";
 static tc_model_t s_model;
@@ -42,6 +45,7 @@ static void ui_task(void *arg)
     uint8_t shown_held = 0xFF;
     bool backlight = false;
     bool usb_was = true;  // no wake event for the USB state at boot
+    bool dimmed = false;
 
     // Before the emulator runs: a start-up screen, then the catch-up progress screen.
     uint32_t last_progress_draw = 0;
@@ -119,13 +123,16 @@ static void ui_task(void *arg)
             power_screen_on(backlight);  // no light sleep while the backlight PWM must run
             if (!backlight) board_backlight_set(0);
         }
+        bool dim = ui_screen_dimmed(&screen, now_ms(), usb ? DIM_USB_MS : DIM_BATTERY_MS);
+        if (backlight && !redraw && dim != dimmed) board_backlight_set(dim ? DIM_PCT : BACKLIGHT_PCT);
+        dimmed = dim;
         if (backlight && (tc_frame_changed(&frame_seq) || out.buttons != shown_held || redraw)) {
             tc_frame_t f;
             tc_get_frame(&f);
             ui_render_pet(s_fb, &f, s_model, out.buttons, true, &UI_PALETTE_CLASSIC);
             board_display_flush(s_fb);
             shown_held = out.buttons;
-            if (redraw) board_backlight_set(BACKLIGHT_PCT);  // light up only after a fresh frame is on the panel
+            if (redraw) board_backlight_set(dimmed ? DIM_PCT : BACKLIGHT_PCT);  // light up only after a fresh frame
         }
         vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
     }

@@ -50,6 +50,8 @@ void ui_screen_init(ui_screen_t *s, uint32_t now_ms);  // starts on
 ui_screen_out_t ui_screen_update(ui_screen_t *s, uint32_t now_ms, uint8_t touch_buttons,
                                  bool boot_down, bool sound_on, uint32_t timeout_ms);
 void ui_screen_wake(ui_screen_t *s, uint32_t now_ms);  // e.g. USB plugged in
+// True while the screen is on but has been idle (no touch, sound or BOOT) for at least dim_ms.
+bool ui_screen_dimmed(const ui_screen_t *s, uint32_t now_ms, uint32_t dim_ms);
 // Restarts the state machine after an overlay (e.g. the picker) closed: a BOOT press or touch that
 // is still held then is ignored until released, so it neither toggles the screen nor reaches the game.
 void ui_screen_resume(ui_screen_t *s, uint32_t now_ms, bool boot_down, bool touch_down);

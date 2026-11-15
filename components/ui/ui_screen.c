@@ -66,3 +66,8 @@ void ui_screen_resume(ui_screen_t *s, uint32_t now_ms, bool boot_down, bool touc
 }
 
 void ui_screen_wake(ui_screen_t *s, uint32_t now_ms) { wake(s, now_ms); }
+
+bool ui_screen_dimmed(const ui_screen_t *s, uint32_t now_ms, uint32_t dim_ms)
+{
+    return s->on && now_ms - s->last_activity_ms >= dim_ms;
+}

@@ -147,6 +147,27 @@ static void test_wake_turns_screen_on(void)
     TEST_ASSERT_EQUAL_HEX8(A, step(30, A, false, false).buttons);  // a wake is not a swallowed touch
 }
 
+static void test_dims_after_idle(void)
+{
+    TEST_ASSERT_FALSE(ui_screen_dimmed(&s, now + 14999, 15000));
+    TEST_ASSERT_TRUE(ui_screen_dimmed(&s, now + 15000, 15000));
+}
+
+static void test_activity_undims(void)
+{
+    step(20000, 0, false, false);
+    TEST_ASSERT_TRUE(ui_screen_dimmed(&s, now, 15000));
+    step(10, B, false, false);
+    TEST_ASSERT_FALSE(ui_screen_dimmed(&s, now, 15000));
+    TEST_ASSERT_EQUAL_HEX8(B, step(10, B, false, false).buttons);  // a dimmed screen still takes presses
+}
+
+static void test_dark_screen_is_not_dimmed(void)
+{
+    go_dark();
+    TEST_ASSERT_FALSE(ui_screen_dimmed(&s, now, 15000));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -166,5 +187,8 @@ int main(void)
     RUN_TEST(test_no_timeout_when_zero);
     RUN_TEST(test_boot_still_toggles_without_timeout);
     RUN_TEST(test_wake_turns_screen_on);
+    RUN_TEST(test_dims_after_idle);
+    RUN_TEST(test_activity_undims);
+    RUN_TEST(test_dark_screen_is_not_dimmed);
     return UNITY_END();
 }
