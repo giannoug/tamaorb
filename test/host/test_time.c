@@ -93,6 +93,28 @@ static void test_catchup_without_callback(void)
     tc_debug_set_step_hook(NULL);
 }
 
+// Review finding: the wall time a catch-up takes must be replayed too.
+static uint64_t fake_wall_us;
+static uint64_t fake_wall(void) { return fake_wall_us; }
+static void advance_tenth(void) { fake_ticks += 3277; fake_wall_us += 4000; }  // 0.1 s emulated per 4 ms wall (25x)
+static uint64_t last_total;
+static bool total_cb(uint64_t done, uint64_t total, void *ctx) { last_total = total; return true; }
+
+static void test_catchup_converge_replays_its_own_duration(void)
+{
+    fake_ticks = 0;
+    fake_wall_us = 0;
+    last_total = 0;
+    tc_debug_set_tick_source(fake_tick_source);
+    tc_debug_set_step_hook(advance_tenth);
+    uint64_t ran = tc_catchup_converge(100ull * TC_TICK_HZ, fake_wall, total_cb, NULL, TC_TICK_HZ);
+    tc_debug_set_step_hook(NULL);
+    // 100 s takes 4 s of wall time, which takes 0.16 s more: about 104.2 s in total.
+    TEST_ASSERT_TRUE(ran >= 104ull * TC_TICK_HZ);
+    TEST_ASSERT_TRUE(ran < 105ull * TC_TICK_HZ);
+    TEST_ASSERT_TRUE(last_total > 100ull * TC_TICK_HZ);  // the progress total grows with each pass
+}
+
 static void test_catchup_matches_realtime(void)
 {
     if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
@@ -127,6 +149,7 @@ int main(void)
     RUN_TEST(test_progress_virtual_time);
     RUN_TEST(test_catchup_exceeds_wrap);
     RUN_TEST(test_catchup_without_callback);
+    RUN_TEST(test_catchup_converge_replays_its_own_duration);
     RUN_TEST(test_catchup_matches_realtime);
     return UNITY_END();
 }

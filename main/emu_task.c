@@ -41,7 +41,7 @@ static volatile emu_phase_t s_phase = EMU_BOOT;
 static uint64_t s_catchup_s;
 static int64_t s_saved_unix;
 static bool s_saved_trusted;
-static volatile uint64_t s_done_s;
+static volatile uint64_t s_done_s, s_total_s;
 static volatile uint32_t s_eta_s;
 static int64_t s_catchup_t0, s_last_progress_save;
 
@@ -50,7 +50,7 @@ emu_phase_t emu_phase(void) { return s_phase; }
 void emu_catchup_progress(uint64_t *done_s, uint64_t *total_s, uint32_t *eta_s)
 {
     *done_s = s_done_s;
-    *total_s = s_catchup_s;
+    *total_s = s_total_s ? s_total_s : s_catchup_s;
     *eta_s = s_eta_s;
 }
 
@@ -58,6 +58,7 @@ static bool catchup_cb(uint64_t done_ticks, uint64_t total_ticks, void *ctx)
 {
     int64_t now = esp_timer_get_time();
     s_done_s = done_ticks / TC_TICK_HZ;
+    s_total_s = total_ticks / TC_TICK_HZ;
     double elapsed = (double)(now - s_catchup_t0) / 1e6;
     double rate = elapsed > 0 ? (double)done_ticks / elapsed : 0;  // ticks per wall second
     s_eta_s = rate > 0 ? (uint32_t)((double)(total_ticks - done_ticks) / rate) : 0;
@@ -74,7 +75,8 @@ static void run_catchup(void)
     s_phase = EMU_CATCHUP;
     s_catchup_t0 = s_last_progress_save = esp_timer_get_time();
     ESP_LOGI(TAG, "catching up %llu s", (unsigned long long)s_catchup_s);
-    uint64_t ran = tc_catchup(s_catchup_s * TC_TICK_HZ, catchup_cb, NULL, TC_TICK_HZ * 10);
+    // Converges: the wall time spent replaying is replayed too, so the pet ends at "now".
+    uint64_t ran = tc_catchup_converge(s_catchup_s * TC_TICK_HZ, now_us, catchup_cb, NULL, TC_TICK_HZ * 10);
     double wall = (double)(esp_timer_get_time() - s_catchup_t0) / 1e6;
     ESP_LOGI(TAG, "caught up %llu s in %.1f s (%.1fx)", (unsigned long long)(ran / TC_TICK_HZ), wall,
              wall > 0 ? (double)ran / TC_TICK_HZ / wall : 0);

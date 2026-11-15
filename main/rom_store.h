@@ -12,6 +12,7 @@
 
 esp_err_t rom_store_init(void);                                  // NVS partition + SD mount (missing card is fine)
 bool      rom_store_sd_present(void);
+bool      rom_store_nvs_ok(void);                                // false: saves and the ROM cache are unavailable
 int       rom_store_scan(tc_rom_entry_t *out, int max);          // 12,288-byte *.bin files, identified (unknown kept)
 bool      rom_store_read_sd(const char *name, uint8_t *rom12288);
 bool      rom_store_cached(uint8_t *rom12288, uint8_t sha1[20]);  // verifies the cached copy's SHA-1

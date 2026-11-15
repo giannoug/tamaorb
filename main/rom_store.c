@@ -14,16 +14,17 @@
 
 static const char *TAG = "roms";
 static bool s_sd;
+static bool s_nvs_ok;
+
+bool rom_store_nvs_ok(void) { return s_nvs_ok; }
 
 esp_err_t rom_store_init(void)
 {
+    // Never erase this partition: it holds every pet. If it can't be opened (e.g. older firmware
+    // booted on newer NVS data), run with saves off and say so.
     esp_err_t err = nvs_flash_init_partition(ROM_STORE_PARTITION);
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "NVS partition %s unusable (%s), erasing", ROM_STORE_PARTITION, esp_err_to_name(err));
-        nvs_flash_erase_partition(ROM_STORE_PARTITION);
-        err = nvs_flash_init_partition(ROM_STORE_PARTITION);
-    }
-    if (err != ESP_OK) return err;
+    s_nvs_ok = err == ESP_OK;
+    if (!s_nvs_ok) ESP_LOGE(TAG, "saves partition unusable (%s); saving is off", esp_err_to_name(err));
     s_sd = board_sd_mount("/sdcard") == ESP_OK;
     ESP_LOGI(TAG, "SD card %s", s_sd ? "mounted" : "not present");
     return ESP_OK;

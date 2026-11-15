@@ -210,6 +210,7 @@ The detailed hardware notes above should live in `docs/hardware/spotpear-ball-12
 
 **Rules:**
 - Catch-up must be faithful. The pet can get hungry, sick or die during the replay, exactly as if it had kept running. No artificial caps.
+- **Catch-up converges.** After replaying the gap, the time that replay took is replayed too, until less than a second is left, so the pet ends at the current time. **(review fix)**
 - **Catch-up progress is saved periodically** (e.g. every few minutes of wall time). Each such save is stamped with a *virtual* time: the original save time plus the emulated time replayed so far. A power cut mid-catch-up then loses at most a few minutes of replay. **(builder's call)**
 - If NTP becomes available only after real-time play has resumed, **don't** retroactively catch up; just record real time in subsequent saves. **(builder's call)**
 - During real-time play, the emulator's time base is `esp_timer` (crystal-driven). NTP only supplies the wall-clock stamps written into saves. Drift correction isn't needed in v1.

@@ -104,6 +104,29 @@ static void test_track_real_two_points_pass_through(void)
     TEST_ASSERT_EQUAL_HEX8(A | C, ui_touch_track(&tr, &t));
 }
 
+// Review finding: after two points, lifting one must leave only the remaining finger's zone.
+static void test_track_lift_first_of_two_keeps_remaining(void)
+{
+    ui_touch_tracker_t tr = { 0 };
+    ui_touch_t t = at(120);
+    ui_touch_track(&tr, &t);                                  // B down
+    t = (ui_touch_t){ 2, { { 120, 100 }, { 210, 140 } } };    // C added
+    TEST_ASSERT_EQUAL_HEX8(B | C, ui_touch_track(&tr, &t));
+    t = at(210);                                              // B lifted
+    TEST_ASSERT_EQUAL_HEX8(C, ui_touch_track(&tr, &t));
+}
+
+static void test_track_lift_a_of_a_c_is_not_chord(void)
+{
+    ui_touch_tracker_t tr = { 0 };
+    ui_touch_t t = at(20);
+    ui_touch_track(&tr, &t);                                  // A down
+    t = (ui_touch_t){ 2, { { 20, 60 }, { 210, 180 } } };      // C added
+    ui_touch_track(&tr, &t);
+    t = at(210);                                              // A lifted
+    TEST_ASSERT_EQUAL_HEX8(C, ui_touch_track(&tr, &t));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -118,5 +141,7 @@ int main(void)
     RUN_TEST(test_track_b_start_never_chords);
     RUN_TEST(test_track_new_touch_restarts);
     RUN_TEST(test_track_real_two_points_pass_through);
+    RUN_TEST(test_track_lift_first_of_two_keeps_remaining);
+    RUN_TEST(test_track_lift_a_of_a_c_is_not_chord);
     return UNITY_END();
 }

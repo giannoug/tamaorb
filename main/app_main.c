@@ -83,8 +83,12 @@ void app_main(void)
         nvs = nvs_flash_init();
     }
     ESP_ERROR_CHECK(nvs);
-    ESP_ERROR_CHECK(rom_store_init());
     ESP_ERROR_CHECK(ui_init());
+    ESP_ERROR_CHECK(rom_store_init());
+    if (!rom_store_nvs_ok()) {
+        ui_message("Storage problem", "Saving is off.\nYour saved pets are\nkept; update the\nfirmware.");
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
     saver_set_time_source(net_now);
     net_start();
 

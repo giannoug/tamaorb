@@ -52,17 +52,25 @@ esp_err_t saver_load(const uint8_t sha1[20], ps_meta_t *meta)
     nvs_close(h);
     int pick = ps_pick_newest(a, &ma, b, &mb);
     if (pick < 0) return ESP_ERR_NOT_FOUND;
-    const ps_meta_t *m = pick ? &mb : &ma;
-    if (!tc_state_load(pick ? pb : pa, pick ? lb : la)) {
-        ESP_LOGW(TAG, "newest save (seq %lu) does not fit this build", (unsigned long)m->seq);
-        return ESP_ERR_INVALID_VERSION;
+    // Keep counting from the highest sequence on flash whatever happens below.
+    s_seq = (a && b) ? ((int32_t)(mb.seq - ma.seq) > 0 ? mb.seq : ma.seq) : (pick ? mb.seq : ma.seq);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        int slot = attempt == 0 ? pick : !pick;
+        bool ok = slot ? b : a;
+        const ps_meta_t *m = slot ? &mb : &ma;
+        if (!ok) continue;
+        if (tc_state_load(slot ? pb : pa, slot ? lb : la)) {
+            *meta = *m;
+            s_next_slot = slot ? 'a' : 'b';  // overwrite the other slot next
+            ESP_LOGI(TAG, "loaded save seq %lu from slot %c (time %lld, %s)", (unsigned long)m->seq, slot ? 'b' : 'a',
+                     (long long)m->unix_time, m->time_trusted ? "trusted" : "untrusted");
+            return ESP_OK;
+        }
+        ESP_LOGW(TAG, "save seq %lu in slot %c does not fit this build", (unsigned long)m->seq, slot ? 'b' : 'a');
     }
-    *meta = *m;
-    s_seq = m->seq;
-    s_next_slot = pick ? 'a' : 'b';  // overwrite the older slot next
-    ESP_LOGI(TAG, "loaded save seq %lu from slot %c (time %lld, %s)", (unsigned long)m->seq, pick ? 'b' : 'a',
-             (long long)m->unix_time, m->time_trusted ? "trusted" : "untrusted");
-    return ESP_OK;
+    // Neither record loads: start fresh, but write into the older slot first so the newest record survives.
+    s_next_slot = pick ? 'a' : 'b';
+    return ESP_ERR_INVALID_VERSION;
 }
 
 void saver_set_time_source(bool (*now)(int64_t *unix_s)) { s_now = now; }

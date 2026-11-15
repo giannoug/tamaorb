@@ -45,6 +45,7 @@ static void ui_task(void *arg)
     // Before the emulator runs: a start-up screen, then the catch-up progress screen.
     uint32_t last_progress_draw = 0;
     bool boot_drawn = false;
+    power_screen_on(true);  // these screens are lit: no light sleep (it would stop the backlight PWM)
     while (emu_phase() != EMU_RUN) {
         if (emu_phase() == EMU_BOOT && !boot_drawn) {
             ui_render_message(s_fb, "TamaOrb", "Starting...", &UI_PALETTE_CLASSIC);
@@ -83,6 +84,7 @@ static void ui_task(void *arg)
             picker_from_play();
             ui_touch_tracker_t probe = { 0 };
             ui_screen_resume(&screen, now_ms(), board_boot_down(), read_touch_buttons(&probe) != 0);
+            power_screen_on(false);
             backlight = false;  // force a fresh pet frame
             continue;
         }

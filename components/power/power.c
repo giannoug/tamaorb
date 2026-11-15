@@ -60,9 +60,13 @@ static void monitor(void *arg)
 
 void power_screen_on(bool on)
 {
-    if (!s_screen_lock) return;
+    // esp_pm locks are counted; track our single hold so repeated calls can't leak a count
+    // (a leaked count kept light sleep off until reboot).
+    static bool held;
+    if (!s_screen_lock || on == held) return;
     if (on) esp_pm_lock_acquire(s_screen_lock);
     else esp_pm_lock_release(s_screen_lock);
+    held = on;
 }
 
 void power_start(void (*save_now)(void), void (*show_low)(void))
