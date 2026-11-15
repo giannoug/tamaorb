@@ -7,10 +7,12 @@
 #include "tc_rom.h"
 #include "tama_core.h"
 
-static uint32_t fake_now;
-static uint32_t now_us(void) { return fake_now; }
-static void sleep_until_us(uint32_t ts) { if ((int32_t)(ts - fake_now) > 0) fake_now = ts; }
-static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us };
+static uint64_t fake_now;
+static uint64_t now_us(void) { return fake_now; }
+static void sleep_until_us(uint64_t ts) { if (ts > fake_now) fake_now = ts; }
+static int tone_on_events;
+static void tone_cb(uint32_t freq_dhz, bool on) { if (on && freq_dhz) tone_on_events++; }
+static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us, .tone = tone_cb };
 
 static bool have_rom;
 static uint16_t program[TC_ROM_WORDS];
@@ -115,6 +117,29 @@ static void test_realtime_equals_fast(void)
     TEST_ASSERT_EQUAL_MEMORY(s1, s2, l1);
 }
 
+// Wall time spent sleeping in real-time mode must match emulated time (measured on hardware:
+// truncating each wait to whole microseconds made the emulator run 0.35 % fast).
+static void test_realtime_pace_matches_wall(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    tc_set_realtime(true);
+    uint64_t t0 = fake_now;
+    uint32_t start = tc_tick_counter();
+    run_seconds(60);
+    int64_t emu_us = (int64_t)(uint32_t)(tc_tick_counter() - start) * 1000000 / 32768;
+    int64_t wall_us = (int64_t)(fake_now - t0);
+    TEST_ASSERT_INT64_WITHIN(5000, emu_us, wall_us);  // within the 2 ms sleep batching plus slack
+}
+
+// Every buzzer change must reach the platform as it happens; polling missed short key clicks.
+static void test_tone_changes_reach_platform(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    tone_on_events = 0;
+    run_seconds(3);  // the P1 plays a sound right after boot
+    TEST_ASSERT_GREATER_THAN(0, tone_on_events);
+}
+
 static void test_load_rejects_wrong_version(void)
 {
     size_t len = tc_state_save(s1, sizeof s1);
@@ -151,5 +176,7 @@ int main(void)
     RUN_TEST(test_frame_changed_sequence);
     RUN_TEST(test_state_roundtrip_deterministic);
     RUN_TEST(test_reset_to_boot_unsticks);
+    RUN_TEST(test_realtime_pace_matches_wall);
+    RUN_TEST(test_tone_changes_reach_platform);
     return UNITY_END();
 }

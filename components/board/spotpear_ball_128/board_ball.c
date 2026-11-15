@@ -37,5 +37,6 @@ esp_err_t board_init(void)
     gpio_config(&boot);
     ESP_RETURN_ON_ERROR(ball_display_init(), TAG, "display");
     if (ball_touch_init() != ESP_OK) ESP_LOGW(TAG, "touch init failed; continuing without touch");
+    if (ball_audio_init() != ESP_OK) ESP_LOGW(TAG, "audio init failed; continuing without sound");
     return ESP_OK;
 }

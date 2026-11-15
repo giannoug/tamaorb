@@ -6,9 +6,9 @@
 #include "tc_time.h"
 #include "tama_core.h"
 
-static uint32_t fake_now;
-static uint32_t now_us(void) { return fake_now; }
-static void sleep_until_us(uint32_t ts) { if ((int32_t)(ts - fake_now) > 0) fake_now = ts; }
+static uint64_t fake_now;
+static uint64_t now_us(void) { return fake_now; }
+static void sleep_until_us(uint64_t ts) { if (ts > fake_now) fake_now = ts; }
 static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us };
 static bool have_rom, inited;
 static uint16_t program[TC_ROM_WORDS];

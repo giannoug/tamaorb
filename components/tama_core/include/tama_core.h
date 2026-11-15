@@ -14,8 +14,9 @@ typedef struct { uint32_t rows[16]; uint8_t icons; } tc_frame_t;  // bit x of ro
 typedef struct { uint32_t freq_dhz; bool on; } tc_tone_t;
 
 typedef struct {
-    uint32_t (*now_us)(void);                 // monotonic, wraps at 2^32
-    void     (*sleep_until_us)(uint32_t ts);  // only called in real-time mode
+    uint64_t (*now_us)(void);                 // monotonic microseconds
+    void     (*sleep_until_us)(uint64_t ts);  // only called in real-time mode
+    void     (*tone)(uint32_t freq_dhz, bool on);  // buzzer changes, called on the emulator task; may be NULL
     void     (*lock)(void);                   // may be NULL (single-threaded hosts)
     void     (*unlock)(void);
 } tc_platform_t;

@@ -33,11 +33,20 @@ static void hal_free(void *p) { (void)p; }
 static void hal_halt(void) {}
 static bool_t hal_is_log_enabled(log_level_t level) { (void)level; return 0; }
 static void hal_log(log_level_t level, char *buff, ...) { (void)level; (void)buff; }
-static timestamp_t hal_get_timestamp(void) { return g_plat->now_us(); }
+// tamalib timestamps are in 1/32768 s units (TC_TICK_HZ). tamalib computes each wait as
+// cycles * ts_freq / cpu_freq with integer division; in microseconds that truncated every
+// instruction and ran the emulator 0.35 % fast. At ts_freq == 32768 Hz the division is exact.
+static uint32_t us_to_ts(uint64_t us) { return (uint32_t)(us * TC_TICK_HZ / 1000000u); }
+
+static timestamp_t hal_get_timestamp(void) { return us_to_ts(g_plat->now_us()); }
 
 static void hal_sleep_until(timestamp_t ts)
 {
-    if ((int32_t)(ts - g_plat->now_us()) >= SLEEP_BATCH_US) g_plat->sleep_until_us(ts);
+    uint64_t now = g_plat->now_us();
+    int32_t ahead_ticks = (int32_t)(ts - us_to_ts(now));
+    if (ahead_ticks <= 0) return;
+    uint64_t ahead_us = ((uint64_t)ahead_ticks * 1000000u + TC_TICK_HZ - 1) / TC_TICK_HZ;
+    if (ahead_us >= SLEEP_BATCH_US) g_plat->sleep_until_us(now + ahead_us);
 }
 
 static void hal_update_screen(void) {}
@@ -56,11 +65,17 @@ static void hal_set_lcd_icon(u8_t icon, bool_t val)
     else     g_back.icons &= (uint8_t)~(1u << icon);
 }
 
+static void tone_changed(void)
+{
+    if (g_plat->tone) g_plat->tone(g_tone.freq_dhz, g_tone.on);
+}
+
 static void hal_set_frequency(u32_t freq)
 {
     lock();
     g_tone.freq_dhz = freq;
     unlock();
+    tone_changed();
 }
 
 static void hal_play_frequency(bool_t en)
@@ -68,6 +83,7 @@ static void hal_play_frequency(bool_t en)
     lock();
     g_tone.on = en;
     unlock();
+    tone_changed();
 }
 
 static int hal_handler(void) { return 0; }
@@ -110,7 +126,7 @@ bool tc_init(const uint16_t *program, const tc_platform_t *plat)
 {
     g_plat = plat;
     tamalib_register_hal(&g_hal_impl);
-    if (tamalib_init(program, NULL, 1000000)) return false;
+    if (tamalib_init(program, NULL, TC_TICK_HZ)) return false;
     tamalib_set_exec_mode(EXEC_MODE_RUN);
     tc_set_realtime(true);
     g_boot_len = tc_state_save(g_boot, sizeof g_boot);
