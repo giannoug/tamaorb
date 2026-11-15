@@ -186,6 +186,7 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
     snprintf(s_host, sizeof s_host, "%s", hostname);
     cJSON_Hooks hooks = { .malloc_fn = ps_malloc, .free_fn = free };
     cJSON_InitHooks(&hooks);
+    rm_set_alloc(ps_malloc);  // remote's look, save and response buffers: PSRAM, not internal RAM
 
     esp_err_t err = mdns_init();
     if (err == ESP_OK) err = mdns_hostname_set(s_host);
@@ -196,7 +197,8 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
     cfg.core_id = 0;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
-    // The spike's 6 KB overflowed under load: MCP look (1 KB text + 1.6 KB PNG raster on the stack) left 56 bytes.
+    // 6 KB overflowed under load before remote's big buffers left the stack. Now about 4.4 KB stays free in the
+    // worst case measured; the margin covers the NVS and SD paths (ADR 0005).
     cfg.stack_size = 8192;
     cfg.max_uri_handlers = 12;
     cfg.uri_match_fn = httpd_uri_match_wildcard;

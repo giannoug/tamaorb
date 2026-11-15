@@ -359,6 +359,43 @@ static void test_look_and_press(void)
     expect_err(409, "catching up", NULL);
 }
 
+static int s_allocs;
+static void *counting_alloc(size_t n) { s_allocs++; return malloc(n); }
+static void *failing_alloc(size_t n) { (void)n; return NULL; }
+
+static void test_big_buffers_come_from_rm_alloc(void)
+{
+    rm_set_alloc(counting_alloc);
+    s_allocs = 0;
+    go(RM_GET, "/api/look", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL(4, s_allocs);  // text, PNG, base64, response body
+    s_allocs = 0;
+    go(RM_GET, "/api/pets", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(2, s_allocs);  // pet list, response body
+
+    rm_set_alloc(failing_alloc);
+    go(RM_GET, "/api/look", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(500, resp.status);
+    rm_set_alloc(NULL);  // back to malloc
+    go(RM_GET, "/api/look", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+}
+
+static void test_body_parsed_by_length(void)
+{
+    // Not NUL-terminated: anything past body_len must be ignored.
+    static const char raw[] = "{\"volume\":3}garbage";
+    rfree();
+    rm_req_t rq = {0};
+    rq.method = RM_PATCH; rq.path = "/api/settings"; rq.self_name = "tamaorb";
+    rq.body = (const uint8_t *)raw; rq.body_len = 12;
+    memset(&resp, 0, sizeof resp);
+    rm_http_handle(&fake_ops, &rq, &resp);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL(3, fake.settings.volume);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -382,5 +419,7 @@ int main(void)
     RUN_TEST(test_pets_and_switch);
     RUN_TEST(test_switch_catching_up_409);
     RUN_TEST(test_look_and_press);
+    RUN_TEST(test_big_buffers_come_from_rm_alloc);
+    RUN_TEST(test_body_parsed_by_length);
     return UNITY_END();
 }

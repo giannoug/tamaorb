@@ -24,7 +24,7 @@ static void set_json(rm_resp_t *r, int status, cJSON *j)  // takes ownership
         return;
     }
     r->body_len = strlen(s);
-    r->body = malloc(r->body_len + 1);
+    r->body = rm_alloc(r->body_len + 1);
     if (!r->body) { r->status = 500; r->body_len = 0; cJSON_free(s); return; }
     memcpy(r->body, s, r->body_len + 1);
     cJSON_free(s);
@@ -91,13 +91,8 @@ bool rm_origin_allowed(const char *origin, const char *self_name, const char *se
 static cJSON *parse_body(const rm_req_t *q)  // NULL if absent, too deep or not JSON
 {
     if (!q->body || !q->body_len) return NULL;
-    char *s = malloc(q->body_len + 1);
-    if (!s) return NULL;
-    memcpy(s, q->body, q->body_len);
-    s[q->body_len] = 0;
-    cJSON *j = rm_json_depth_ok(s, q->body_len, RM_JSON_MAX_DEPTH) ? cJSON_Parse(s) : NULL;
-    free(s);
-    return j;
+    const char *s = (const char *)q->body;  // parsed in place, by length: no copy of up to 16 KB
+    return rm_json_depth_ok(s, q->body_len, RM_JSON_MAX_DEPTH) ? cJSON_ParseWithLength(s, q->body_len) : NULL;
 }
 
 static bool query_get(const char *query, const char *key, char *out, size_t cap)
@@ -144,7 +139,7 @@ static int match_save_path(const char *path, uint8_t sha[20])
 
 static int find_pet(const rm_ops_t *ops, const uint8_t sha[20], rm_pet_t *out)  // 1 found, 0 not, -1 oom
 {
-    rm_pet_t *pets = malloc(sizeof *pets * PETS_MAX);
+    rm_pet_t *pets = rm_alloc(sizeof *pets * PETS_MAX);
     if (!pets) return -1;
     int n = ops->list_pets(ops->ctx, pets, PETS_MAX);
     int found = 0;
@@ -208,7 +203,7 @@ static void h_wifi(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
 
 static void h_pets(const rm_ops_t *ops, rm_resp_t *r)
 {
-    rm_pet_t *pets = malloc(sizeof *pets * PETS_MAX);
+    rm_pet_t *pets = rm_alloc(sizeof *pets * PETS_MAX);
     if (!pets) { set_json(r, 500, NULL); return; }
     int n = ops->list_pets(ops->ctx, pets, PETS_MAX);
     cJSON *j = rm_json_pets(pets, n);
@@ -228,16 +223,19 @@ static void h_switch(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
     set_ok(r, true, true);
 }
 
+#define PNG_CAP 4096
+#define TEXT_CAP 1024
+
 static void look_reply(const rm_ops_t *ops, rm_resp_t *r)
 {
     rm_look_t l;
     ops->look(ops->ctx, &l);
-    char text[1024];
-    uint8_t *png = malloc(4096);
-    char *b64 = malloc(4 * ((4096 + 2) / 3) + 1);
+    char *text = rm_alloc(TEXT_CAP);  // off the httpd stack
+    uint8_t *png = rm_alloc(PNG_CAP);
+    char *b64 = rm_alloc(4 * ((PNG_CAP + 2) / 3) + 1);
     cJSON *j = NULL;
-    size_t tn = rm_look_text(&l, text, sizeof text);
-    size_t pn = png ? rm_look_png(&l, png, 4096) : 0;
+    size_t tn = text ? rm_look_text(&l, text, TEXT_CAP) : 0;
+    size_t pn = png ? rm_look_png(&l, png, PNG_CAP) : 0;
     if (b64 && tn && pn) {
         rm_base64_encode(png, pn, b64);
         j = cJSON_CreateObject();
@@ -246,6 +244,7 @@ static void look_reply(const rm_ops_t *ops, rm_resp_t *r)
             cJSON_AddStringToObject(j, "png", b64);
         }
     }
+    free(text);
     free(png);
     free(b64);
     set_json(r, j ? 200 : 500, j);
@@ -271,7 +270,7 @@ static void h_save_get(const rm_ops_t *ops, const uint8_t sha[20], rm_resp_t *r)
     int f = find_pet(ops, sha, &pet);
     if (f < 0) { set_json(r, 500, NULL); return; }
     if (!f) { set_err(r, 404, "not found", NULL); return; }
-    uint8_t *buf = malloc(SAVE_MAX);
+    uint8_t *buf = rm_alloc(SAVE_MAX);
     if (!buf) { set_json(r, 500, NULL); return; }
     size_t len = 0;
     ps_meta_t meta;
@@ -303,7 +302,7 @@ static void h_save_put(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha
     rm_pet_t pet;
     int f = find_pet(ops, sha, &pet);
     if (f < 0) { set_json(r, 500, NULL); return; }
-    uint8_t *rec = malloc(q->body_len);
+    uint8_t *rec = rm_alloc(q->body_len);  // import_save re-stamps it in place
     if (!rec) { set_json(r, 500, NULL); return; }
     memcpy(rec, q->body, q->body_len);
     rm_err_t e = ops->import_save(ops->ctx, sha, rec, q->body_len, mode);

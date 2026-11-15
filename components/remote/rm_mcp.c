@@ -116,18 +116,21 @@ static cJSON *tool_json(cJSON *j)  // takes ownership
     return r;
 }
 
+#define PNG_CAP 4096
+#define TEXT_CAP 1024
+
 static cJSON *look_result(const rm_ops_t *ops)
 {
     rm_look_t l;
     ops->look(ops->ctx, &l);
-    char text[1024];
-    size_t tn = rm_look_text(&l, text, sizeof text);
-    uint8_t *png = malloc(4096);
-    char *b64 = malloc(4 * ((4096 + 2) / 3) + 1);
+    // Off the stack: this runs deep in the httpd task.
+    char *text = rm_alloc(TEXT_CAP);
+    uint8_t *png = rm_alloc(PNG_CAP);
+    char *b64 = rm_alloc(4 * ((PNG_CAP + 2) / 3) + 1);
     cJSON *r = NULL;
-    if (!png || !b64 || !tn) goto done;
-    size_t pn = rm_look_png(&l, png, 4096);
-    if (!pn) goto done;
+    size_t tn = text ? rm_look_text(&l, text, TEXT_CAP) : 0;
+    size_t pn = png ? rm_look_png(&l, png, PNG_CAP) : 0;
+    if (!b64 || !tn || !pn) goto done;
     rm_base64_encode(png, pn, b64);
     r = tool_result(text, false);
     cJSON *img = cJSON_CreateObject();
@@ -137,6 +140,7 @@ static cJSON *look_result(const rm_ops_t *ops)
     cJSON_AddStringToObject(img, "mimeType", "image/png");
     cJSON_AddItemToArray(cJSON_GetObjectItem(r, "content"), img);
 done:
+    free(text);
     free(png);
     free(b64);
     return r ? r : tool_result("could not render the screen", true);
@@ -201,9 +205,10 @@ static cJSON *tools_call(const rm_ops_t *ops, const cJSON *params)
         r = tool_json(rm_json_settings(&s));
     } else if (!strcmp(t, "set_settings")) r = tool_set_settings(ops, args);
     else if (!strcmp(t, "list_pets")) {
-        rm_pet_t pets[16];
-        int n = ops->list_pets(ops->ctx, pets, 16);
-        r = tool_json(rm_json_pets(pets, n < 0 ? 0 : n));
+        rm_pet_t *pets = rm_alloc(sizeof *pets * 16);  // ~1.7 KB: off the httpd stack
+        int n = pets ? ops->list_pets(ops->ctx, pets, 16) : 0;
+        r = pets ? tool_json(rm_json_pets(pets, n < 0 ? 0 : n)) : tool_result("out of memory", true);
+        free(pets);
     } else if (!strcmp(t, "switch_pet")) r = tool_switch_pet(ops, args);
     else r = tool_error("unknown tool: %s", t);
     cJSON_Delete(own);

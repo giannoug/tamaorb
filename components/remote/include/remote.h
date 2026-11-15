@@ -101,6 +101,12 @@ typedef struct {
     void *ctx;
 } rm_ops_t;
 
+// Large short-lived buffers (look text and PNG, request and save copies, pet lists, REST response bodies) come
+// from rm_alloc, which is malloc unless the device sets another allocator (it picks PSRAM, keeping them out of
+// internal RAM). Whatever it returns must be releasable with free(). NULL restores malloc.
+void rm_set_alloc(void *(*alloc)(size_t n));
+void *rm_alloc(size_t n);
+
 // Shared by MCP and REST. Result objects are cJSON trees; the caller deletes them (NULL on out of memory).
 cJSON *rm_json_settings(const st_settings_t *s);  // numbers as numbers, enums and strings as strings
 // Applies a JSON object patch all-or-nothing to *s. NULL ok, else the first bad key ("" if not an object).
@@ -138,7 +144,7 @@ typedef struct {
     int status;  // never 0 after rm_http_handle
     const char *content_type;
     char disposition[96];  // Content-Disposition value, empty if none
-    uint8_t *body;         // malloc'd, owned by the caller; NULL if empty
+    uint8_t *body;         // from rm_alloc, owned by the caller (free()); NULL if empty
     size_t body_len;
 } rm_resp_t;
 

@@ -36,22 +36,10 @@ static uint8_t *chunk(uint8_t *o, const char *type, const uint8_t *data, size_t 
 
 size_t rm_look_png(const rm_look_t *l, uint8_t *out, size_t cap)
 {
-    uint8_t raw[RAW_BYTES];
-    memset(raw, 0xFF, sizeof raw);
-    for (int y = 0; y < RM_PNG_H; y++) raw[y * (ROW_BYTES + 1)] = 0;  // filter: none
-    for (int y = 0; y < 16; y++)
-        for (int x = 0; x < 32; x++)
-            if ((l->frame.rows[y] >> x) & 1)
-                for (int dy = 0; dy < 4; dy++)
-                    for (int dx = 0; dx < 4; dx++) ink(raw, x * 4 + dx, 16 + y * 4 + dy);
-    for (int i = 0; i < 8; i++) {
-        if (!(l->frame.icons & (1u << i))) continue;
-        const char *const *art = (i == 3 && l->model == TC_MODEL_P2) ? UI_ICON_P2_MEDICINE : UI_ICONS[i];
-        draw_icon(raw, art, 10 + 32 * (i % 4), i < 4 ? 0 : 84);
-    }
-
-    size_t blocks = (RAW_BYTES + STORED_MAX - 1) / STORED_MAX;
-    size_t zlen = 2 + RAW_BYTES + 5 * blocks + 4;
+    // One stored deflate block holds the whole raster, so it is drawn straight into its place in out:
+    // no raster copy on the caller's (httpd) stack.
+    _Static_assert(RAW_BYTES <= STORED_MAX, "the raster must fit one stored block");
+    size_t zlen = 2 + 5 + RAW_BYTES + 4;
     size_t total = 8 + (12 + 13) + (12 + zlen) + 12;
     if (cap < total) return 0;
 
@@ -65,27 +53,34 @@ size_t rm_look_png(const rm_look_t *l, uint8_t *out, size_t cap)
     ihdr[8] = 1; ihdr[9] = 0; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
     o = chunk(o, "IHDR", ihdr, sizeof ihdr);
 
-    // IDAT: build the zlib stream in place after the chunk header.
+    // IDAT: length, type, zlib header, the stored block's header, the raster, Adler-32, CRC.
     uint8_t *z = o + 8;
-    size_t zi = 0;
-    z[zi++] = 0x78;
-    z[zi++] = 0x01;
+    z[0] = 0x78;
+    z[1] = 0x01;
+    z[2] = 1;  // final block, stored
+    z[3] = RAW_BYTES & 0xFF; z[4] = RAW_BYTES >> 8;
+    uint16_t nlen = (uint16_t)~(uint16_t)RAW_BYTES;
+    z[5] = nlen & 0xFF; z[6] = nlen >> 8;
+    uint8_t *raw = z + 7;
+    memset(raw, 0xFF, RAW_BYTES);
+    for (int y = 0; y < RM_PNG_H; y++) raw[y * (ROW_BYTES + 1)] = 0;  // filter: none
+    for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 32; x++)
+            if ((l->frame.rows[y] >> x) & 1)
+                for (int dy = 0; dy < 4; dy++)
+                    for (int dx = 0; dx < 4; dx++) ink(raw, x * 4 + dx, 16 + y * 4 + dy);
+    for (int i = 0; i < 8; i++) {
+        if (!(l->frame.icons & (1u << i))) continue;
+        const char *const *art = (i == 3 && l->model == TC_MODEL_P2) ? UI_ICON_P2_MEDICINE : UI_ICONS[i];
+        draw_icon(raw, art, 10 + 32 * (i % 4), i < 4 ? 0 : 84);
+    }
     uint32_t a = 1, b = 0;
     for (size_t k = 0; k < RAW_BYTES; k++) { a = (a + raw[k]) % 65521; b = (b + a) % 65521; }
-    for (size_t off = 0; off < RAW_BYTES; off += STORED_MAX) {
-        size_t n = RAW_BYTES - off < STORED_MAX ? RAW_BYTES - off : STORED_MAX;
-        z[zi++] = (off + n == RAW_BYTES) ? 1 : 0;
-        z[zi++] = n & 0xFF; z[zi++] = n >> 8;
-        z[zi++] = ~n & 0xFF; z[zi++] = (~n >> 8) & 0xFF;
-        memcpy(z + zi, raw + off, n);
-        zi += n;
-    }
-    put32(z + zi, b << 16 | a);
-    zi += 4;
-    put32(o, (uint32_t)zi);
+    put32(raw + RAW_BYTES, b << 16 | a);
+    put32(o, (uint32_t)zlen);
     memcpy(o + 4, "IDAT", 4);
-    put32(o + 8 + zi, ps_crc32(o + 4, 4 + zi));
-    o += 12 + zi;
+    put32(o + 8 + zlen, ps_crc32(o + 4, 4 + zlen));
+    o += 12 + zlen;
     o = chunk(o, "IEND", NULL, 0);
     return (size_t)(o - out);
 }

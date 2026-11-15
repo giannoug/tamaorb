@@ -5,6 +5,11 @@
 #include <string.h>
 #include "remote.h"
 
+static void *(*s_alloc)(size_t n) = malloc;
+
+void rm_set_alloc(void *(*alloc)(size_t n)) { s_alloc = alloc ? alloc : malloc; }
+void *rm_alloc(size_t n) { return s_alloc(n); }
+
 size_t rm_base64_encode(const uint8_t *in, size_t len, char *out)
 {
     static const char A[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
