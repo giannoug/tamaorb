@@ -130,8 +130,8 @@ The detailed hardware notes above should live in `docs/hardware/spotpear-ball-12
 ### 5.2 Touch → buttons
 
 - The screen is split into three vertical thirds: x < 80 = **A** (left), 80–159 = **B** (middle), ≥ 160 = **C** (right). These map to tamalib `BTN_LEFT`, `BTN_MIDDLE`, `BTN_RIGHT`.
-- **Press semantics:** a button stays pressed for as long as a finger is down in its zone, so long-presses work. A finger moving into another zone releases the old button and presses the new one. **(builder's call)**
-- **Two-point touch is supported.** Each active point presses its zone's button, so A+C works by holding two fingers. The earlier slide-from-A-to-C workaround is dropped. **(builder's call; owner didn't object)**
+- **Press semantics:** a button stays pressed for as long as a finger is down. A single finger keeps the button it started on while it moves, so sliding never presses something else by accident. **(builder's call)**
+- **A+C:** touch A and slide to C (or C to A); both are held until the finger lifts. Measured on hardware: the CST816D averages two fingers at the same height into one point, so a real two-finger A+C isn't reliable. When the chip does separate two fingers (diagonal placements), each point presses its own zone. **(builder's call, owner confirmed the slide on hardware)**
 - **Feedback:** the held zone gets a faint tint.
 - Touch coordinates may need mirroring to match the display orientation. Verify on hardware.
 

@@ -5,6 +5,7 @@
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_check.h"
+#include "esp_log.h"
 
 static const char *TAG = "board";
 
@@ -32,6 +33,9 @@ esp_err_t board_init(void)
     gpio_set_direction(PIN_AMP_EN, GPIO_MODE_OUTPUT);
     gpio_set_level(PIN_AMP_EN, 0);
     backlight_init();
+    gpio_config_t boot = { .pin_bit_mask = 1ULL << PIN_BOOT, .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE };
+    gpio_config(&boot);
     ESP_RETURN_ON_ERROR(ball_display_init(), TAG, "display");
+    if (ball_touch_init() != ESP_OK) ESP_LOGW(TAG, "touch init failed; continuing without touch");
     return ESP_OK;
 }
