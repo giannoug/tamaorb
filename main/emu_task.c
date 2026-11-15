@@ -2,6 +2,7 @@
 // Emulator task: runs tamalib in real time on core 1 (spec §8).
 #include "emu_task.h"
 #include "board.h"
+#include "press_task.h"
 #include "saver.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -30,7 +31,8 @@ static void lock(void) { taskENTER_CRITICAL(&s_mux); }
 static void unlock(void) { taskEXIT_CRITICAL(&s_mux); }
 
 // Buzzer changes go straight to the audio driver: polling from the UI task missed short key clicks.
-static void tone(uint32_t freq_dhz, bool on) { board_tone(freq_dhz / 10, on); }
+// agent_feedback = silent mutes the speaker during agent press sequences (one flag read, spec §8.2).
+static void tone(uint32_t freq_dhz, bool on) { board_tone(freq_dhz / 10, on && !g_agent_mute); }
 
 static const tc_platform_t s_plat = { .now_us = now_us, .sleep_until_us = sleep_until_us, .tone = tone,
                                       .lock = lock, .unlock = unlock };
@@ -44,8 +46,11 @@ static bool s_saved_trusted;
 static volatile uint32_t s_done_s, s_total_s;  // 32-bit: read from the other core without tearing
 static volatile uint32_t s_eta_s;
 static int64_t s_catchup_t0, s_last_progress_save;
+static volatile float s_catchup_speed;  // x real time of this boot's catch-up; 0 until one has run
 
 emu_phase_t emu_phase(void) { return s_phase; }
+
+float emu_catchup_speed(void) { return s_catchup_speed > 0 ? s_catchup_speed : 24.0f; }
 
 void emu_catchup_progress(uint64_t *done_s, uint64_t *total_s, uint32_t *eta_s)
 {
@@ -79,8 +84,9 @@ static void run_catchup(void)
     // Converges: the wall time spent replaying is replayed too, so the pet ends at "now".
     uint64_t ran = tc_catchup_converge(s_catchup_s * TC_TICK_HZ, now_us, catchup_cb, NULL, TC_TICK_HZ * 10);
     double wall = (double)(esp_timer_get_time() - s_catchup_t0) / 1e6;
-    ESP_LOGI(TAG, "caught up %llu s in %.1f s (%.1fx)", (unsigned long long)(ran / TC_TICK_HZ), wall,
-             wall > 0 ? (double)ran / TC_TICK_HZ / wall : 0);
+    double speed = wall > 0 ? (double)ran / TC_TICK_HZ / wall : 0;
+    ESP_LOGI(TAG, "caught up %llu s in %.1f s (%.1fx)", (unsigned long long)(ran / TC_TICK_HZ), wall, speed);
+    if (speed > 0) s_catchup_speed = (float)speed;
     saver_request();  // stamp the caught-up state with the current time
 }
 

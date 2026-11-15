@@ -149,6 +149,19 @@ static void test_load_rejects_wrong_version(void)
     TEST_ASSERT_FALSE(tc_state_load(s1, len - 1));
 }
 
+// The restore path checks an uploaded payload without loading it into the running emulator.
+static void test_state_compatible(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    size_t len = tc_state_save(s1, sizeof s1);
+    TEST_ASSERT_GREATER_THAN(0, len);
+    TEST_ASSERT_TRUE(tc_state_compatible(s1, len));
+    TEST_ASSERT_FALSE(tc_state_compatible(s1, len - 1));
+    s1[0]++;
+    TEST_ASSERT_FALSE(tc_state_compatible(s1, len));
+    TEST_ASSERT_FALSE(tc_state_compatible(NULL, 0));
+}
+
 static void test_post_buttons_mask(void)
 {
     tc_post_buttons(TC_BTN_MASK(TC_BTN_B));
@@ -187,6 +200,7 @@ int main(void)
     RUN_TEST(test_post_buttons_mask);
     RUN_TEST(test_remote_buttons_or_touch);
     RUN_TEST(test_load_rejects_wrong_version);
+    RUN_TEST(test_state_compatible);
     RUN_TEST(test_boots_and_draws);
     RUN_TEST(test_frame_changed_sequence);
     RUN_TEST(test_state_roundtrip_deterministic);

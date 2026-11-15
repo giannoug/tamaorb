@@ -305,6 +305,12 @@ bool tc_state_load(const uint8_t *buf, size_t len)
     return true;
 }
 
+// The state length is fixed for a build; tc_init measured it (g_boot_len), so no walk over live state here.
+bool tc_state_compatible(const uint8_t *buf, size_t len)
+{
+    return buf && g_boot_len && len == g_boot_len && buf[0] == STATE_VERSION;
+}
+
 uint8_t tc_applied_buttons(void) { return g_applied; }
 
 #ifdef TC_TESTING

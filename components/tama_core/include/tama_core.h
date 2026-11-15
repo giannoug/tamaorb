@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // tamalib wrapper. Portable: no ESP-IDF headers.
-// Threading: tc_post_buttons, tc_post_remote_buttons, tc_get_frame, tc_frame_changed and tc_get_tone may be called
-// from any task. Everything else must run on the emulator task.
+// Threading: tc_post_buttons, tc_post_remote_buttons, tc_get_frame, tc_frame_changed, tc_get_tone and
+// tc_state_compatible may be called from any task. Everything else must run on the emulator task.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -34,6 +34,8 @@ uint32_t tc_tick_counter(void);
 size_t   tc_state_size(void);
 size_t   tc_state_save(uint8_t *buf, size_t cap);
 bool     tc_state_load(const uint8_t *buf, size_t len);
+// Version byte and length match this build; no load. Any task, after tc_init.
+bool     tc_state_compatible(const uint8_t *buf, size_t len);
 
 typedef bool (*tc_catchup_cb)(uint64_t done_ticks, uint64_t total_ticks, void *ctx);  // return false to stop early
 // Runs at full speed until `ticks` emulated ticks have passed (wrap-safe), calling cb every
