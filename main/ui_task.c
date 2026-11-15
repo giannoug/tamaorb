@@ -86,7 +86,9 @@ static void ui_task(void *arg)
 void ui_task_start(tc_model_t model)
 {
     s_model = model;
-    s_fb = heap_caps_malloc(UI_W * UI_H * sizeof(uint16_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    // PSRAM: internal RAM can't spare 115 KB once Wi-Fi runs (measured). The display driver
+    // copies each frame into small internal DMA bands, so the framebuffer itself needn't be internal.
+    s_fb = heap_caps_malloc(UI_W * UI_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!s_fb) {
         ESP_LOGE(TAG, "no memory for framebuffer");
         return;
