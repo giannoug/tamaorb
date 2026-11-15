@@ -111,7 +111,9 @@ The detailed hardware notes above should live in `docs/hardware/spotpear-ball-12
 - The 32×16 LCD is drawn at **6× = 192×96**, at x 24–216, y 72–168.
 - Each LCD pixel is a 5×5 square with a 1 px gap, giving a visible pixel grid. Unlit pixels are drawn in a faint "ghost" shade, lit pixels dark, on a greenish-grey LCD background. No smoothing anywhere.
 - **Icons:** 4 above (centred at about y 48) and 4 below (about y 192), at x ≈ 57, 97, 143, 183. Unlit icons are drawn in the ghost colour.
-- The icon bitmaps are **our own original pixel art**, one set per model (P1, P2). A generic set is only a fallback for future models that don't have their own yet. Never copy Bandai's or TamaTool's artwork.
+- The icon bitmaps are **our own original pixel art**. P1 and P2 share **one set**; the only per-model difference is **Medicine**: a syringe on P1, a bottle and spoon on P2. This was confirmed against TamaTool's `p1-icons.png` and `p2-icons.png`.
+- The icons depict the real concepts, in ROM order: cutlery, bulb, bat and ball, medicine (top row); duck, scale/gauge, scolding mouth, two faces (bottom row). That way players recognise them.
+- **Reference only, never traced:** MAME's `tama.svg` (in the owner's ROM zips) and TamaTool's icon PNGs. Never copy Bandai, MAME or TamaTool artwork.
 - **Visual reference:** the design canvas "TamaOrb Display" (https://claude.ai/artifact/TJ6TCPiuNZTi4x8PnRNLAk, private to the owner). It holds:
   - the pet screen (interactive, 2× scale);
   - three LCD palettes: Classic (default), Neutral and Night;
@@ -223,8 +225,8 @@ Recognised by SHA-1 of the 12,288-byte ROM file. The format is the same as MAME'
 
 | Model | SHA-1 | CRC32 | Icon set |
 |---|---|---|---|
-| P1 (Gen 1, world) | `4b4979cf92dc9d2fb6d7295a38f209f3da144f72` | `5c864cb1` | P1 |
-| P2 (Gen 2, Japan) | `09e5101b37636a314fc599d5d69b4846721b3c88` | `9f97539e` | P2 |
+| P1 (Gen 1, world) | `4b4979cf92dc9d2fb6d7295a38f209f3da144f72` | `5c864cb1` | shared set, syringe |
+| P2 (Gen 2, Japan) | `09e5101b37636a314fc599d5d69b4846721b3c88` | `9f97539e` | shared set, bottle and spoon |
 
 Known but not enabled in v1:
 - Angel: `f5899bb7717756ac581451cf16cf97d909961c5c`, 16,384 bytes
