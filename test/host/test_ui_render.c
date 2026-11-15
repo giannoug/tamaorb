@@ -107,6 +107,16 @@ static void test_hints_toggle(void)
     TEST_ASSERT_EQUAL_HEX16(BG, PX(79, 11));
 }
 
+static void test_palette_lookup(void)
+{
+    ui_rgb_t bg = ui_palette_by_id(1)->bg, ink = ui_palette_by_id(2)->ink;
+    TEST_ASSERT_EQUAL_HEX8(0xC4, bg.r); TEST_ASSERT_EQUAL_HEX8(0xC6, bg.g); TEST_ASSERT_EQUAL_HEX8(0xBD, bg.b);
+    TEST_ASSERT_EQUAL_HEX8(0xA9, ink.r); TEST_ASSERT_EQUAL_HEX8(0xD3, ink.g); TEST_ASSERT_EQUAL_HEX8(0x8E, ink.b);
+    TEST_ASSERT_TRUE(ui_palette_by_id(9) == &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(ui_palette_by_id(-1) == &UI_PALETTE_CLASSIC);
+    for (int i = 0; i < 3; i++) TEST_ASSERT_EQUAL_UINT8(11, ui_palette_by_id(i)->ghost_pct);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -119,5 +129,6 @@ int main(void)
     RUN_TEST(test_p2_medicine_differs);
     RUN_TEST(test_held_zone_tint);
     RUN_TEST(test_hints_toggle);
+    RUN_TEST(test_palette_lookup);
     return UNITY_END();
 }
