@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Move Tamagotchi ROMs to a TamaOrb over USB, and set it up.
+
+  tamaorb-rom.py push roms/tama.zip roms/tamag2.zip   # MAME zips or raw .bin dumps
+  tamaorb-rom.py list
+  tamaorb-rom.py remove tama.bin
+  tamaorb-rom.py wifi "My Network"                    # prompts for the password
+  tamaorb-rom.py status
+
+Talks the "@TO" line protocol (docs: components/hostlink/include/hostlink.h) over the same
+USB serial port used for flashing. Only P1 and P2 dumps are sent; nothing else leaves the PC.
+"""
+import argparse
+import base64
+import getpass
+import hashlib
+import pathlib
+import sys
+import time
+import zipfile
+from dataclasses import dataclass
+
+# SHA-1 of the supported dumps (MAME src/mame/handheld/hh_e0c6200.cpp, spec §7.1).
+KNOWN = {
+    "4b4979cf92dc9d2fb6d7295a38f209f3da144f72": "P1",
+    "09e5101b37636a314fc599d5d69b4846721b3c88": "P2",
+}
+ROM_BYTES = 12288
+CHUNK = 768
+
+
+class ToolError(Exception):
+    pass
+
+
+@dataclass
+class Rom:
+    name: str
+    data: bytes
+    model: str
+
+
+def _identify(name, data):
+    sha = hashlib.sha1(data).hexdigest()
+    model = KNOWN.get(sha) if len(data) == ROM_BYTES else None
+    if not model:
+        print(f"  skipping {name}: not a supported P1/P2 dump (sha1 {sha[:10]}...)")
+        return None
+    return Rom(pathlib.PurePath(name).name, data, model)
+
+
+def roms_from_path(path):
+    """Supported ROMs in a .bin file or a MAME .zip (test ROMs and artwork are skipped)."""
+    path = pathlib.Path(path)
+    found = []
+    if path.suffix.lower() == ".zip":
+        with zipfile.ZipFile(path) as z:
+            for info in z.infolist():
+                if info.filename.lower().endswith(".bin") and info.file_size == ROM_BYTES:
+                    rom = _identify(info.filename, z.read(info))
+                    if rom:
+                        found.append(rom)
+                elif not info.is_dir():
+                    print(f"  skipping {info.filename}")
+    else:
+        rom = _identify(path.name, path.read_bytes())
+        if rom:
+            found.append(rom)
+    return found
+
+
+def chunk_lines(data):
+    for seq, off in enumerate(range(0, len(data), CHUNK)):
+        yield f"@TO D {seq} " + base64.b64encode(data[off:off + CHUNK]).decode()
+
+
+class Link:
+    def __init__(self, port, timeout=5.0):
+        self.port = port
+        self.timeout = timeout
+
+    def _send(self, line):
+        self.port.write((line + "\n").encode())
+        self.port.flush()
+
+    def _reply(self):
+        """Next protocol line; log output from the device is skipped."""
+        deadline = time.monotonic() + self.timeout
+        while time.monotonic() < deadline:
+            raw = self.port.readline()
+            if not raw:
+                continue
+            line = raw.decode(errors="replace").strip()
+            if line.startswith("@TO ERR"):
+                raise ToolError(f"device error: {line[8:]}")
+            if line.startswith("@TO "):
+                return line
+        raise ToolError("no reply from the device (is TamaOrb running on this port?)")
+
+    def _expect(self, want):
+        got = self._reply()
+        if got != want:
+            raise ToolError(f"unexpected reply: {got!r} (wanted {want!r})")
+
+    def push(self, rom):
+        self._send(f"@TO PUT {rom.name} {len(rom.data)} {hashlib.sha1(rom.data).hexdigest()}")
+        self._expect("@TO OK")
+        for seq, line in enumerate(chunk_lines(rom.data)):
+            self._send(line)
+            self._expect(f"@TO OK {seq}")
+        self._send("@TO END")
+        got = self._reply()
+        if not got.startswith("@TO OK "):
+            raise ToolError(f"unexpected reply: {got!r}")
+        return got[7:]
+
+    def list(self):
+        self._send("@TO LIST")
+        items = []
+        while True:
+            line = self._reply()
+            if line == "@TO OK":
+                return items
+            if line.startswith("@TO ITEM "):
+                name, model, sha = line[9:].split(" ")
+                items.append((name, model, sha))
+
+    def remove(self, name):
+        self._send(f"@TO RM {name}")
+        self._expect("@TO OK")
+
+    def wifi(self, ssid, password):
+        b = lambda s: base64.b64encode(s.encode()).decode()
+        self._send(f"@TO WIFI {b(ssid)} {b(password)}" if password else f"@TO WIFI {b(ssid)}")
+        self._expect("@TO OK")
+
+    def status(self):
+        self._send("@TO STATUS")
+        return self._reply()[11:]
+
+
+def open_port(name):
+    import serial  # pyserial; imported here so the tests don't need a port
+
+    s = serial.Serial()
+    s.port, s.baudrate, s.timeout = name, 115200, 0.2
+    s.dtr = s.rts = False  # toggling these resets the ESP32-S3
+    s.open()
+    return s
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--port", default="/dev/ttyACM0")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("push", help="send ROMs (.bin or MAME .zip)")
+    p.add_argument("files", nargs="+")
+    sub.add_parser("list", help="list ROMs on the device's SD card")
+    r = sub.add_parser("remove", help="delete a ROM from the SD card")
+    r.add_argument("name")
+    w = sub.add_parser("wifi", help="set Wi-Fi credentials (the device reboots)")
+    w.add_argument("ssid")
+    w.add_argument("--password")
+    sub.add_parser("status", help="show device status")
+    args = ap.parse_args(argv)
+
+    try:
+        if args.cmd == "push":
+            roms = [rom for f in args.files for rom in roms_from_path(f)]
+            if not roms:
+                raise ToolError("no supported ROMs found")
+        link = Link(open_port(args.port))
+        if args.cmd == "push":
+            for rom in roms:
+                print(f"{rom.name} ({rom.model}): ", end="", flush=True)
+                print(f"written ({link.push(rom)})")
+        elif args.cmd == "list":
+            for name, model, sha in link.list():
+                print(f"{name:24} {model:8} {sha}")
+        elif args.cmd == "remove":
+            link.remove(args.name)
+            print(f"removed {args.name}")
+        elif args.cmd == "wifi":
+            password = args.password if args.password is not None else getpass.getpass("Password (empty for open): ")
+            link.wifi(args.ssid, password)
+            print("saved; the device is rebooting to connect")
+        elif args.cmd == "status":
+            print(link.status())
+    except (ToolError, OSError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
