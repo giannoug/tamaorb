@@ -1,0 +1,3 @@
+[submodule "components/tamalib/upstream"]
+	path = components/tamalib/upstream
+	url = https://github.com/jcrona/tamalib.git
