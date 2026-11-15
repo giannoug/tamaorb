@@ -45,13 +45,21 @@ static void press_task(void *arg)
             }
             bool over = rm_press_done(&p, now) || atomic_load(&s_abandon);
             uint8_t mask = over ? 0 : rm_press_mask(&p, now);
+            // Window and mute go up before a press reaches the emulator (core 1), so not even the first click of
+            // a silent sequence can sound; they come down only after the release is posted.
+            if (!over) {
+                s_window = true;
+                g_agent_mute = cfg.agent_feedback == ST_AGENT_SILENT;
+            }
             if (mask != posted) {
                 tc_post_remote_buttons(mask);  // ORed with touch; not touch activity for the screen
                 posted = mask;
             }
-            s_window = !over;
-            g_agent_mute = !over && cfg.agent_feedback == ST_AGENT_SILENT;
-            if (over) break;
+            if (over) {
+                s_window = false;
+                g_agent_mute = false;
+                break;
+            }
             vTaskDelayUntil(&wake, pdMS_TO_TICKS(TICK_MS));
         }
         tc_post_remote_buttons(0);
