@@ -39,3 +39,21 @@ typedef struct { uint8_t buttons; bool backlight; } ui_screen_out_t;
 void ui_screen_init(ui_screen_t *s, uint32_t now_ms);  // starts on
 ui_screen_out_t ui_screen_update(ui_screen_t *s, uint32_t now_ms, uint8_t touch_buttons,
                                  bool boot_down, bool sound_on, uint32_t timeout_ms);
+
+// ---- Text screens (spec §5.5; layouts from the design canvas, ASCII only) ----
+// Draws with the 8x8 font; '\n' starts a new line (11 px * scale below). Returns the text width.
+int  ui_draw_text(uint16_t *fb, int x, int y, const char *s, uint8_t scale, uint16_t color);
+int  ui_text_width(const char *line, uint8_t scale);  // first line only; the trailing blank column is excluded
+void ui_render_message(uint16_t *fb, const char *title, const char *body, const ui_palette_t *p);
+void ui_render_catchup(uint16_t *fb, uint64_t done_s, uint64_t total_s, uint32_t eta_s, const ui_palette_t *p);
+void ui_render_low_battery(uint16_t *fb, const ui_palette_t *p);
+void ui_render_picker(uint16_t *fb, const char *const *names, const char *const *subs,
+                      int n, int selected, const ui_palette_t *p);
+
+// Picker geometry, shared with the touch handling that selects entries.
+#define UI_PICKER_X      40
+#define UI_PICKER_W      160
+#define UI_PICKER_TOP    70
+#define UI_PICKER_H      32
+#define UI_PICKER_STEP   37
+#define UI_PICKER_MAX    3
