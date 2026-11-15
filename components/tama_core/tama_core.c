@@ -2,6 +2,7 @@
 #include <string.h>
 #include "tama_core.h"
 #include "tamalib.h"
+#include "tc_time.h"
 
 #define STATE_VERSION     1
 #define PUBLISH_TICKS     (32768u / 30u)   // publish a frame every 1/30 s of emulated time
@@ -128,13 +129,49 @@ void tc_set_realtime(bool realtime)
     tamalib_set_exec_mode(EXEC_MODE_RUN);  // re-syncs tamalib's reference timestamp
 }
 
+#ifdef TC_TESTING
+static uint32_t (*g_tick_source)(void);
+static void (*g_step_hook)(void);
+void tc_debug_set_tick_source(uint32_t (*fn)(void)) { g_tick_source = fn; }
+void tc_debug_set_step_hook(void (*fn)(void)) { g_step_hook = fn; }
+static uint32_t ticks_now(void) { return g_tick_source ? g_tick_source() : tc_tick_counter(); }
+#else
+static uint32_t ticks_now(void) { return tc_tick_counter(); }
+#endif
+
+static void step_once(void)
+{
+    tamalib_step();
+#ifdef TC_TESTING
+    if (g_step_hook) g_step_hook();
+#endif
+    if (!g_published_once || (uint32_t)(tc_tick_counter() - g_last_publish_tick) >= PUBLISH_TICKS) publish();
+}
+
 void tc_step(uint32_t n)
 {
     apply_buttons();
-    while (n--) {
-        tamalib_step();
-        if (!g_published_once || (uint32_t)(tc_tick_counter() - g_last_publish_tick) >= PUBLISH_TICKS) publish();
+    while (n--) step_once();
+}
+
+uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_every_ticks)
+{
+    tc_set_realtime(false);
+    uint64_t done = 0;
+    uint64_t next_cb = cb_every_ticks ? cb_every_ticks : UINT64_MAX;
+    uint32_t prev = ticks_now();
+    while (done < ticks) {  // input is ignored during catch-up (spec §6.4)
+        step_once();
+        uint32_t now = ticks_now();
+        done += tc_ticks_since(prev, now);
+        prev = now;
+        if (cb && done >= next_cb) {
+            if (!cb(done, ticks, ctx)) break;
+            next_cb += cb_every_ticks;
+        }
     }
+    tc_set_realtime(true);
+    return done;
 }
 
 void tc_post_buttons(uint8_t mask)

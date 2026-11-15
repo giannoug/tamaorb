@@ -33,6 +33,13 @@ size_t   tc_state_size(void);
 size_t   tc_state_save(uint8_t *buf, size_t cap);
 bool     tc_state_load(const uint8_t *buf, size_t len);
 
+typedef bool (*tc_catchup_cb)(uint64_t done_ticks, uint64_t total_ticks, void *ctx);  // return false to stop early
+// Runs at full speed until `ticks` emulated ticks have passed (wrap-safe), calling cb every
+// cb_every_ticks (0 = never). Restores real-time mode. Returns ticks actually run.
+uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_every_ticks);
+
 #ifdef TC_TESTING
 uint8_t  tc_debug_applied_buttons(void);
+void     tc_debug_set_tick_source(uint32_t (*fn)(void));  // NULL = tamalib's counter
+void     tc_debug_set_step_hook(void (*fn)(void));        // called after every tamalib step
 #endif
