@@ -110,7 +110,7 @@ static void ui_task(void *arg)
         if (usb && !usb_was) ui_screen_wake(&screen, now_ms());
         usb_was = usb;
         ui_screen_out_t out = ui_screen_update(&screen, now_ms(), ui_touch_track(&tracker, &t),
-                                               board_boot_down(), tone.on, usb ? 0 : cfg.off_battery_s * 1000u);
+                                               board_boot_down(), tone.on, false /* Task 9 */, usb ? 0 : cfg.off_battery_s * 1000u);
         tc_post_buttons(out.buttons);
         if (ui_screen_long_press(&screen)) {
             tc_post_buttons(0);

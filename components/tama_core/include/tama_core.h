@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // tamalib wrapper. Portable: no ESP-IDF headers.
-// Threading: tc_post_buttons, tc_get_frame, tc_frame_changed and tc_get_tone may be called
+// Threading: tc_post_buttons, tc_post_remote_buttons, tc_get_frame, tc_frame_changed and tc_get_tone may be called
 // from any task. Everything else must run on the emulator task.
 #pragma once
 #include <stdbool.h>
@@ -26,6 +26,7 @@ void     tc_reset_to_boot(void);
 void     tc_set_realtime(bool realtime);
 void     tc_step(uint32_t n);
 void     tc_post_buttons(uint8_t mask);
+void     tc_post_remote_buttons(uint8_t mask);  // any task; applied mask = touch mask | remote mask
 void     tc_get_frame(tc_frame_t *out);
 bool     tc_frame_changed(uint32_t *seq);
 void     tc_get_tone(tc_tone_t *out);

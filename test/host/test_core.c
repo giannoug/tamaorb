@@ -160,6 +160,20 @@ static void test_post_buttons_mask(void)
     TEST_ASSERT_EQUAL_HEX8(0, tc_debug_applied_buttons());
 }
 
+static void test_remote_buttons_or_touch(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    tc_post_buttons(TC_BTN_MASK(TC_BTN_A));
+    tc_post_remote_buttons(TC_BTN_MASK(TC_BTN_C));
+    tc_step(1);
+    TEST_ASSERT_EQUAL_HEX8(TC_BTN_MASK(TC_BTN_A) | TC_BTN_MASK(TC_BTN_C), tc_debug_applied_buttons());
+    tc_post_remote_buttons(0);
+    tc_step(1);
+    TEST_ASSERT_EQUAL_HEX8(TC_BTN_MASK(TC_BTN_A), tc_debug_applied_buttons());
+    tc_post_buttons(0);
+    tc_step(1);
+}
+
 int main(void)
 {
     static uint8_t rom[TC_ROM_BYTES];
@@ -171,6 +185,7 @@ int main(void)
     inited = tc_init(program, &plat);
     TEST_ASSERT_TRUE(inited);
     RUN_TEST(test_post_buttons_mask);
+    RUN_TEST(test_remote_buttons_or_touch);
     RUN_TEST(test_load_rejects_wrong_version);
     RUN_TEST(test_boots_and_draws);
     RUN_TEST(test_frame_changed_sequence);

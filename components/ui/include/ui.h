@@ -49,9 +49,10 @@ typedef struct {
 typedef struct { uint8_t buttons; bool backlight; } ui_screen_out_t;
 
 void ui_screen_init(ui_screen_t *s, uint32_t now_ms);  // starts on
+// sound_quiet: while true a sound neither wakes the screen nor counts as activity.
 // timeout_ms == 0: no automatic timeout (e.g. on USB power); BOOT can still switch the screen off.
 ui_screen_out_t ui_screen_update(ui_screen_t *s, uint32_t now_ms, uint8_t touch_buttons,
-                                 bool boot_down, bool sound_on, uint32_t timeout_ms);
+                                 bool boot_down, bool sound_on, bool sound_quiet, uint32_t timeout_ms);
 void ui_screen_wake(ui_screen_t *s, uint32_t now_ms);  // e.g. USB plugged in
 // True while the screen is on but has been idle (no touch, sound or BOOT) for at least dim_ms.
 bool ui_screen_dimmed(const ui_screen_t *s, uint32_t now_ms, uint32_t dim_ms);
