@@ -179,6 +179,7 @@ static cJSON *tool_switch_pet(const rm_ops_t *ops, const cJSON *args)
     case RM_OK: return tool_result("switching: the ball saves this pet and restarts shortly", false);
     case RM_ERR_NOTFOUND: return tool_result("no such pet", true);
     case RM_ERR_BUSY: return tool_result("busy", true);
+    case RM_ERR_CATCHUP: return tool_result("the pet is catching up; try again when it finishes", true);
     default: return tool_result("switch failed", true);
     }
 }

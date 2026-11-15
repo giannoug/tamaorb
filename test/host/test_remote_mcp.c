@@ -306,6 +306,15 @@ static void test_switch_pet(void)
     cJSON_Delete(r);
 }
 
+static void test_switch_pet_during_catchup(void)
+{
+    fake.switch_result = RM_ERR_CATCHUP;
+    cJSON *r = tool("switch_pet", "{\"name\":\"other.bin\"}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_EQUAL_STRING("the pet is catching up; try again when it finishes", text0(r));
+    cJSON_Delete(r);
+}
+
 static void test_resources(void)
 {
     cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}", NULL);
@@ -426,6 +435,7 @@ int main(void)
     RUN_TEST(test_patch_settings_types);
     RUN_TEST(test_status_and_pets_json);
     RUN_TEST(test_switch_pet);
+    RUN_TEST(test_switch_pet_during_catchup);
     RUN_TEST(test_resources);
     RUN_TEST(test_resources_read_guide);
     RUN_TEST(test_hostile_input);
