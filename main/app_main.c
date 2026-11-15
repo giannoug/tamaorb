@@ -6,6 +6,7 @@
 #include "freertos/task.h"
 #include "board.h"
 #include "ui.h"
+#include "rom_store.h"
 
 static const char *TAG = "tamaorb";
 static uint16_t s_fb[UI_W * UI_H];
@@ -14,6 +15,15 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "TamaOrb %s", esp_app_get_description()->version);
     ESP_ERROR_CHECK(board_init());
+    ESP_ERROR_CHECK(rom_store_init());
+    static tc_rom_entry_t roms[8];
+    static uint8_t cached[TC_ROM_BYTES];
+    uint8_t csha[20];
+    int n = rom_store_scan(roms, 8), idx = -1;
+    for (int i = 0; i < n; i++) ESP_LOGI(TAG, "SD ROM %s: %s", roms[i].name, tc_model_name(roms[i].model));
+    bool have_cached = rom_store_cached(cached, csha);
+    tc_sel_action_t sel = tc_rom_select(have_cached, roms, n, &idx);
+    ESP_LOGI(TAG, "cached=%d selection=%d (0 cached, 1 sd, 2 picker, 3 none) idx=%d", have_cached, sel, idx);
 
     // Bring-up (Tasks 9-10): test pattern; held zones tint under the finger;
     // BOOT toggles colour bars (red, green, blue, white, palette bg, palette ink from top to bottom).
