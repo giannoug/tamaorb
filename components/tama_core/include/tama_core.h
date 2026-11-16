@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // tamalib wrapper. Portable: no ESP-IDF headers.
-// Threading: tc_post_buttons, tc_post_remote_buttons, tc_get_frame, tc_frame_changed, tc_get_tone and
+// Threading: tc_post_buttons, tc_post_remote_buttons, tc_get_frame, tc_get_ram, tc_frame_changed, tc_get_tone and
 // tc_state_compatible may be called from any task. Everything else must run on the emulator task.
 #pragma once
 #include <stdbool.h>
@@ -28,6 +28,10 @@ void     tc_step(uint32_t n);
 void     tc_post_buttons(uint8_t mask);
 void     tc_post_remote_buttons(uint8_t mask);  // any task; applied mask = touch mask | remote mask
 void     tc_get_frame(tc_frame_t *out);
+#define TC_RAM_NIBBLES 0x300
+// Any task. Copies up to n RAM nibbles (one per byte, 0-15, address order from 0x000) from the last
+// published snapshot; returns the count (0 before the first publish, at most the build's RAM size).
+size_t   tc_get_ram(uint8_t *out, size_t n);
 bool     tc_frame_changed(uint32_t *seq);
 void     tc_get_tone(tc_tone_t *out);
 uint32_t tc_tick_counter(void);

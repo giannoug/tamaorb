@@ -15,12 +15,12 @@ set(ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(COMP ${ROOT}/components)
 
 add_compile_options(-Wall -Wextra -Wno-unused-parameter)
-add_compile_definitions(TC_TESTING TAMAORB_ROM_DIR_DEFAULT="${CMAKE_BINARY_DIR}/roms")
+add_compile_definitions(TAMAORB_ROOT_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/../.." TC_TESTING TAMAORB_ROM_DIR_DEFAULT="${CMAKE_BINARY_DIR}/roms")
 
 # Portable sources, grouped per component. Later tasks append to these lists.
 set(TAMALIB_SRC ${COMP}/tamalib/upstream/cpu.c ${COMP}/tamalib/upstream/hw.c ${COMP}/tamalib/upstream/tamalib.c)
 set_source_files_properties(${TAMALIB_SRC} PROPERTIES COMPILE_OPTIONS "-Wno-maybe-uninitialized;-Wno-sign-compare;-Wno-unused-variable;-Wno-unused-but-set-variable")
-set(TAMA_CORE_SRC ${COMP}/tama_core/tc_rom.c ${COMP}/tama_core/tc_sha1.c ${COMP}/tama_core/tama_core.c ${COMP}/tama_core/tc_time.c ${COMP}/tama_core/tc_rom_select.c ${TAMALIB_SRC})
+set(TAMA_CORE_SRC ${COMP}/tama_core/tc_rom.c ${COMP}/tama_core/tc_sha1.c ${COMP}/tama_core/tama_core.c ${COMP}/tama_core/tc_time.c ${COMP}/tama_core/tc_rom_select.c ${COMP}/tama_core/tc_pet.c ${TAMALIB_SRC})
 set(TAMA_CORE_INC ${COMP}/tama_core/include ${COMP}/tamalib ${COMP}/tamalib/upstream)
 
 set(UI_SRC ${COMP}/ui/ui_palette.c ${COMP}/ui/ui_pet.c ${COMP}/ui/ui_icons.c ${COMP}/ui/ui_font.c ${COMP}/ui/ui_touch.c ${COMP}/ui/ui_screen.c ${COMP}/ui/ui_text.c)
@@ -57,6 +57,7 @@ endfunction()
 tamaorb_test(test_rom ${TAMA_CORE_SRC})
 tamaorb_test(test_core ${TAMA_CORE_SRC})
 tamaorb_test(test_time ${TAMA_CORE_SRC})
+tamaorb_test(test_pet ${TAMA_CORE_SRC} ${PERSIST_SRC})
 tamaorb_test(test_ui_render ${UI_SRC})
 tamaorb_test(test_ui_touch ${UI_SRC})
 tamaorb_test(test_ui_screen ${UI_SRC})

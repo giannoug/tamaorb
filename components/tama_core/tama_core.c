@@ -12,6 +12,7 @@ static const tc_platform_t *g_plat;
 static bool g_realtime;
 
 static tc_frame_t g_back, g_front;
+static uint8_t g_front_ram[MEM_RAM_SIZE / 2];  // packed like state->memory, copied with the frame
 static uint32_t g_front_seq;
 static uint32_t g_last_publish_tick;
 static bool g_published_once;
@@ -109,6 +110,7 @@ static void publish(void)
 {
     lock();
     g_front = g_back;
+    memcpy(g_front_ram, tamalib_get_state()->memory, sizeof g_front_ram);
     g_front_seq++;
     unlock();
     g_last_publish_tick = tc_tick_counter();
@@ -211,6 +213,21 @@ void tc_post_remote_buttons(uint8_t mask)
     lock();
     g_remote = mask & 0x07;
     unlock();
+}
+
+size_t tc_get_ram(uint8_t *out, size_t n)
+{
+    if (!g_plat) return 0;
+    if (n > MEM_RAM_SIZE) n = MEM_RAM_SIZE;
+    // Only the packed bytes are copied under the lock (core 1 takes it to publish); they're unpacked after.
+    uint8_t packed[sizeof g_front_ram];
+    size_t bytes = (n + 1) / 2;  // the bytes holding nibbles 0..n-1, two per byte from address 0
+    lock();
+    if (g_front_seq == 0) n = bytes = 0;  // nothing published yet
+    memcpy(packed, g_front_ram, bytes);
+    unlock();
+    for (size_t a = 0; a < n; a++) out[a] = GET_RAM_MEMORY(packed, a);
+    return n;
 }
 
 void tc_get_frame(tc_frame_t *out)

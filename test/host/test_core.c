@@ -6,6 +6,7 @@
 #include "test_support.h"
 #include "tc_rom.h"
 #include "tama_core.h"
+#include "cpu.h"
 
 static uint64_t fake_now;
 static uint64_t now_us(void) { return fake_now; }
@@ -187,6 +188,28 @@ static void test_remote_buttons_or_touch(void)
     tc_step(1);
 }
 
+static void test_ram_snapshot_follows_publish(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    run_seconds(1);
+    size_t len = tc_state_save(s1, sizeof s1);
+    TEST_ASSERT_GREATER_THAN(0, len);
+    // The packed memory is the tail of the state; the RAM nibble pair (0x010, 0x011) is byte 8 of it.
+    s1[len - MEM_BUFFER_SIZE + 8] = 0x5A;
+    TEST_ASSERT_TRUE(tc_state_load(s1, len));  // publishes
+    uint8_t ram[TC_RAM_NIBBLES + 8];
+    memset(ram, 0xEE, sizeof ram);
+    TEST_ASSERT_EQUAL(MEM_RAM_SIZE, tc_get_ram(ram, sizeof ram));
+    TEST_ASSERT_EQUAL_HEX8(0xA, ram[0x010]);
+    TEST_ASSERT_EQUAL_HEX8(0x5, ram[0x011]);
+    TEST_ASSERT_EQUAL_HEX8(0xEE, ram[TC_RAM_NIBBLES]);  // nothing written past the RAM size
+    TEST_ASSERT_EQUAL(4, tc_get_ram(ram, 4));           // n caps the copy
+    memset(ram, 0xEE, sizeof ram);
+    TEST_ASSERT_EQUAL(0x11, tc_get_ram(ram, 0x11));     // odd n: the low nibble of the pair only
+    TEST_ASSERT_EQUAL_HEX8(0xA, ram[0x010]);
+    TEST_ASSERT_EQUAL_HEX8(0xEE, ram[0x011]);
+}
+
 int main(void)
 {
     static uint8_t rom[TC_ROM_BYTES];
@@ -195,6 +218,8 @@ int main(void)
 
     UNITY_BEGIN();
     RUN_TEST(test_realtime_equals_fast);
+    uint8_t early[4];
+    TEST_ASSERT_EQUAL(0, tc_get_ram(early, sizeof early));  // nothing published yet
     inited = tc_init(program, &plat);
     TEST_ASSERT_TRUE(inited);
     RUN_TEST(test_post_buttons_mask);
@@ -207,5 +232,6 @@ int main(void)
     RUN_TEST(test_reset_to_boot_unsticks);
     RUN_TEST(test_realtime_pace_matches_wall);
     RUN_TEST(test_tone_changes_reach_platform);
+    RUN_TEST(test_ram_snapshot_follows_publish);
     return UNITY_END();
 }
