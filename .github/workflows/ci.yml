@@ -38,3 +38,25 @@ jobs:
         with:
           esp_idf_version: v6.1.1
           target: esp32s3
+
+  fuzz:
+    name: Parser fuzz (ASan/UBSan, short run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build the fuzzer
+        run: |
+          cmake -S test/host -B build-fuzz -DTAMAORB_FUZZ=ON -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-fuzz --target fuzz_parsers -j"$(nproc)"
+      - name: Fuzz 300k inputs
+        working-directory: build-fuzz
+        run: ./fuzz_parsers 300000 "$GITHUB_RUN_NUMBER"
+      - name: Keep the crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash
+          path: build-fuzz/fuzz-crash.bin
+          if-no-files-found: ignore

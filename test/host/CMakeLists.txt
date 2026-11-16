@@ -73,3 +73,16 @@ tamaorb_test(test_remote_http ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PE
 # Eyeballing aid, not a test: build-host/render_preview out.ppm [held_mask]
 add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})
 target_include_directories(render_preview PRIVATE ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui)
+
+# Coverage-guided parser fuzzer (not part of ctest): cmake -DTAMAORB_FUZZ=ON, then build-host/fuzz_parsers [iterations] [seed]
+option(TAMAORB_FUZZ "Build the parser fuzzer with ASan/UBSan" OFF)
+if(TAMAORB_FUZZ)
+    set(FUZZ_SAN -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    add_library(fuzz_targets OBJECT ${REMOTE_SRC} ${SETTINGS_SRC} ${PERSIST_SRC} ${HOSTLINK_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/fake_ops.c)
+    target_include_directories(fuzz_targets PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui ${PERSIST_INC} ${HOSTLINK_INC} ${SETTINGS_INC} ${REMOTE_INC})
+    target_compile_options(fuzz_targets PRIVATE ${FUZZ_SAN} -fsanitize-coverage=trace-pc -O1 -g)
+    add_executable(fuzz_parsers ${CMAKE_CURRENT_SOURCE_DIR}/fuzz_parsers.c $<TARGET_OBJECTS:fuzz_targets> ${UI_SRC} ${TAMA_CORE_SRC})
+    target_include_directories(fuzz_parsers PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui ${PERSIST_INC} ${HOSTLINK_INC} ${SETTINGS_INC} ${REMOTE_INC})
+    target_compile_options(fuzz_parsers PRIVATE ${FUZZ_SAN} -O1 -g)
+    target_link_options(fuzz_parsers PRIVATE ${FUZZ_SAN})
+endif()
