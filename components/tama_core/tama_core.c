@@ -39,7 +39,10 @@ static void hal_log(log_level_t level, char *buff, ...) { (void)level; (void)buf
 // instruction and ran the emulator 0.35 % fast. At ts_freq == 32768 Hz the division is exact.
 static uint32_t us_to_ts(uint64_t us) { return (uint32_t)(us * TC_TICK_HZ / 1000000u); }
 
-static timestamp_t hal_get_timestamp(void) { return us_to_ts(g_plat->now_us()); }
+// In fast mode (catch-up) tamalib still asks for the time after every instruction, but only keeps it as the
+// reference for the next real-time wait, which tc_set_realtime(true) re-syncs anyway. Skipping the clock
+// read there saves one platform call per emulated instruction.
+static timestamp_t hal_get_timestamp(void) { return g_realtime ? us_to_ts(g_plat->now_us()) : 0; }
 
 static void hal_sleep_until(timestamp_t ts)
 {
