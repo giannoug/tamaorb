@@ -1,31 +1,40 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+
 jobs:
-  firmware:
-    runs-on: ubuntu-latest
-    container: espressif/idf:v6.1.1
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Build
-        shell: bash
-        run: |
-          . $IDF_PATH/export.sh
-          idf.py set-target esp32s3 build
   host-tests:
+    name: Host tests (portable core)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Host tests (ROM-gated tests skip without ROMs)
+      - name: Build and run Unity tests
         run: test/host/run.sh
+
   tool-tests:
+    name: Tool tests (Python)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r tools/requirements.txt && pytest -q tools
+      - run: pip install -r tools/requirements.txt
+      - run: pytest tools
+
+  firmware:
+    name: Firmware build (ESP-IDF v6.1.1, esp32s3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.1.1
+          target: esp32s3
