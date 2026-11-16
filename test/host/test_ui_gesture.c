@@ -18,21 +18,21 @@ typedef struct { const char *name; int n; ui_touch_t s[16]; } seq_t;
 
 // Every sequence starts outside all bands (x and y in 24..215) -- except where noted, the finger may drift.
 static const seq_t SEQS[] = {
-    { "tap A", 3, { P1(30, 120), P1(30, 120), UP } },
-    { "tap B", 3, { P1(120, 120), P1(121, 121), UP } },
-    { "tap C", 3, { P1(200, 120), P1(200, 120), UP } },
+    { "tap A", 3, { P1(30, 200), P1(30, 200), UP } },
+    { "tap B", 3, { P1(120, 200), P1(121, 121), UP } },
+    { "tap C", 3, { P1(200, 200), P1(200, 200), UP } },
     { "hold B", 6, { P1(120, 100), P1(120, 100), P1(120, 100), P1(120, 100), P1(120, 100), UP } },
-    { "slide A to C", 6, { P1(30, 120), P1(70, 120), P1(120, 120), P1(170, 120), P1(220, 120), UP } },
-    { "slide C to A, from just inside the band", 5, { P1(215, 120), P1(150, 120), P1(100, 120), P1(30, 120), UP } },
-    { "two points A+C, just inside the bands", 4, { P2(24, 120, 215, 120), P2(24, 120, 215, 120), P2(24, 120, 215, 120), UP } },
-    { "two points then one", 5, { P2(30, 120, 120, 120), P2(30, 120, 120, 120), P1(120, 120), P1(120, 120), UP } },
-    { "slide A to B", 4, { P1(30, 120), P1(100, 120), P1(110, 120), UP } },
-    { "one then two", 5, { P1(30, 120), P1(30, 120), P2(30, 120, 200, 120), P1(200, 120), UP } },
+    { "slide A to C", 6, { P1(30, 200), P1(70, 200), P1(120, 200), P1(170, 200), P1(220, 200), UP } },
+    { "slide C to A, from just inside the band", 5, { P1(215, 200), P1(150, 200), P1(100, 200), P1(30, 200), UP } },
+    { "two points A+C, just inside the bands", 4, { P2(24, 200, 215, 200), P2(24, 200, 215, 200), P2(24, 200, 215, 200), UP } },
+    { "two points then one", 5, { P2(30, 200, 120, 200), P2(30, 200, 120, 200), P1(120, 200), P1(120, 200), UP } },
+    { "slide A to B", 4, { P1(30, 200), P1(100, 200), P1(110, 200), UP } },
+    { "one then two", 5, { P1(30, 200), P1(30, 200), P2(30, 200, 200, 200), P1(200, 200), UP } },
     { "starts below the top band, drifts up into it", 6, { P1(120, 30), P1(120, 24), P1(120, 15), P1(120, 3), P1(120, 3), UP } },
     { "starts above the bottom band, drifts down into it", 5, { P1(40, 210), P1(40, 215), P1(40, 230), P1(40, 239), UP } },
     { "drifts up through the band while sliding", 5, { P1(30, 30), P1(100, 10), P1(200, 2), P1(220, 0), UP } },
-    { "rapid taps", 11, { P1(30, 120), UP, P1(120, 120), UP, P1(200, 120), UP, P1(30, 120), P1(30, 120), UP, P1(120, 120) } },
-    { "rapid taps, same zone", 6, { P1(120, 120), UP, P1(120, 120), UP, P1(120, 120), UP } },
+    { "rapid taps", 11, { P1(30, 200), UP, P1(120, 200), UP, P1(200, 200), UP, P1(30, 200), P1(30, 200), UP, P1(120, 200) } },
+    { "rapid taps, same zone", 6, { P1(120, 200), UP, P1(120, 200), UP, P1(120, 200), UP } },
 };
 
 static void test_pet_taps_identical_to_tracker(void)
@@ -73,13 +73,13 @@ static void test_band_touch_never_presses(void)
         feed(&g, UI_GMODE_PET, 1, xs[i], ys[i], &ev, &b);
         TEST_ASSERT_EQUAL_HEX8(0, b);
     }
-    ui_touch_t two = P2(30, 120, 220, 120);
+    ui_touch_t two = P2(30, 200, 220, 200);
     TEST_ASSERT_EQUAL_HEX8(0, ui_gesture_feed(&g, UI_GMODE_PET, &two, 0, &ev));
-    feed(&g, UI_GMODE_PET, 1, 100, 120, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, 100, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(0, b);  // the rest of the touch stays inert until all fingers lift
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
     // the next touch, outside the bands, presses normally
-    feed(&g, UI_GMODE_PET, 1, 120, 120, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, 120, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(B, b);
     // bottom band too
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
@@ -249,7 +249,7 @@ static void test_second_finger_band_does_not_swipe(void)
     ui_touch_t s = P2(30, 237, 200, 5);
     ui_gesture_feed(&g, UI_GMODE_PET, &s, 90, &ev);
     ui_touch_t d = P2(30, 237 - UI_SWIPE_DIST, 200, 5 + UI_SWIPE_DIST);
-    ui_gesture_feed(&g, UI_GMODE_PET, &d, 120, &ev);
+    ui_gesture_feed(&g, UI_GMODE_PET, &d, 200, &ev);
     TEST_ASSERT_EQUAL(UI_G_SWIPE_UP, ev.kind);
 }
 
@@ -260,27 +260,27 @@ static void test_reset_ignores_held_touch(void)
     ui_gevent_t ev;
     uint8_t b;
     ui_gesture_reset(&g);
-    TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, 120, 120, &ev, &b));
+    TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, 120, 200, &ev, &b));
     TEST_ASSERT_EQUAL_HEX8(0, b);
-    feed(&g, UI_GMODE_PET, 1, 30, 120, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, 30, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(0, b);
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
-    feed(&g, UI_GMODE_PET, 1, 120, 120, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, 120, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(B, b);
     // menu: held touch after reset yields no tap
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
     ui_gesture_reset(&g);
-    feed(&g, UI_GMODE_MENU, 1, 120, 120, &ev, &b);
+    feed(&g, UI_GMODE_MENU, 1, 120, 200, &ev, &b);
     TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_MENU, 0, 0, 0, &ev, &b));
     // reset with nothing held does not swallow the next touch
     ui_gesture_reset(&g);
     feed(&g, UI_GMODE_MENU, 0, 0, 0, &ev, &b);
-    feed(&g, UI_GMODE_MENU, 1, 120, 120, &ev, &b);
+    feed(&g, UI_GMODE_MENU, 1, 120, 200, &ev, &b);
     TEST_ASSERT_EQUAL(UI_G_TAP, feed(&g, UI_GMODE_MENU, 0, 0, 0, &ev, &b));
     // a mode change mid-touch leaves the rest of that touch inert
-    feed(&g, UI_GMODE_PET, 1, 30, 120, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, 30, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(A, b);
-    feed(&g, UI_GMODE_MENU, 1, 30, 120, &ev, &b);
+    feed(&g, UI_GMODE_MENU, 1, 30, 200, &ev, &b);
     TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_MENU, 0, 0, 0, &ev, &b));
 }
 
@@ -306,10 +306,10 @@ static void test_rect_geometry_bands_scale_with_smaller_side(void)
     feed(&g, UI_GMODE_PET, 1, 470, 150, &ev, &b);  // x >= 500 - 30
     TEST_ASSERT_EQUAL_HEX8(0, b);
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
-    feed(&g, UI_GMODE_PET, 1, 30, 150, &ev, &b);  // just outside it
+    feed(&g, UI_GMODE_PET, 1, 30, 200, &ev, &b);  // just outside it (y in the pet button strip)
     TEST_ASSERT_EQUAL_HEX8(A, b);
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
-    feed(&g, UI_GMODE_PET, 1, 469, 150, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, 469, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(C, b);
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
 
@@ -320,11 +320,13 @@ static void test_rect_geometry_bands_scale_with_smaller_side(void)
     TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, 50, 100, &ev, &b));
     TEST_ASSERT_EQUAL(UI_G_SWIPE_DOWN, feed(&g, UI_GMODE_PET, 1, 50, 109, &ev, &b));
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
-    feed(&g, UI_GMODE_PET, 1, 50, 389, &ev, &b);  // 400 - 10 = 390 is the bottom band
-    TEST_ASSERT_EQUAL_HEX8(A, b);
+    // 400 - 10 = 390 is the bottom band: a touch from 389 can't swipe up, one from 390 can
+    feed(&g, UI_GMODE_PET, 1, 50, 389, &ev, &b);
+    TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, 50, 389 - 100, &ev, &b));
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
     feed(&g, UI_GMODE_PET, 1, 50, 390, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(0, b);
+    TEST_ASSERT_EQUAL(UI_G_SWIPE_UP, feed(&g, UI_GMODE_PET, 1, 50, 390 - 100, &ev, &b));
 }
 
 static void test_side_band_touch_is_inert(void)
@@ -335,20 +337,20 @@ static void test_side_band_touch_is_inert(void)
     uint8_t b;
     // left-edge tap and hold press nothing
     for (int i = 0; i < 4; i++) {
-        TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, 5, 120, &ev, &b));
+        TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, 5, 200, &ev, &b));
         TEST_ASSERT_EQUAL_HEX8(0, b);
     }
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(0, b);
     // right-edge swipe toward the centre: nothing, no event, whole touch inert
-    TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, 235, 120, &ev, &b));
+    TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, 235, 200, &ev, &b));
     for (int x = 200; x >= 20; x -= 30) {
-        TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, x, 120, &ev, &b));
+        TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, x, 200, &ev, &b));
         TEST_ASSERT_EQUAL_HEX8(0, b);
     }
-    feed(&g, UI_GMODE_PET, 1, 120, 120, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, 120, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(0, b);
-    ui_touch_t two = P2(30, 120, 220, 120);
+    ui_touch_t two = P2(30, 200, 220, 200);
     TEST_ASSERT_EQUAL_HEX8(0, ui_gesture_feed(&g, UI_GMODE_PET, &two, 0, &ev));
     TEST_ASSERT_EQUAL(UI_G_NONE, ev.kind);
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
@@ -358,7 +360,7 @@ static void test_side_band_touch_is_inert(void)
     TEST_ASSERT_EQUAL(UI_G_NONE, feed(&g, UI_GMODE_PET, 1, 4, 100 + UI_SWIPE_DIST + 10, &ev, &b));
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
     // the next touch outside the bands presses normally
-    feed(&g, UI_GMODE_PET, 1, 120, 120, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, 120, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(B, b);
 }
 
@@ -371,7 +373,7 @@ static void test_side_band_boundary_matches_tracker(void)
         memset(&g, 0, sizeof g);
         ui_touch_tracker_t tr = { 0 };
         ui_gevent_t ev;
-        ui_touch_t t = P1(xs[i], 120), up = UP;
+        ui_touch_t t = P1(xs[i], 200), up = UP;
         TEST_ASSERT_EQUAL_HEX8(ui_touch_track(&tr, &t), ui_gesture_feed(&g, UI_GMODE_PET, &t, 0, &ev));
         TEST_ASSERT_NOT_EQUAL(0, ui_touch_track(&tr, &t));
         TEST_ASSERT_EQUAL_HEX8(i ? C : A, ui_gesture_feed(&g, UI_GMODE_PET, &t, 0, &ev));
@@ -382,10 +384,10 @@ static void test_side_band_boundary_matches_tracker(void)
     memset(&g, 0, sizeof g);
     ui_gevent_t ev;
     uint8_t b;
-    feed(&g, UI_GMODE_PET, 1, UI_EDGE_BAND - 1, 120, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, UI_EDGE_BAND - 1, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(0, b);
     feed(&g, UI_GMODE_PET, 0, 0, 0, &ev, &b);
-    feed(&g, UI_GMODE_PET, 1, w - UI_EDGE_BAND, 120, &ev, &b);
+    feed(&g, UI_GMODE_PET, 1, w - UI_EDGE_BAND, 200, &ev, &b);
     TEST_ASSERT_EQUAL_HEX8(0, b);
 }
 
@@ -411,7 +413,7 @@ static void test_menu_side_swipe_unchanged(void)
     memset(&g, 0, sizeof g);
     ui_gevent_t ev;
     uint8_t b;
-    feed(&g, UI_GMODE_MENU, 1, 5, 120, &ev, &b);
+    feed(&g, UI_GMODE_MENU, 1, 5, 200, &ev, &b);
     feed(&g, UI_GMODE_MENU, 0, 0, 0, &ev, &b);
     TEST_ASSERT_EQUAL(UI_G_TAP, ev.kind);  // menus still get taps from the edge
 }

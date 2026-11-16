@@ -26,15 +26,31 @@ void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model,
                    uint8_t held_mask, bool hints, const ui_palette_t *p);
 
 // ---- Touch ----
+// The pet's LCD on the pet screen: 32x16 dots at pitch UI_LCD_PITCH (UI_LCD_DOT lit), 192x96 at (UI_LCD_X, UI_LCD_Y).
+#define UI_LCD_X     24
+#define UI_LCD_Y     54
+#define UI_LCD_PITCH 6
+#define UI_LCD_DOT   5
+#define UI_BTN_R     17   // pet button radius: 34 px across
+
+// Pet-screen buttons. The strip is y from the LCD's bottom + 2 to the bottom edge band (152..215 on 240x240);
+// B is centred at (UI_W/2, strip bottom - UI_BTN_R), A and C 54 px either side and 4 px higher.
+void ui_button_centre(int btn, int *x, int *y);   // btn = TC_BTN_A/B/C
+// TC_BTN_A/B/C for a point in the strip (split halfway between the centres, so every circle presses only its
+// own button), -1 elsewhere (the LCD, the icons above it, the bottom edge band).
+int  ui_button_at(int x, int y);
+
 typedef struct { uint8_t count; struct { int16_t x, y; } pt[2]; } ui_touch_t;
-// OR of the zone masks of the active points: x < 80 → A, 80..159 → B, >= 160 → C.
+// OR of the buttons under the active points (ui_button_at); points off the strip add nothing.
 uint8_t ui_touch_buttons(const ui_touch_t *t);
 
-// Stateful mapping used on the device. The CST816D averages two fingers at the same height into
-// one point (measured), so A+C is also a slide: a single finger keeps the button it started on
-// while it moves, and a finger that started on A and reaches C (or C and reaches A) holds A+C.
-// Genuine two-point reports still map through ui_touch_buttons.
-typedef struct { bool down; uint8_t start_mask; } ui_touch_tracker_t;
+// Stateful mapping used on the device. A touch whose first point is off the strip (the LCD, the top icons)
+// presses nothing until it lifts, even if it slides into the strip. One that starts in the strip keeps the
+// button it started on while it moves, anywhere on the screen. The CST816D averages two fingers at the same
+// height into one point (measured), so A+C is also a slide: a finger that started on A and reaches C's part of
+// the strip's width (or C and reaches A's) holds A+C; once started only x counts. Genuine two-point reports
+// still map through ui_touch_buttons.
+typedef struct { bool down; uint8_t start_mask; } ui_touch_tracker_t;   // start_mask 0 while down: inert touch
 uint8_t ui_touch_track(ui_touch_tracker_t *tr, const ui_touch_t *t);
 
 // ---- Screen timeout and BOOT button ----
