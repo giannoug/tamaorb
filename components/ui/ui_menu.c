@@ -575,12 +575,14 @@ static void draw_panel(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
         ui_text_centred_at(fb, NO_WIFI_Y + 16, "set it up over USB", 1, c->soft);
         return;
     }
-    int x0, x1;
-    ui_span(QR_Y, QR_Y + QR_PLATE - 1, &x0, &x1);
-    int px = (x0 + x1 + 1 - QR_PLATE) / 2;
-    uint16_t light = ui_rgb565(QR_LIGHT);
-    ui_fill_rrect(fb, px, QR_Y, QR_PLATE, QR_PLATE, 3, light);
-    ui_draw_qr(fb, px + QR_PLATE / 2, QR_Y + QR_PLATE / 2, QR_PLATE, v->panel_url, ui_rgb565(QR_DARK), light);
+    if (v->panel_qr && v->panel_qr->size) {
+        int x0, x1;
+        ui_span(QR_Y, QR_Y + QR_PLATE - 1, &x0, &x1);
+        int px = (x0 + x1 + 1 - QR_PLATE) / 2;
+        uint16_t light = ui_rgb565(QR_LIGHT);
+        ui_fill_rrect(fb, px, QR_Y, QR_PLATE, QR_PLATE, 3, light);
+        ui_draw_qr(fb, px + QR_PLATE / 2, QR_Y + QR_PLATE / 2, QR_PLATE, v->panel_qr, ui_rgb565(QR_DARK), light);
+    }
     // The address without "http://" and the trailing '/'.
     const char *u = strncmp(v->panel_url, "http://", 7) ? v->panel_url : v->panel_url + 7;
     char host[64];

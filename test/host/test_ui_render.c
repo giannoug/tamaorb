@@ -146,10 +146,21 @@ static ui_glance_t sample_glance(void)
                           .minute = 32, .batt_pct = 80, .address = "tamaorb.local" };
 }
 
+// A 25-module stand-in for the encoded panel URL (the device encodes; ui only draws).
+static const ui_qr_t *sample_qr(void)
+{
+    static ui_qr_t q;
+    q.size = 25;
+    for (int y = 0; y < 25; y++)
+        for (int x = 0; x < 25; x++) q.mod[y][x] = (uint8_t)(((x * 7) ^ (y * 3)) & 1);
+    return &q;
+}
+
 static ui_menu_view_t view(ui_page_t page)
 {
     return (ui_menu_view_t){ .page = page, .pressed = -1, .cfg = &cfg, .region = "Europe",
-                             .panel_url = "http://192.168.1.50/", .panel_name = "tamaorb.local" };
+                             .panel_url = "http://192.168.1.50/", .panel_qr = sample_qr(),
+                             .panel_name = "tamaorb.local" };
 }
 
 // Every pixel outside the round mask is still the mask colour: nothing was drawn where the panel can't show it.
@@ -501,6 +512,23 @@ static void test_panel_no_wifi_message(void)
         TEST_ASSERT_TRUE(fb[i] == 0 || fb[i] == BG || fb[i] == INK || fb[i] == soft_of(&UI_PALETTE_CLASSIC));  // no QR
 }
 
+// No encoded QR for a URL (encoding failed, or not yet encoded): the address and name still show, no QR plate.
+static void test_panel_without_qr_shows_address_only(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_PANEL);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    uint16_t plate = ui_rgb565((ui_rgb_t){ 0xF4, 0xF4, 0xEC });
+    bool seen = false;
+    for (int i = 0; i < UI_W * UI_H && !seen; i++) seen = fb[i] == plate;
+    TEST_ASSERT_TRUE_MESSAGE(seen, "with a grid the plate is drawn");
+    v.panel_qr = NULL;
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("192.168.1.50", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("tamaorb.local", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    for (int i = 0; i < UI_W * UI_H; i++) TEST_ASSERT_NOT_EQUAL(plate, fb[i]);
+}
+
 static void test_settings_list_values(void)
 {
     sample_cfg();
@@ -614,6 +642,7 @@ int main(void)
     RUN_TEST(test_hit_test_matches_render);
     RUN_TEST(test_controls_map_values);
     RUN_TEST(test_panel_no_wifi_message);
+    RUN_TEST(test_panel_without_qr_shows_address_only);
     RUN_TEST(test_settings_list_values);
     RUN_TEST(test_regions_sorted_and_cities_split);
     RUN_TEST(test_dimming_label_line_is_no_control);

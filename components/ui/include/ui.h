@@ -153,10 +153,13 @@ int  ui_marquee_offset(int text_w, int box_w, uint32_t t_ms);
 // Draws s starting at x0 - dx, writing only inside [x0,x1). Returns the text width.
 int  ui_draw_text_clipped(uint16_t *fb, int x0, int x1, int y, int dx, const char *s, uint8_t scale, uint16_t color);
 
-// Draws text (byte mode, ECC medium, smallest version, up to version 4) as a QR code centred at (cx, cy),
-// with a 2-module light quiet zone, at the largest integer module size that fits max_px.
-// Returns the drawn side in px; 0 (nothing drawn) if the text is too long or max_px is too small. No heap.
-int  ui_draw_qr(uint16_t *fb, int cx, int cy, int max_px, const char *text, uint16_t dark, uint16_t light);
+// An encoded QR code (the device encodes with espressif/qrcode; ui only draws).
+#define UI_QR_MAX 33  // modules per side at QR version 4
+typedef struct { uint8_t size; uint8_t mod[UI_QR_MAX][UI_QR_MAX]; } ui_qr_t;  // mod[y][x]: 1 dark; size 0: none
+// Draws qr centred at (cx, cy) with a 2-module light quiet zone at the largest integer module size that fits
+// max_px; clips to the screen. Returns the side in px; 0 (nothing drawn) if qr is NULL, size is 0 or above
+// UI_QR_MAX, or max_px is too small.
+int  ui_draw_qr(uint16_t *fb, int cx, int cy, int max_px, const ui_qr_t *qr, uint16_t dark, uint16_t light);
 
 // ---- Glance and settings screens (layouts from the design canvas; horizontal extents from UI_GEOM) ----
 // The pet's LCD (32x16) at x, y with scale x scale px per pixel: lit pixels ink, the rest bg. No icons.
@@ -198,7 +201,8 @@ typedef struct {
     const st_settings_t *cfg;
     const char *region;          // TZ_CITY: the region being browsed, the pointer ui_menu_region_at gave (its
                                  // city count is cached per pointer)
-    const char *panel_url, *panel_name;  // PANEL: URL to encode (NULL = no Wi-Fi), mDNS name
+    const char *panel_url, *panel_name;  // PANEL: the panel's URL (NULL = no Wi-Fi), mDNS name
+    const ui_qr_t *panel_qr;     // PANEL: panel_url encoded; NULL or size 0: the address only
     uint32_t t_ms;               // drives marquees
 } ui_menu_view_t;
 void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p);

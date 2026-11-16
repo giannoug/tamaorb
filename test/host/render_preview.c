@@ -45,13 +45,22 @@ int main(int argc, char **argv)
     cfg.off_battery_s = 60;
     cfg.palette = (st_palette_t)(pal >= 0 && pal <= 2 ? pal : 0);
     strcpy(cfg.tz, "Europe/Isle_of_Man");
+    // The panel page's QR: a fixed stand-in grid (finder squares and a pattern), not a scannable code.
+    static ui_qr_t qr = { .size = 25 };
+    for (int y = 0; y < 25; y++)
+        for (int x = 0; x < 25; x++) {
+            int fx = x < 7 ? x : x - 18, fy = y < 7 ? y : y - 18;
+            bool finder = (x < 7 || x >= 18) && (y < 7 || y >= 18) && !(x >= 18 && y >= 18);
+            qr.mod[y][x] = finder ? (fx == 0 || fx == 6 || fy == 0 || fy == 6 || (fx >= 2 && fx <= 4 && fy >= 2 && fy <= 4))
+                                  : (uint8_t)(((x * 7) ^ (y * 3)) & 1);
+        }
     bool menu = false;
     for (size_t i = 0; i < sizeof SCREENS / sizeof SCREENS[0]; i++)
         if (!strcmp(mode, SCREENS[i].name)) {
             ui_menu_view_t v = { .page = SCREENS[i].page, .scroll = scroll >= 0 ? scroll : SCREENS[i].scroll,
                                  .pressed = SCREENS[i].pressed, .cfg = &cfg, .region = "Europe", .t_ms = t_ms,
                                  .panel_url = strcmp(mode, "panel-nowifi") ? "http://192.168.1.50/" : NULL,
-                                 .panel_name = "tamaorb.local" };
+                                 .panel_qr = &qr, .panel_name = "tamaorb.local" };
             if (v.page == UI_PAGE_TZ_CITY && scroll < 0)  // bring the current zone into view, as the canvas does
                 for (int k = 0; ui_menu_city_at("Europe", k); k++)
                     if (!strcmp(ui_menu_city_at("Europe", k), cfg.tz)) v.scroll = (k - 2) * 32;
