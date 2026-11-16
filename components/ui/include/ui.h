@@ -23,7 +23,7 @@ ui_rgb_t ui_mix(ui_rgb_t a, ui_rgb_t b, uint8_t pct);  // a + (b - a) * pct / 10
 
 // Framebuffer: UI_W * UI_H RGB565 pixels in host byte order (the board swaps for the panel).
 void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model,
-                   uint8_t held_mask, bool hints, const ui_palette_t *p);
+                   uint8_t held_mask, const ui_palette_t *p);
 
 // ---- Touch ----
 // The pet's LCD on the pet screen: 32x16 dots at pitch UI_LCD_PITCH (UI_LCD_DOT lit), 192x96 at (UI_LCD_X, UI_LCD_Y).

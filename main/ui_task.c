@@ -207,7 +207,7 @@ static void ui_task(void *arg)
             if (frame_new || out.buttons != shown_held || dirty) {
                 tc_frame_t f;
                 tc_get_frame(&f);
-                ui_render_pet(s_fb, &f, s_model, out.buttons, true, pal);
+                ui_render_pet(s_fb, &f, s_model, out.buttons, pal);
                 show();
                 shown_held = out.buttons;
                 drawn = true;

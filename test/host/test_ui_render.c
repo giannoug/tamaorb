@@ -20,7 +20,7 @@ void tearDown(void) {}
 
 #define PX(x, y) fb[(y) * UI_W + (x)]
 
-static void render(uint8_t held, bool hints) { ui_render_pet(fb, &frame, TC_MODEL_P1, held, hints, &UI_PALETTE_CLASSIC); }
+static void render(uint8_t held) { ui_render_pet(fb, &frame, TC_MODEL_P1, held, &UI_PALETTE_CLASSIC); }
 
 static void test_rgb565_classic(void)
 {
@@ -31,7 +31,7 @@ static void test_rgb565_classic(void)
 
 static void test_outside_circle_black(void)
 {
-    render(0, true);
+    render(0);
     TEST_ASSERT_EQUAL_HEX16(0x0000, PX(0, 0));
     TEST_ASSERT_EQUAL_HEX16(0x0000, PX(239, 0));
     TEST_ASSERT_EQUAL_HEX16(0x0000, PX(239, 239));
@@ -41,72 +41,139 @@ static void test_outside_circle_black(void)
 static void test_lit_and_ghost(void)
 {
     frame.rows[0] = 1u;  // pixel (0,0)
-    render(0, true);
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(24, 72));
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(28, 76));
-    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(30, 72));   // pixel (1,0) unlit
+    render(0);
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(24, 54));
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(28, 58));
+    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(30, 54));   // pixel (1,0) unlit
 }
 
 static void test_pixel_gap(void)
 {
     frame.rows[0] = 0xFFFFFFFFu;
-    render(0, true);
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(29, 72));   // gap column of pixel (0,0)
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(24, 77));   // gap row
+    render(0);
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(29, 54));   // gap column of pixel (0,0)
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(24, 59));   // gap row
 }
 
 static void test_last_pixel_position(void)
 {
-    frame.rows[15] = 1u << 31;  // pixel (31,15) at x=24+186, y=72+90
-    render(0, true);
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(210, 162));
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(214, 166));
+    frame.rows[15] = 1u << 31;  // pixel (31,15) at x=24+186, y=54+90
+    render(0);
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(210, 144));
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(214, 148));
 }
 
 static void test_icon_lit(void)
 {
-    frame.icons = 1u << 7;  // Attention: bottom row, centre (183,192), top-left (171,180)
-    render(0, true);
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 2, 180 + 2));
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 3, 180 + 3));
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(171, 180));     // cell (0,0) is off
+    frame.icons = 1u << 7;  // Attention: bottom row, centre (183,164), top-left (171,152)
+    render(0);
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 2, 152 + 2));
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 3, 152 + 3));
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(171, 152));     // cell (0,0) is off
     frame.icons = 0;
-    render(0, true);
-    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(171 + 2, 180 + 2));
+    render(0);
+    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(171 + 2, 152 + 2));
 }
 
 static void test_p2_medicine_differs(void)
 {
     frame.icons = 0xFF;
-    ui_render_pet(fb, &frame, TC_MODEL_P1, 0, true, &UI_PALETTE_CLASSIC);
-    ui_render_pet(fb2, &frame, TC_MODEL_P2, 0, true, &UI_PALETTE_CLASSIC);
+    ui_render_pet(fb, &frame, TC_MODEL_P1, 0, &UI_PALETTE_CLASSIC);
+    ui_render_pet(fb2, &frame, TC_MODEL_P2, 0, &UI_PALETTE_CLASSIC);
     int diffs = 0;
     for (int y = 0; y < UI_H; y++)
         for (int x = 0; x < UI_W; x++)
             if (fb[y * UI_W + x] != fb2[y * UI_W + x]) {
-                TEST_ASSERT_TRUE_MESSAGE(x >= 171 && x <= 194 && y >= 36 && y <= 59, "diff outside Medicine icon");
+                TEST_ASSERT_TRUE_MESSAGE(x >= 171 && x <= 194 && y >= 26 && y <= 49, "diff outside Medicine icon");
                 diffs++;
             }
     TEST_ASSERT_GREATER_THAN(0, diffs);
 }
 
-static void test_held_zone_tint(void)
+static void test_pet_layout(void)
 {
-    render(TC_BTN_MASK(TC_BTN_C), false);
-    uint16_t tint = ui_rgb565(ui_mix(UI_PALETTE_CLASSIC.bg, UI_PALETTE_CLASSIC.ink, 10));
-    TEST_ASSERT_EQUAL_HEX16(tint, PX(230, 120));
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(10, 120));
-    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(170, 72));  // LCD pixels keep their own colour
+    frame.icons = 0xFF;  // every icon ink
+    render(0);
+    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(UI_LCD_X, UI_LCD_Y));   // first dot, unlit
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(UI_LCD_X, UI_LCD_Y - 1));
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(UI_LCD_X, UI_LCD_Y + 96));  // just under the LCD's last dot row
+    // icon boxes: 24 px centred at y 38 (top) and 164 (bottom), x centres 57, 97, 143, 183
+    static const int cx[4] = { 57, 97, 143, 183 }, cy[2] = { 38, 164 };
+    for (int r = 0; r < 2; r++)
+        for (int i = 0; i < 4; i++) {
+            int ink = 0;
+            for (int y = cy[r] - 12; y < cy[r] + 12; y++)
+                for (int x = cx[i] - 12; x < cx[i] + 12; x++) ink += PX(x, y) == INK;
+            TEST_ASSERT_GREATER_THAN_MESSAGE(10, ink, "icon missing at its new place");
+        }
+    // nothing ink between the top icons and the LCD, or between the LCD and the bottom icons
+    for (int x = 30; x < 210; x++) {
+        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 51));
+        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 151));
+    }
 }
 
-static void test_hints_toggle(void)
+static const int BTN[3] = { TC_BTN_A, TC_BTN_B, TC_BTN_C };
+
+static int ink_near(int cx, int cy, int r)
+{
+    int n = 0;
+    for (int y = cy - r; y <= cy + r; y++)
+        for (int x = cx - r; x <= cx + r; x++)
+            if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r && PX(x, y) == INK) n++;
+    return n;
+}
+
+static void test_buttons_drawn(void)
+{
+    render(0);
+    for (int i = 0; i < 3; i++) {
+        int cx, cy;
+        ui_button_centre(BTN[i], &cx, &cy);
+        TEST_ASSERT_EQUAL_HEX16(BG, PX(cx, cy + 12));             // inside the key, under the letter
+        TEST_ASSERT_EQUAL_HEX16(INK, PX(cx, cy - (UI_BTN_R - 1)));  // outline
+        TEST_ASSERT_EQUAL_HEX16(INK, PX(cx - (UI_BTN_R - 1), cy));
+        TEST_ASSERT_GREATER_THAN_MESSAGE(10, ink_near(cx, cy, 9), "letter missing");
+        uint16_t shadow = ui_rgb565(ui_mix(UI_PALETTE_CLASSIC.bg, (ui_rgb_t){ 0, 0, 0 }, 22));
+        TEST_ASSERT_EQUAL_HEX16(shadow, PX(cx, cy + UI_BTN_R + 1));  // 2 px shadow under the key
+    }
+}
+
+static void test_held_fills(void)
+{
+    render(TC_BTN_MASK(TC_BTN_B));
+    for (int i = 0; i < 3; i++) {
+        int cx, cy;
+        ui_button_centre(BTN[i], &cx, &cy);
+        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? INK : BG, PX(cx, cy + 12));
+    }
+    int bx, by;
+    ui_button_centre(TC_BTN_B, &bx, &by);
+    int letter_bg = 0;  // the held key's letter turns background colour
+    for (int y = by - 8; y < by + 8; y++)
+        for (int x = bx - 8; x < bx + 8; x++) letter_bg += PX(x, y) == BG;
+    TEST_ASSERT_GREATER_THAN(10, letter_bg);
+
+    render(TC_BTN_MASK(TC_BTN_A) | TC_BTN_MASK(TC_BTN_C));
+    for (int i = 0; i < 3; i++) {
+        int cx, cy;
+        ui_button_centre(BTN[i], &cx, &cy);
+        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? BG : INK, PX(cx, cy + 12));
+    }
+}
+
+static void test_no_old_hints(void)
 {
     uint16_t hint = ui_rgb565(ui_mix(UI_PALETTE_CLASSIC.bg, UI_PALETTE_CLASSIC.ink, 42));
-    render(0, true);
-    TEST_ASSERT_EQUAL_HEX16(hint, PX(79, 11));
-    TEST_ASSERT_EQUAL_HEX16(hint, PX(159, 206));
-    render(0, false);
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(79, 11));
+    render(0);
+    for (int y = 0; y < UI_H; y++) {
+        TEST_ASSERT_NOT_EQUAL_HEX16(hint, PX(79, y));
+        TEST_ASSERT_NOT_EQUAL_HEX16(hint, PX(159, y));
+    }
+    uint16_t tint = ui_rgb565(ui_mix(UI_PALETTE_CLASSIC.bg, UI_PALETTE_CLASSIC.ink, 10));
+    render(TC_BTN_MASK(TC_BTN_C));
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(230, 120));  // no held-zone tint
+    TEST_ASSERT_NOT_EQUAL_HEX16(tint, PX(200, 100));
 }
 
 static void test_palette_lookup(void)
@@ -631,8 +698,10 @@ int main(void)
     RUN_TEST(test_last_pixel_position);
     RUN_TEST(test_icon_lit);
     RUN_TEST(test_p2_medicine_differs);
-    RUN_TEST(test_held_zone_tint);
-    RUN_TEST(test_hints_toggle);
+    RUN_TEST(test_pet_layout);
+    RUN_TEST(test_buttons_drawn);
+    RUN_TEST(test_held_fills);
+    RUN_TEST(test_no_old_hints);
     RUN_TEST(test_palette_lookup);
     RUN_TEST(test_no_ink_outside_circle);
     RUN_TEST(test_glance_unknown_pet_has_no_hearts);

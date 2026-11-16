@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Writes a PPM of one screen for eyeballing. Not a test.
-// Usage: render_preview out.ppm [pet|catchup|battery|picker|message] [held_mask]
+// Usage: render_preview out.ppm [pet|catchup|battery|picker|message] [held_mask] [palette 0-2] [frame.txt]
+//        frame.txt (pet only): 16 lines of 32 '#'/'.' then "icons <hex>"; default: a sample face, Attention lit
 //        render_preview out.ppm <screen> [palette 0-2] [scroll px] [t_ms]
 //        screens: glance, glance-asleep, glance-unknown, settings, sound, brightness, dimming, palette,
 //                 tzregion, tzcity, panel, panel-nowifi (sample values from the design canvas)
@@ -83,7 +84,21 @@ int main(int argc, char **argv)
         const char *names[] = { "P1", "P2" }, *subs[] = { "Gen 1 - tama.bin", "Gen 2 - tamag2.bin" };
         ui_render_picker(fb, names, subs, 2, 0, p);
     } else if (!strcmp(mode, "message")) ui_render_message(fb, "No ROM found", "Put a P1 or P2 dump in\n/tamaorb/roms/ on the SD card,\nor push one over USB.", p);
-    else ui_render_pet(fb, &f, TC_MODEL_P1, argc > 3 ? (uint8_t)(argv[3][0] - '0') : 0, true, p);
+    else {
+        FILE *in = argc > 5 ? fopen(argv[5], "r") : NULL;
+        if (argc > 5 && !in) { perror(argv[5]); return 1; }
+        if (in) {
+            char line[64];
+            unsigned icons = 0;
+            memset(&f, 0, sizeof f);
+            for (int y = 0; y < 16 && fgets(line, sizeof line, in); y++)
+                for (int x = 0; x < 32 && line[x] && line[x] != '\n'; x++)
+                    if (line[x] == '#') f.rows[y] |= 1u << x;
+            if (fgets(line, sizeof line, in) && sscanf(line, "icons %x", &icons) == 1) f.icons = (uint8_t)icons;
+            fclose(in);
+        }
+        ui_render_pet(fb, &f, TC_MODEL_P1, argc > 3 ? (uint8_t)(argv[3][0] - '0') : 0, ui_palette_by_id(argc > 4 ? atoi(argv[4]) : 0));
+    }
     FILE *o = fopen(argc > 1 ? argv[1] : "pet.ppm", "wb");
     fprintf(o, "P6 %d %d 255\n", UI_W, UI_H);
     for (int i = 0; i < UI_W * UI_H; i++) {
