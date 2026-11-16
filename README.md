@@ -144,7 +144,7 @@ Start with [docs/architecture.md](docs/architecture.md): the tasks, which core e
 TamaOrb is GPL-3.0-or-later (`LICENSE`). It builds on:
 - [tamalib](https://github.com/jcrona/tamalib) by Jean-Christophe Rona, GPL-2.0-or-later;
 - [font8x8](https://github.com/dhepper/font8x8) by Daniel Hepper, public domain;
-- [QR Code generator](https://github.com/nayuki/QR-Code-generator) (qrcodegen) by Nayuki, MIT, vendored in `components/ui/third_party`;
+- [espressif/qrcode](https://components.espressif.com/components/espressif/qrcode) (Apache-2.0, based on Nayuki's QR Code generator), from Espressif's component registry;
 - [posix_tz_db](https://github.com/nayarsystems/posix_tz_db) by Nayar Systems, MIT, the source of the time zone table (`tools/gen_tzdb.py` regenerates it);
 - [tamagotchi-carebot](https://github.com/Sagestum/tamagotchi-carebot) by Sagestum: its published P1 RAM addresses were the starting point for the pet stats. Only facts were used, no code, and each was checked against real saves.
 

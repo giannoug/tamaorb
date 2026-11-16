@@ -20,6 +20,7 @@
 #include "power.h"
 #include "press_task.h"
 #include "rom_switch.h"
+#include "qr_encode.h"
 
 #define LOOP_MS        30
 #define FRAME_MS       16   // while a finger is on the glance or settings: ~60 frames a second
@@ -229,7 +230,14 @@ static void ui_task(void *arg)
             char url[sizeof panel_url] = "";  // "": the page says Wi-Fi isn't connected
             if (net_ip(ip)) snprintf(url, sizeof url, "http://%s/", ip);
             bool url_changed = strcmp(url, panel_url) != 0;  // Wi-Fi came or went while a page is open
-            if (url_changed) strcpy(panel_url, url);
+            if (url_changed) {
+                strcpy(panel_url, url);
+                static ui_qr_t panel_qr;  // encoded once per address; size 0 (address only) without Wi-Fi or on failure
+                if (url[0]) qr_encode(url, &panel_qr);
+                else panel_qr.size = 0;
+                ESP_LOGI(TAG, "panel QR: %d modules", panel_qr.size);
+                nav.view.panel_qr = &panel_qr;
+            }
             nav.view.panel_url = panel_url[0] ? panel_url : NULL;
             nav.view.panel_name = panel_name;
             if (dirty || cfg_changed || (url_changed && nav.view.page == UI_PAGE_PANEL)) {

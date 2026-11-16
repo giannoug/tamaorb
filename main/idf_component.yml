@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+dependencies:
+  idf: ">=6.1"
+  # QR codes for the Web panel page (Apache-2.0, based on Nayuki's QR Code generator). Exact pin, like the
+  # PlatformIO platform: upgrades are deliberate.
+  espressif/qrcode: "==0.2.0"
