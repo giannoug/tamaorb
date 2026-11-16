@@ -7,7 +7,8 @@
 #include "tama_core.h"
 
 static uint64_t fake_now;
-static uint64_t now_us(void) { return fake_now; }
+static unsigned clock_reads;
+static uint64_t now_us(void) { clock_reads++; return fake_now; }
 static void sleep_until_us(uint64_t ts) { if (ts > fake_now) fake_now = ts; }
 static int tone_events;
 static void tone_cb(uint32_t f, bool on) { tone_events++; }
@@ -95,6 +96,15 @@ static void test_catchup_without_callback(void)
     tc_debug_set_step_hook(NULL);
 }
 
+// Catch-up must not read the platform clock per instruction: on the ball that read was a fifth of the
+// catch-up time (24x -> 30.5x once skipped). One read when real time resumes is fine.
+static void test_catchup_reads_no_clock(void)
+{
+    clock_reads = 0;
+    tc_catchup(5ull * TC_TICK_HZ, NULL, NULL, 0);
+    TEST_ASSERT_LESS_OR_EQUAL(2, clock_reads);
+}
+
 // Review finding: the wall time a catch-up takes must be replayed too.
 static uint64_t fake_wall_us;
 static uint64_t fake_wall(void) { return fake_wall_us; }
@@ -162,5 +172,6 @@ int main(void)
     RUN_TEST(test_catchup_converge_replays_its_own_duration);
     RUN_TEST(test_catchup_is_silent);
     RUN_TEST(test_catchup_matches_realtime);
+    RUN_TEST(test_catchup_reads_no_clock);
     return UNITY_END();
 }
