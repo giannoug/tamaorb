@@ -23,11 +23,71 @@ static void clear(uint16_t *fb, uint16_t bg)
         for (int x = 0; x < UI_W; x++) fb[y * UI_W + x] = ui_in_circle(x, y) ? bg : 0x0000;
 }
 
-static void rect(uint16_t *fb, int x, int y, int w, int h, uint16_t c)
+static void rect(uint16_t *fb, int x, int y, int w, int h, uint16_t c) { ui_fill_rect(fb, x, y, w, h, c); }
+
+void ui_fill_rect(uint16_t *fb, int x, int y, int w, int h, uint16_t c)
 {
     for (int j = y; j < y + h; j++)
         for (int i = x; i < x + w; i++)
             if (i >= 0 && i < UI_W && j >= 0 && j < UI_H) fb[j * UI_W + i] = c;
+}
+
+void ui_clear_rows(uint16_t *fb, int y0, int y1, uint16_t bg)
+{
+    for (int y = y0 < 0 ? 0 : y0; y <= y1 && y < UI_H; y++) {
+        int x0 = 0, x1 = -1;
+        ui_geom_span(&UI_GEOM, y, y, &x0, &x1);
+        for (int x = 0; x < UI_W; x++) fb[y * UI_W + x] = (x >= x0 && x <= x1) ? bg : 0x0000;
+    }
+}
+
+// Inside the w x h box with corners of radius r (pixel centres, doubled to stay integer).
+static bool in_rrect(int i, int j, int w, int h, int r)
+{
+    int cx = i < r ? r : (i >= w - r ? w - r : -1);
+    int cy = j < r ? r : (j >= h - r ? h - r : -1);
+    if (cx < 0 || cy < 0) return true;
+    int dx = 2 * i + 1 - 2 * cx, dy = 2 * j + 1 - 2 * cy;
+    return dx * dx + dy * dy <= 4 * r * r;
+}
+
+void ui_fill_rrect(uint16_t *fb, int x, int y, int w, int h, int r, uint16_t c)
+{
+    if (2 * r > w) r = w / 2;
+    if (2 * r > h) r = h / 2;
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+            if (in_rrect(i, j, w, h, r)) ui_fill_rect(fb, x + i, y + j, 1, 1, c);
+}
+
+void ui_fill_disc(uint16_t *fb, int x, int y, int d, uint16_t c) { ui_fill_rrect(fb, x, y, d, d, d / 2, c); }
+
+void ui_draw_bits(uint16_t *fb, int x, int y, const char *const *rows, int w, int h, int scale, uint16_t c)
+{
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+            if (rows[j][i] == '#') ui_fill_rect(fb, x + i * scale, y + j * scale, scale, scale, c);
+}
+
+int ui_span(int y0, int y1, int *x0, int *x1)
+{
+    if (y0 < 0) y0 = 0;
+    if (y1 > UI_GEOM.h - 1) y1 = UI_GEOM.h - 1;
+    return ui_geom_span(&UI_GEOM, y0, y1, x0, x1);
+}
+
+int ui_text_centred_at(uint16_t *fb, int y, const char *s, uint8_t scale, uint16_t color)
+{
+    int x0 = 0, x1 = UI_W - 1;
+    ui_span(y, y + 8 * scale - 1, &x0, &x1);
+    int w = ui_text_width(s, scale);
+    if (w > x1 - x0 + 1) {  // wider than the span: cut with an ellipsis, never past the visible area
+        ui_draw_text_ellipsis(fb, x0, x1 + 1, y, s, scale, color);
+        return x0;
+    }
+    int x = (x0 + x1 + 1 - w) / 2;
+    ui_draw_text(fb, x, y, s, scale, color);
+    return x;
 }
 
 static void frame_rect(uint16_t *fb, int x, int y, int w, int h, int t, uint16_t c)

@@ -3,7 +3,9 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include "settings.h"
 #include "tama_core.h"
+#include "tc_pet.h"
 #include "tc_rom.h"
 
 #define UI_W 240
@@ -147,3 +149,83 @@ int  ui_draw_text_clipped(uint16_t *fb, int x0, int x1, int y, int dx, const cha
 // with a 2-module light quiet zone, at the largest integer module size that fits max_px.
 // Returns the drawn side in px; 0 (nothing drawn) if the text is too long or max_px is too small. No heap.
 int  ui_draw_qr(uint16_t *fb, int cx, int cy, int max_px, const char *text, uint16_t dark, uint16_t light);
+
+// ---- Glance and settings screens (layouts from the design canvas; horizontal extents from UI_GEOM) ----
+// The pet's LCD (32x16) at x, y with scale x scale px per pixel: lit pixels ink, the rest bg. No icons.
+void ui_draw_lcd(uint16_t *fb, int x, int y, int scale, const tc_frame_t *f, const ui_palette_t *p);
+
+typedef struct {
+    const tc_frame_t *frame;
+    const tc_pet_t *pet;        // !known: only the LCD copy, clock, battery and address are shown
+    tc_model_t model;           // for the weight unit (tc_weight_unit)
+    bool clock_known; uint8_t hour, minute;  // "--:--" until the clock is trusted
+    int8_t batt_pct;            // -1 hides the battery icon
+    const char *address;        // "tamaorb.local", an IP, or "Wi-Fi off"
+} ui_glance_t;
+// Rows whose data is -1 are left out and the rest close up around the screen's middle.
+void ui_render_glance(uint16_t *fb, const ui_glance_t *g, const ui_palette_t *p);
+
+typedef enum { UI_PAGE_LIST, UI_PAGE_SOUND, UI_PAGE_BRIGHTNESS, UI_PAGE_DIMMING, UI_PAGE_PALETTE,
+               UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL } ui_page_t;
+// Rows of UI_PAGE_LIST, top to bottom (ui_menu_row_at's result on that page).
+typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, UI_ROW_TZ, UI_ROW_ROM,
+               UI_ROW_PANEL, UI_ROW_COUNT } ui_row_t;
+// Controls reported by ui_menu_control_at, with the settings key each value is for. Values are already legal:
+//   MUTE        "muted"          0/1: the value a tap switches to (the opposite of cfg->muted)
+//   VOLUME      "volume"         0-100
+//   BRIGHTNESS  "brightness"     1-100
+//   DIM_LEVEL   "dim_level"      0-100
+//   DIM_USB     "dim_usb_s"      0 (never), 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600
+//   DIM_BATTERY "dim_battery_s"  same steps as DIM_USB
+//   OFF_BATTERY "off_battery_s"  10, 15, 30, 60, 120, 300, 600, 1800, 3600
+//   PALETTE     "palette"        st_palette_t id
+// A slider reports a value for any x on its track band (clamped at the ends), so a drag can keep feeding it.
+typedef enum { UI_CTL_MUTE, UI_CTL_VOLUME, UI_CTL_BRIGHTNESS, UI_CTL_DIM_LEVEL, UI_CTL_DIM_USB, UI_CTL_DIM_BATTERY,
+               UI_CTL_OFF_BATTERY, UI_CTL_PALETTE } ui_ctl_t;
+
+typedef struct {
+    ui_page_t page;
+    int scroll;                  // list pages: pixels scrolled (clamped to 0..ui_menu_scroll_max when drawn)
+    int pressed;                 // row index highlighted while a finger is down, -1 none
+    const st_settings_t *cfg;
+    const char *region;          // TZ_CITY: the region being browsed, the pointer ui_menu_region_at gave (its
+                                 // city count is cached per pointer)
+    const char *panel_url, *panel_name;  // PANEL: URL to encode (NULL = no Wi-Fi), mDNS name
+    uint32_t t_ms;               // drives marquees
+} ui_menu_view_t;
+void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p);
+
+// Hit testing shares the layout with rendering.
+int  ui_menu_row_at(const ui_menu_view_t *v, int x, int y);   // list row under a point, -1 none
+bool ui_menu_back_at(const ui_menu_view_t *v, int x, int y);  // the strip above a page title (not on UI_PAGE_LIST)
+// The ui_ctl_t under a point and the value it maps to, or -1 (value_out untouched).
+int  ui_menu_control_at(const ui_menu_view_t *v, int x, int y, int *value_out);
+int  ui_menu_row_count(const ui_menu_view_t *v);   // rows of a list page, 0 on other pages
+int  ui_menu_scroll_max(const ui_menu_view_t *v);  // largest useful scroll of a list page, 0 when it all fits
+// TZ_REGION row i: tzdb_regions() sorted by name ("UTC" stands for Etc/UTC); NULL past the end.
+const char *ui_menu_region_at(int i);
+// TZ_CITY row i of region: the i-th tzdb name starting with "<region>/" (table order); NULL past the end.
+const char *ui_menu_city_at(const char *region, int i);
+
+// Marquees: page titles wider than their strip, and the current TZ row when its name is cut, slide back and
+// forth with t_ms. While ui_menu_needs_tick is true, re-render on a timer and send the panel only the rows of
+// ui_menu_tick_band: the title band, grown to cover the current row when that row slides too (then most of
+// the list is resent). The band is inclusive, rows *y0..*y1; board_display_flush_rows takes [y0, y1 + 1).
+bool ui_menu_needs_tick(const ui_menu_view_t *v);
+void ui_menu_tick_band(const ui_menu_view_t *v, int *y0, int *y1);
+
+// ---- Navigation between the pet, the glance and the settings pages ----
+typedef enum { UI_SCREEN_PET, UI_SCREEN_GLANCE, UI_SCREEN_MENU } ui_screen_kind_t;
+typedef struct {
+    ui_screen_kind_t screen;
+    ui_menu_view_t view;   // valid while screen == UI_SCREEN_MENU; view.cfg is set on every ui_nav_step
+    int active_ctl;        // private: the control under the current drag's start point, -1 none
+} ui_nav_t;
+typedef enum { UI_ACT_NONE, UI_ACT_REDRAW, UI_ACT_SETTINGS, UI_ACT_OPEN_ROM_PICKER } ui_act_t;
+void ui_nav_init(ui_nav_t *n);
+// ev comes from ui_gesture_feed (MENU mode on GLANCE and MENU, PET mode on PET); cur is the latest settings and
+// must stay valid until the next call (the view points at it). On UI_ACT_SETTINGS, *out is cur with exactly one
+// key changed and *display_changed says whether that key is a display key. boot_short: a short BOOT press this loop.
+ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const st_settings_t *cur,
+                     st_settings_t *out, bool *display_changed);
+void ui_nav_to_pet(ui_nav_t *n);   // screen off/timeout and picker close land here

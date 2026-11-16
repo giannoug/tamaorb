@@ -23,8 +23,7 @@ set_source_files_properties(${TAMALIB_SRC} PROPERTIES COMPILE_OPTIONS "-Wno-mayb
 set(TAMA_CORE_SRC ${COMP}/tama_core/tc_rom.c ${COMP}/tama_core/tc_sha1.c ${COMP}/tama_core/tama_core.c ${COMP}/tama_core/tc_time.c ${COMP}/tama_core/tc_rom_select.c ${COMP}/tama_core/tc_pet.c ${TAMALIB_SRC})
 set(TAMA_CORE_INC ${COMP}/tama_core/include ${COMP}/tamalib ${COMP}/tamalib/upstream)
 
-set(UI_SRC ${COMP}/ui/ui_palette.c ${COMP}/ui/ui_pet.c ${COMP}/ui/ui_icons.c ${COMP}/ui/ui_font.c ${COMP}/ui/ui_touch.c ${COMP}/ui/ui_screen.c ${COMP}/ui/ui_text.c ${COMP}/ui/ui_geom.c ${COMP}/ui/ui_gesture.c ${COMP}/ui/ui_qr.c ${COMP}/ui/third_party/qrcodegen/qrcodegen.c)
-set(UI_INC ${COMP}/ui/include ${COMP}/ui/third_party/qrcodegen)
+set(UI_SRC ${COMP}/ui/ui_palette.c ${COMP}/ui/ui_pet.c ${COMP}/ui/ui_icons.c ${COMP}/ui/ui_font.c ${COMP}/ui/ui_touch.c ${COMP}/ui/ui_screen.c ${COMP}/ui/ui_text.c ${COMP}/ui/ui_geom.c ${COMP}/ui/ui_gesture.c ${COMP}/ui/ui_qr.c ${COMP}/ui/ui_glance.c ${COMP}/ui/ui_menu.c ${COMP}/ui/ui_nav.c ${COMP}/tama_core/tc_pet.c ${COMP}/ui/third_party/qrcodegen/qrcodegen.c)
 
 set(PERSIST_SRC ${COMP}/persist/ps_record.c ${COMP}/persist/ps_policy.c)
 set(PERSIST_INC ${COMP}/persist/include)
@@ -35,6 +34,10 @@ set(TZDB_INC ${COMP}/tzdb/include)
 # settings validates tz through tzdb, so every user of settings links it too
 set(SETTINGS_SRC ${COMP}/settings/st_settings.c ${TZDB_SRC})
 set(SETTINGS_INC ${COMP}/settings/include ${TZDB_INC})
+
+# ui draws the settings pages (settings, tzdb) and the glance (tc_pet); sources listed twice in a target are built once
+list(APPEND UI_SRC ${SETTINGS_SRC})  # ui_nav edits through st_set
+set(UI_INC ${COMP}/ui/include ${COMP}/ui/third_party/qrcodegen ${SETTINGS_INC})
 
 set(HOSTLINK_SRC ${COMP}/hostlink/hl_proto.c ${COMP}/hostlink/hl_base64.c)
 set(HOSTLINK_INC ${COMP}/hostlink/include)
@@ -62,13 +65,14 @@ tamaorb_test(test_rom ${TAMA_CORE_SRC})
 tamaorb_test(test_core ${TAMA_CORE_SRC})
 tamaorb_test(test_time ${TAMA_CORE_SRC})
 tamaorb_test(test_pet ${TAMA_CORE_SRC} ${PERSIST_SRC})
-tamaorb_test(test_ui_render ${UI_SRC})
+tamaorb_test(test_ui_render ${UI_SRC} ${SETTINGS_SRC})
 tamaorb_test(test_ui_touch ${UI_SRC})
 tamaorb_test(test_ui_screen ${UI_SRC})
 tamaorb_test(test_ui_text ${UI_SRC})
 tamaorb_test(test_ui_geom ${UI_SRC})
 tamaorb_test(test_ui_gesture ${UI_SRC})
 tamaorb_test(test_ui_qr ${UI_SRC})
+tamaorb_test(test_ui_nav ${UI_SRC} ${SETTINGS_SRC})
 tamaorb_test(test_persist ${PERSIST_SRC})
 tamaorb_test(test_settings ${SETTINGS_SRC})
 tamaorb_test(test_tzdb ${TZDB_SRC})
@@ -80,7 +84,7 @@ tamaorb_test(test_remote_mcp ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PER
 tamaorb_test(test_remote_http ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
 
 # Eyeballing aid, not a test: build-host/render_preview out.ppm [held_mask]
-add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})
+add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC} ${SETTINGS_SRC})
 target_include_directories(render_preview PRIVATE ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui)
 
 # Dev tool, not a test: build-host/save_replay <rom.bin> <save.sav> "<script>" replays a ball save with presses
@@ -94,7 +98,9 @@ if(TAMAORB_FUZZ)
     add_library(fuzz_targets OBJECT ${REMOTE_SRC} ${SETTINGS_SRC} ${PERSIST_SRC} ${HOSTLINK_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/fake_ops.c)
     target_include_directories(fuzz_targets PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui ${PERSIST_INC} ${HOSTLINK_INC} ${SETTINGS_INC} ${REMOTE_INC})
     target_compile_options(fuzz_targets PRIVATE ${FUZZ_SAN} -fsanitize-coverage=trace-pc -O1 -g)
-    add_executable(fuzz_parsers ${CMAKE_CURRENT_SOURCE_DIR}/fuzz_parsers.c $<TARGET_OBJECTS:fuzz_targets> ${UI_SRC} ${TAMA_CORE_SRC})
+    set(FUZZ_UI_SRC ${UI_SRC})
+    list(REMOVE_ITEM FUZZ_UI_SRC ${SETTINGS_SRC})  # already in fuzz_targets
+    add_executable(fuzz_parsers ${CMAKE_CURRENT_SOURCE_DIR}/fuzz_parsers.c $<TARGET_OBJECTS:fuzz_targets> ${FUZZ_UI_SRC} ${TAMA_CORE_SRC})
     target_include_directories(fuzz_parsers PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui ${PERSIST_INC} ${HOSTLINK_INC} ${SETTINGS_INC} ${REMOTE_INC})
     target_compile_options(fuzz_parsers PRIVATE ${FUZZ_SAN} -O1 -g)
     target_link_options(fuzz_parsers PRIVATE ${FUZZ_SAN})

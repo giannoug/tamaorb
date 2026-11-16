@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Writes a PPM of one screen for eyeballing. Not a test.
 // Usage: render_preview out.ppm [pet|catchup|battery|picker|message] [held_mask]
+//        render_preview out.ppm <screen> [palette 0-2] [scroll px] [t_ms]
+//        screens: glance, glance-asleep, glance-unknown, settings, sound, brightness, dimming, palette,
+//                 tzregion, tzcity, panel, panel-nowifi (sample values from the design canvas)
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "ui.h"
 
@@ -22,7 +26,49 @@ int main(int argc, char **argv)
             if (SAMPLE[y][x] == '#') f.rows[y] |= 1u << x;
     const char *mode = argc > 2 ? argv[2] : "pet";
     const ui_palette_t *p = &UI_PALETTE_CLASSIC;
-    if (!strcmp(mode, "catchup")) ui_render_catchup(fb, 8040, 29100, 760, p);
+    const int pal = argc > 3 ? atoi(argv[3]) : 0, scroll = argc > 4 ? atoi(argv[4]) : -1;
+    const uint32_t t_ms = argc > 5 ? (uint32_t)atoi(argv[5]) : 0;
+
+    static const struct { const char *name; ui_page_t page; int scroll, pressed; } SCREENS[] = {
+        { "settings", UI_PAGE_LIST, 0, UI_ROW_BRIGHTNESS }, { "sound", UI_PAGE_SOUND, 0, -1 },
+        { "brightness", UI_PAGE_BRIGHTNESS, 0, -1 }, { "dimming", UI_PAGE_DIMMING, 0, -1 },
+        { "palette", UI_PAGE_PALETTE, 0, -1 }, { "tzregion", UI_PAGE_TZ_REGION, 32, -1 },
+        { "tzcity", UI_PAGE_TZ_CITY, 0, -1 }, { "panel", UI_PAGE_PANEL, 0, -1 }, { "panel-nowifi", UI_PAGE_PANEL, 0, -1 },
+    };
+    st_settings_t cfg;
+    st_defaults(&cfg, 20);
+    cfg.muted = true;
+    cfg.brightness = 60;
+    cfg.dim_level = 30;
+    cfg.dim_usb_s = 0;
+    cfg.dim_battery_s = 30;
+    cfg.off_battery_s = 60;
+    cfg.palette = (st_palette_t)(pal >= 0 && pal <= 2 ? pal : 0);
+    strcpy(cfg.tz, "Europe/Isle_of_Man");
+    bool menu = false;
+    for (size_t i = 0; i < sizeof SCREENS / sizeof SCREENS[0]; i++)
+        if (!strcmp(mode, SCREENS[i].name)) {
+            ui_menu_view_t v = { .page = SCREENS[i].page, .scroll = scroll >= 0 ? scroll : SCREENS[i].scroll,
+                                 .pressed = SCREENS[i].pressed, .cfg = &cfg, .region = "Europe", .t_ms = t_ms,
+                                 .panel_url = strcmp(mode, "panel-nowifi") ? "http://192.168.1.50/" : NULL,
+                                 .panel_name = "tamaorb.local" };
+            if (v.page == UI_PAGE_TZ_CITY && scroll < 0)  // bring the current zone into view, as the canvas does
+                for (int k = 0; ui_menu_city_at("Europe", k); k++)
+                    if (!strcmp(ui_menu_city_at("Europe", k), cfg.tz)) v.scroll = (k - 2) * 32;
+            ui_render_menu(fb, &v, ui_palette_by_id(pal));
+            menu = true;
+        }
+    if (menu) {
+    } else if (!strncmp(mode, "glance", 6)) {
+        tc_pet_t pet = { .known = true, .hunger = 1, .happy = 3, .discipline = 2, .age_years = 3, .weight = 12,
+                         .droppings = 0, .sick = 0, .asleep = 0, .light_on = 0 };
+        if (!strcmp(mode, "glance-asleep")) { pet.hunger = 4; pet.asleep = 1; pet.light_on = 1; }
+        if (!strcmp(mode, "glance-unknown")) pet.known = false;
+        f.rows[0] = 0;  // the canvas pet, no icons on the copy
+        ui_glance_t g = { .frame = &f, .pet = &pet, .model = TC_MODEL_P1, .clock_known = true, .hour = 14,
+                          .minute = 32, .batt_pct = 80, .address = "tamaorb.local" };
+        ui_render_glance(fb, &g, ui_palette_by_id(pal));
+    } else if (!strcmp(mode, "catchup")) ui_render_catchup(fb, 8040, 29100, 760, p);
     else if (!strcmp(mode, "battery")) ui_render_low_battery(fb, p);
     else if (!strcmp(mode, "picker")) {
         const char *names[] = { "P1", "P2" }, *subs[] = { "Gen 1 - tama.bin", "Gen 2 - tamag2.bin" };

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include <stdio.h>
 #include <string.h>
 #include "unity.h"
 #include "ui.h"
+#include "ui_internal.h"
 
 static uint16_t fb[UI_W * UI_H], fb2[UI_W * UI_H];
 static tc_frame_t frame;
@@ -117,6 +119,480 @@ static void test_palette_lookup(void)
     for (int i = 0; i < 3; i++) TEST_ASSERT_EQUAL_UINT8(11, ui_palette_by_id(i)->ghost_pct);
 }
 
+// ---- Glance and settings screens ----
+
+static const ui_palette_t *const PALS[3] = { &UI_PALETTE_CLASSIC, &UI_PALETTE_NEUTRAL, &UI_PALETTE_NIGHT };
+static st_settings_t cfg;
+static tc_pet_t pet;
+static uint16_t scratch[UI_W * UI_H];
+
+static void sample_cfg(void)
+{
+    st_defaults(&cfg, 40);
+    cfg.muted = true;
+    cfg.dim_battery_s = 30;
+    strcpy(cfg.tz, "Europe/Isle_of_Man");
+}
+
+static void sample_pet(void)
+{
+    pet = (tc_pet_t){ .known = true, .hunger = 1, .happy = 3, .discipline = 2, .age_years = 3, .weight = 12,
+                      .droppings = 0, .sick = 0, .asleep = 0, .light_on = 1 };
+}
+
+static ui_glance_t sample_glance(void)
+{
+    return (ui_glance_t){ .frame = &frame, .pet = &pet, .model = TC_MODEL_P1, .clock_known = true, .hour = 14,
+                          .minute = 32, .batt_pct = 80, .address = "tamaorb.local" };
+}
+
+static ui_menu_view_t view(ui_page_t page)
+{
+    return (ui_menu_view_t){ .page = page, .pressed = -1, .cfg = &cfg, .region = "Europe",
+                             .panel_url = "http://192.168.1.50/", .panel_name = "tamaorb.local" };
+}
+
+// Every pixel outside the round mask is still the mask colour: nothing was drawn where the panel can't show it.
+static void assert_nothing_outside_circle(const char *what)
+{
+    for (int y = 0; y < UI_H; y++)
+        for (int x = 0; x < UI_W; x++)
+            if (!ui_in_circle(x, y) && fb[y * UI_W + x] != 0x0000) {
+                char msg[96];
+                snprintf(msg, sizeof msg, "%s: ink outside the circle at (%d,%d)", what, x, y);
+                TEST_FAIL_MESSAGE(msg);
+            }
+}
+
+// Bitmap of a string as ui_draw_text draws it: scratch[y][x] != 0 where a glyph pixel is set.
+static int text_bitmap(const char *s, uint8_t scale)
+{
+    memset(scratch, 0, sizeof scratch);
+    return ui_draw_text(scratch, 0, 0, s, scale, 1);
+}
+
+// Finds the scratch bitmap (w x h) on screen: set pixels equal `color`, unset ones don't. Top-left in *ox, *oy.
+static bool find_bitmap(int w, int h, uint16_t color, int *ox, int *oy)
+{
+    for (int y = 0; y + h <= UI_H; y++)
+        for (int x = 0; x + w <= UI_W; x++) {
+            bool ok = true;
+            for (int j = 0; j < h && ok; j++)
+                for (int i = 0; i < w && ok; i++)
+                    ok = (scratch[j * UI_W + i] != 0) == (fb[(y + j) * UI_W + x + i] == color);
+            if (ok) {
+                if (ox) *ox = x;
+                if (oy) *oy = y;
+                return true;
+            }
+        }
+    return false;
+}
+
+static bool find_text(const char *s, uint8_t scale, uint16_t color, int *ox, int *oy)
+{
+    int w = text_bitmap(s, scale);
+    return find_bitmap(w, 8 * scale, color, ox, oy);
+}
+
+static uint16_t soft_of(const ui_palette_t *p) { return ui_rgb565(ui_mix(p->bg, p->ink, 75)); }
+
+static void test_no_ink_outside_circle(void)
+{
+    sample_cfg();
+    sample_pet();
+    static const ui_page_t pages[] = { UI_PAGE_LIST, UI_PAGE_SOUND, UI_PAGE_BRIGHTNESS, UI_PAGE_DIMMING,
+                                       UI_PAGE_PALETTE, UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL };
+    char what[64];
+    for (int pi = 0; pi < 3; pi++) {
+        ui_glance_t g = sample_glance();
+        ui_render_glance(fb, &g, PALS[pi]);
+        snprintf(what, sizeof what, "glance pal %d", pi);
+        assert_nothing_outside_circle(what);
+        pet.asleep = 1;  // the tallest glance: "Asleep" with its second line
+        ui_render_glance(fb, &g, PALS[pi]);
+        assert_nothing_outside_circle(what);
+        sample_pet();
+        for (size_t k = 0; k < sizeof pages / sizeof pages[0]; k++) {
+            ui_menu_view_t v = view(pages[k]);
+            int max = ui_menu_scroll_max(&v);
+            for (int s = 0; s <= max + 30; s += 7) {  // every scroll position, also past the end
+                v.scroll = s;
+                v.pressed = s % 3;
+                for (uint32_t t = 0; t < 6000; t += 1500) {
+                    v.t_ms = t;
+                    ui_render_menu(fb, &v, PALS[pi]);
+                    snprintf(what, sizeof what, "page %d pal %d scroll %d t %u", (int)pages[k], pi, s, (unsigned)t);
+                    assert_nothing_outside_circle(what);
+                }
+                if (max == 0) break;
+            }
+        }
+    }
+}
+
+// The heart shapes from the canvas (7x7, drawn at scale 2).
+static const char *const HEART_FULL[7] = { ".##.##.", "#######", "#######", "#######", ".#####.", "..###..", "...#..." };
+static const char *const HEART_EMPTY[7] = { ".##.##.", "#..#..#", "#.....#", "#.....#", ".#...#.", "..#.#..", "...#..." };
+
+static bool find_shape(const char *const *rows, uint16_t color)
+{
+    memset(scratch, 0, sizeof scratch);
+    for (int j = 0; j < 14; j++)
+        for (int i = 0; i < 14; i++) scratch[j * UI_W + i] = rows[j / 2][i / 2] == '#';
+    return find_bitmap(14, 14, color, NULL, NULL);
+}
+
+static void test_glance_unknown_pet_has_no_hearts(void)
+{
+    sample_pet();
+    ui_glance_t g = sample_glance();
+    ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_shape(HEART_FULL, INK));   // hunger 1, happy 3
+    TEST_ASSERT_TRUE(find_shape(HEART_EMPTY, INK));
+
+    pet = (tc_pet_t){ .known = false, .hunger = -1, .happy = -1, .discipline = -1, .age_years = -1, .weight = -1,
+                      .droppings = -1, .sick = -1, .asleep = -1, .light_on = -1 };
+    ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_FALSE(find_shape(HEART_FULL, INK));
+    TEST_ASSERT_FALSE(find_shape(HEART_EMPTY, INK));
+    TEST_ASSERT_TRUE(find_text("14:32", 2, INK, NULL, NULL));  // clock and address stay
+    TEST_ASSERT_TRUE(find_text("tamaorb.local", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    TEST_ASSERT_FALSE(find_text("All good", 2, INK, NULL, NULL));
+}
+
+static int address_y(void)
+{
+    int x, y;
+    TEST_ASSERT_TRUE(find_text("tamaorb.local", 1, soft_of(&UI_PALETTE_CLASSIC), &x, &y));
+    return y;
+}
+
+static int clock_y(void)
+{
+    int x, y;
+    TEST_ASSERT_TRUE(find_text("14:32", 2, INK, &x, &y));
+    return y;
+}
+
+static void test_glance_closes_up_missing_rows(void)
+{
+    sample_pet();
+    ui_glance_t g = sample_glance();
+    ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("3 yr  12 lb  disc 2/4", 1, INK, NULL, NULL));
+    int full = address_y() - clock_y();
+
+    pet.age_years = -1;  // the stats line shrinks but stays
+    ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("12 lb  disc 2/4", 1, INK, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(full, address_y() - clock_y());
+
+    pet.weight = -1;
+    pet.discipline = -1;  // no stats line at all
+    ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
+    int no_stats = address_y() - clock_y();
+    TEST_ASSERT_LESS_OR_EQUAL_INT(full - 8, no_stats);
+
+    pet.hunger = -1;
+    pet.happy = -1;  // no hearts row either
+    ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(no_stats - 14, address_y() - clock_y());
+    TEST_ASSERT_FALSE(find_shape(HEART_EMPTY, INK));
+
+    sample_pet();
+    pet.happy = -1;  // one group of hearts left: still drawn
+    ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_shape(HEART_FULL, INK));
+    TEST_ASSERT_EQUAL_INT(full, address_y() - clock_y());
+}
+
+// The title strip of the pages under "< back": the tick band of a page with nothing else sliding.
+static void title_band(int *y0, int *y1)
+{
+    ui_menu_view_t t = view(UI_PAGE_BRIGHTNESS);
+    ui_menu_tick_band(&t, y0, y1);
+}
+
+static void band_copy(uint16_t *dst, int y0, int y1) { memcpy(dst, fb + y0 * UI_W, (size_t)(y1 - y0 + 1) * UI_W * 2); }
+
+static void test_title_marquee_moves(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_BRIGHTNESS);
+    int y0, y1;
+    ui_menu_tick_band(&v, &y0, &y1);
+    TEST_ASSERT_TRUE(y0 >= 0 && y1 < UI_H && y0 < y1);
+    static uint16_t first[UI_W * UI_H];
+    v.t_ms = 0;
+    TEST_ASSERT_TRUE(ui_menu_needs_tick(&v));
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    band_copy(first, y0, y1);
+    size_t n = (size_t)(y1 - y0 + 1) * UI_W * 2;
+    v.t_ms = 1500;
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(first, fb + y0 * UI_W, n) != 0, "title did not move");
+    bool back = false;
+    for (uint32_t t = 3000; t < 30000 && !back; t += 10) {
+        v.t_ms = t;
+        ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+        back = memcmp(first, fb + y0 * UI_W, n) == 0;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(back, "title never came back to its start");
+
+    v = view(UI_PAGE_SOUND);  // "Sound" fits: nothing to tick
+    TEST_ASSERT_FALSE(ui_menu_needs_tick(&v));
+    v = view(UI_PAGE_LIST);
+    TEST_ASSERT_FALSE(ui_menu_needs_tick(&v));
+}
+
+// Scroll that brings city `name` of the view's region into the list; its row index in *row.
+static int scroll_to_city(ui_menu_view_t *v, const char *name, int *row)
+{
+    int k = -1;
+    for (int i = 0; ui_menu_city_at(v->region, i); i++)
+        if (!strcmp(ui_menu_city_at(v->region, i), name)) k = i;
+    TEST_ASSERT_TRUE(k >= 0);
+    *row = k;
+    for (v->scroll = 0; v->scroll <= ui_menu_scroll_max(v); v->scroll += 4)
+        for (int y = 0; y < UI_H; y++)
+            if (ui_menu_row_at(v, UI_W / 2, y) == k && ui_menu_row_at(v, UI_W / 2, y - 1) != k &&
+                ui_menu_row_at(v, UI_W / 2, y + 27) == k)  // the whole row (28 px on the canvas) is in view
+                return v->scroll;
+    TEST_FAIL_MESSAGE("row never fully visible");
+    return 0;
+}
+
+static void test_list_long_name_ellipsis(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_TZ_CITY);
+    int row;
+    scroll_to_city(&v, "Europe/Kaliningrad", &row);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_FALSE(find_text("Kaliningrad", 2, INK, NULL, NULL));
+    char s[16];
+    bool found = false;
+    for (int n = 1; n < 11 && !found; n++) {
+        snprintf(s, sizeof s, "%.*s" UI_ELLIPSIS, n, "Kaliningrad");
+        found = find_text(s, 2, INK, NULL, NULL);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(found, "no 'Kalinin...' with the ellipsis glyph");
+
+    // The current zone is never cut: its row slides instead.
+    strcpy(cfg.tz, "Europe/Kaliningrad");
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    found = false;
+    for (int n = 1; n < 11 && !found; n++) {
+        snprintf(s, sizeof s, "%.*s" UI_ELLIPSIS, n, "Kaliningrad");
+        found = find_text(s, 2, BG, NULL, NULL);
+    }
+    TEST_ASSERT_FALSE(found);
+    TEST_ASSERT_TRUE(ui_menu_needs_tick(&v));
+    int y0, y1, t0, t1;
+    ui_menu_tick_band(&v, &y0, &y1);
+    title_band(&t0, &t1);
+    TEST_ASSERT_TRUE(y0 <= t0 && y1 > t1);  // the moving row is inside the band a tick redraws
+}
+
+// Row bands found from pixels (scanlines that are mostly row fill), then hit-tested at their centre.
+static void check_rows_hit(ui_menu_view_t *v, const ui_palette_t *p)
+{
+    ui_render_menu(fb, v, p);
+    uint16_t ink = ui_rgb565(p->ink), ghost = ui_rgb565(ui_mix(p->bg, p->ink, p->ghost_pct));
+    int lo, hi;
+    title_band(&lo, &hi);
+    int bands = 0, prev = -2, start = -1;
+    for (int y = hi + 1; y <= UI_H; y++) {
+        int fill = 0;
+        for (int x = 0; y < UI_H && x < UI_W; x++) fill += fb[y * UI_W + x] == ghost || fb[y * UI_W + x] == ink;
+        bool row = fill >= 60;
+        if (row && start < 0) start = y;
+        if (!row && start >= 0) {
+            int mid = (start + y - 1) / 2;
+            int hit = ui_menu_row_at(v, UI_W / 2, mid);
+            char msg[80];
+            snprintf(msg, sizeof msg, "page %d scroll %d band %d..%d hit %d", (int)v->page, v->scroll, start, y - 1, hit);
+            TEST_ASSERT_TRUE_MESSAGE(hit >= 0, msg);
+            if (prev >= 0) TEST_ASSERT_EQUAL_INT_MESSAGE(prev + 1, hit, msg);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(-1, ui_menu_row_at(v, UI_W / 2, y), msg);  // the gap below is no row
+            prev = hit;
+            bands++;
+            start = -1;
+        }
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(3, bands);
+}
+
+static void test_hit_test_matches_render(void)
+{
+    sample_cfg();
+    static const ui_page_t pages[] = { UI_PAGE_LIST, UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY };
+    for (size_t k = 0; k < 3; k++)
+        for (int s = 0; s <= 60; s += 15) {
+            ui_menu_view_t v = view(pages[k]);
+            v.scroll = s;
+            v.pressed = 2;
+            check_rows_hit(&v, &UI_PALETTE_CLASSIC);
+            check_rows_hit(&v, &UI_PALETTE_NIGHT);
+        }
+    ui_menu_view_t v = view(UI_PAGE_LIST);
+    TEST_ASSERT_EQUAL_INT(UI_ROW_COUNT, ui_menu_row_count(&v));
+    TEST_ASSERT_EQUAL_INT(-1, ui_menu_row_at(&v, UI_W / 2, 2));  // the title is no row
+    v = view(UI_PAGE_SOUND);
+    TEST_ASSERT_EQUAL_INT(-1, ui_menu_row_at(&v, UI_W / 2, UI_H / 2));
+    TEST_ASSERT_TRUE(ui_menu_back_at(&v, UI_W / 2, 10));
+    TEST_ASSERT_FALSE(ui_menu_back_at(&v, UI_W / 2, UI_H / 2));
+    v = view(UI_PAGE_LIST);
+    TEST_ASSERT_FALSE(ui_menu_back_at(&v, UI_W / 2, 10));
+}
+
+static void test_controls_map_values(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_BRIGHTNESS);
+    int val = -1, y_hit = -1;
+    for (int y = 0; y < UI_H && y_hit < 0; y++)
+        if (ui_menu_control_at(&v, UI_W / 2, y, &val) == UI_CTL_BRIGHTNESS) y_hit = y;
+    TEST_ASSERT_TRUE(y_hit >= 0);
+    TEST_ASSERT_EQUAL_INT(UI_CTL_BRIGHTNESS, ui_menu_control_at(&v, 0, y_hit, &val));
+    TEST_ASSERT_EQUAL_INT(1, val);  // past the left end clamps to the minimum
+    ui_menu_control_at(&v, UI_W - 1, y_hit, &val);
+    TEST_ASSERT_EQUAL_INT(100, val);
+
+    v = view(UI_PAGE_DIMMING);
+    int seen = 0;
+    for (int y = 0; y < UI_H; y++) {
+        int c = ui_menu_control_at(&v, 0, y, &val);
+        if (c == UI_CTL_DIM_USB || c == UI_CTL_DIM_BATTERY) TEST_ASSERT_EQUAL_INT(0, val);  // left end: never
+        if (c == UI_CTL_OFF_BATTERY) TEST_ASSERT_EQUAL_INT(10, val);
+        if (c >= 0) seen |= 1 << c;
+        c = ui_menu_control_at(&v, UI_W - 1, y, &val);
+        if (c == UI_CTL_DIM_USB || c == UI_CTL_DIM_BATTERY || c == UI_CTL_OFF_BATTERY) TEST_ASSERT_EQUAL_INT(3600, val);
+        if (c == UI_CTL_DIM_LEVEL) TEST_ASSERT_EQUAL_INT(100, val);
+    }
+    TEST_ASSERT_EQUAL_INT((1 << UI_CTL_DIM_LEVEL) | (1 << UI_CTL_DIM_USB) | (1 << UI_CTL_DIM_BATTERY) | (1 << UI_CTL_OFF_BATTERY), seen);
+
+    v = view(UI_PAGE_SOUND);  // muted: tapping the switch maps to 0
+    bool mute = false;
+    for (int y = 0; y < UI_H && !mute; y++)
+        if (ui_menu_control_at(&v, UI_W / 2, y, &val) == UI_CTL_MUTE) { mute = true; TEST_ASSERT_EQUAL_INT(0, val); }
+    TEST_ASSERT_TRUE(mute);
+
+    v = view(UI_PAGE_PALETTE);
+    seen = 0;
+    for (int y = 0; y < UI_H; y += 2)
+        for (int x = 0; x < UI_W; x += 2)
+            if (ui_menu_control_at(&v, x, y, &val) == UI_CTL_PALETTE) seen |= 1 << val;
+    TEST_ASSERT_EQUAL_INT(7, seen);
+}
+
+static void test_panel_no_wifi_message(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_PANEL);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("192.168.1.50", 1, INK, NULL, NULL));
+    TEST_ASSERT_FALSE(find_text("Wi-Fi not connected", 1, INK, NULL, NULL));
+    v.panel_url = NULL;
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("Wi-Fi not connected", 1, INK, NULL, NULL));
+    for (int i = 0; i < UI_W * UI_H; i++)
+        TEST_ASSERT_TRUE(fb[i] == 0 || fb[i] == BG || fb[i] == INK || fb[i] == soft_of(&UI_PALETTE_CLASSIC));  // no QR
+}
+
+static void test_settings_list_values(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_LIST);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("muted", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Sound", 2, INK, NULL, NULL));
+    cfg.muted = false;
+    cfg.volume = 7;
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("7 %", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("after 30 s", 1, INK, NULL, NULL));
+    v.scroll = ui_menu_scroll_max(&v);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("Isle of Man", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("QR code", 1, INK, NULL, NULL));
+    strcpy(cfg.tz, "EET-2EEST,M3.5.0/3,M10.5.0/4");
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("Custom", 1, INK, NULL, NULL));
+}
+
+static void test_regions_sorted_and_cities_split(void)
+{
+    const char *prev = NULL;
+    int n = 0;
+    for (const char *r; (r = ui_menu_region_at(n)); n++) {
+        if (prev) TEST_ASSERT_TRUE(strcmp(prev, r) < 0);
+        prev = r;
+    }
+    TEST_ASSERT_EQUAL_STRING("UTC", prev);
+    TEST_ASSERT_EQUAL_INT(11, n);
+    bool iom = false;
+    int k = 0;
+    for (const char *c; (c = ui_menu_city_at("Europe", k)); k++) {
+        TEST_ASSERT_EQUAL_INT(0, strncmp(c, "Europe/", 7));
+        iom |= !strcmp(c, "Europe/Isle_of_Man");
+    }
+    TEST_ASSERT_TRUE(iom);
+    TEST_ASSERT_EQUAL_INT(60, k);
+    TEST_ASSERT_NULL(ui_menu_city_at("Europe", -1));
+    TEST_ASSERT_NULL(ui_menu_city_at("Nowhere", 0));
+}
+
+static void test_dimming_label_line_is_no_control(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_DIMMING);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    static const char *const labels[4] = { "Dim level", "Dim on USB", "Dim on batt", "Off on batt" };
+    static const int ctls[4] = { UI_CTL_DIM_LEVEL, UI_CTL_DIM_USB, UI_CTL_DIM_BATTERY, UI_CTL_OFF_BATTERY };
+    for (int r = 0; r < 4; r++) {
+        int lx, ly;
+        TEST_ASSERT_TRUE_MESSAGE(find_text(labels[r], 1, INK, &lx, &ly), labels[r]);
+        int w = ui_text_width(labels[r], 1), val;
+        for (int y = ly; y < ly + 8; y++) {
+            for (int x = lx; x < lx + w; x++) TEST_ASSERT_EQUAL_INT_MESSAGE(-1, ui_menu_control_at(&v, x, y, &val), labels[r]);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(-1, ui_menu_control_at(&v, UI_W / 2, y, &val), labels[r]);
+        }
+        bool track = false;  // the track below the label still takes the slider
+        for (int y = ly + 8; y < ly + 33 && !track; y++) track = ui_menu_control_at(&v, UI_W / 2, y, &val) == ctls[r];
+        TEST_ASSERT_TRUE_MESSAGE(track, labels[r]);
+    }
+}
+
+static void test_long_centred_text_is_ellipsized(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_PANEL);
+    v.panel_name = "tamaorb-abcdefghijklmnopqrstuvwx";  // 32 chars: wider than the screen at scale 1
+    TEST_ASSERT_EQUAL_size_t(32, strlen(v.panel_name));
+    for (int pi = 0; pi < 3; pi++) {
+        ui_render_menu(fb, &v, PALS[pi]);
+        assert_nothing_outside_circle("panel with a 32-char name");
+        TEST_ASSERT_TRUE_MESSAGE(find_text(UI_ELLIPSIS, 1, soft_of(PALS[pi]), NULL, NULL), "no ellipsis glyph");
+        TEST_ASSERT_TRUE(find_text("tamaorb-", 1, soft_of(PALS[pi]), NULL, NULL));
+    }
+}
+
+static void test_hit_test_matches_render_deep_scroll(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_TZ_CITY);
+    v.region = "America";  // the longest region
+    int max = ui_menu_scroll_max(&v);
+    TEST_ASSERT_TRUE(max > 400);
+    for (int s = max / 3; s <= max + 20; s += max / 3) {
+        v.scroll = s;
+        v.pressed = -1;
+        check_rows_hit(&v, &UI_PALETTE_CLASSIC);
+    }
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -130,5 +606,18 @@ int main(void)
     RUN_TEST(test_held_zone_tint);
     RUN_TEST(test_hints_toggle);
     RUN_TEST(test_palette_lookup);
+    RUN_TEST(test_no_ink_outside_circle);
+    RUN_TEST(test_glance_unknown_pet_has_no_hearts);
+    RUN_TEST(test_glance_closes_up_missing_rows);
+    RUN_TEST(test_title_marquee_moves);
+    RUN_TEST(test_list_long_name_ellipsis);
+    RUN_TEST(test_hit_test_matches_render);
+    RUN_TEST(test_controls_map_values);
+    RUN_TEST(test_panel_no_wifi_message);
+    RUN_TEST(test_settings_list_values);
+    RUN_TEST(test_regions_sorted_and_cities_split);
+    RUN_TEST(test_dimming_label_line_is_no_control);
+    RUN_TEST(test_long_centred_text_is_ellipsized);
+    RUN_TEST(test_hit_test_matches_render_deep_scroll);
     return UNITY_END();
 }

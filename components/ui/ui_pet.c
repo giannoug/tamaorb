@@ -60,3 +60,11 @@ void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model,
             fill(fb, LCD_X + LCD_PITCH * px, LCD_Y + LCD_PITCH * py, LCD_DOT, LCD_DOT,
                  (f->rows[py] & (1u << px)) ? ink : ghost);
 }
+
+void ui_draw_lcd(uint16_t *fb, int x, int y, int scale, const tc_frame_t *f, const ui_palette_t *p)
+{
+    const uint16_t bg = ui_rgb565(p->bg), ink = ui_rgb565(p->ink);
+    for (int py = 0; py < 16; py++)
+        for (int px = 0; px < 32; px++)
+            ui_fill_rect(fb, x + scale * px, y + scale * py, scale, scale, (f->rows[py] & (1u << px)) ? ink : bg);
+}
