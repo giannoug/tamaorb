@@ -24,8 +24,9 @@ After a first `tamalib_init()`/run, calling `tamalib_release()` + `tamalib_init(
 
 Restoring a state replays the *current* `previous_cycles` before the first instruction, shifting timing by up to 12 cycles. That's harmless for play, but it makes save/restore not bit-exact. Exposing it in `state_t` (or resetting it on restore) would fix that.
 
-## Speed-up ideas for catch-up (TamaOrb replays at ~25x on an ESP32-S3)
+## Speed-up ideas for catch-up (TamaOrb replays at ~31x on an ESP32-S3)
 
 - **Opcode decode table:** `cpu_step()` scans the ~100-entry `ops[]` table linearly for every instruction. A 4096-entry lookup table (op index per 12-bit opcode) would remove that.
-- **Fewer timestamp reads:** avoid `g_hal->get_timestamp()` per instruction at speed 0.
+- **Fewer timestamp reads:** at speed 0, `wait_for_cycles()` still returns `g_hal->get_timestamp()` after every instruction, and the value is only used as the reference for the next real-time wait (which `tamalib_set_exec_mode()` re-syncs). TamaOrb now returns 0 from its HAL in fast mode: catch-up went from 24.0x to 30.5x on the ESP32-S3 (3,677x to 5,230x on a PC), with byte-identical state after an hour of P1 and P2. Upstream could skip the call when `speed_ratio == 0`.
+- **Where the rest goes:** on a PC profile of catch-up after that change, `cpu_step()` itself is about 73% of the time and memory access (`get_memory`/`set_memory`) about 8%. TamaOrb's own wrapper costs under 1% (tested by caching its tick-counter pointer), so the next gains are inside `cpu_step()`: the opcode table and HALT ideas above.
 - **HALT fast-forward:** while halted, jump straight to the next timer or interrupt deadline instead of stepping 5 cycles at a time.
