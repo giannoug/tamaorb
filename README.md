@@ -43,16 +43,16 @@ These are the MAME `tama` / `tamag2` sets; MAME zips work directly with the tool
 
 | Action | How |
 |---|---|
-| A / B / C | Touch the left / middle / right third of the screen |
-| A + C | Touch A and slide to C (the touch chip can't tell two side-by-side fingers apart) |
+| A / B / C | Tap the A, B or C button under the screen (anywhere in its part of the strip below the pet's screen). Touching the pet's screen or the icons above it presses nothing |
+| A + C | Touch A and slide to C, or C to A (the touch chip can't tell two side-by-side fingers apart) |
 | Glance | Swipe down from the top edge. It shows the clock, battery, hunger and happy hearts, a live copy of the pet, what the pet needs, age, weight, discipline and the panel address |
 | Settings | Swipe up from the bottom edge. Tap a row to open it, drag to change a value or scroll the list. Rows: Sound, Brightness, Dimming, Palette, Time zone, ROM, Web panel (a QR code) |
 | Back to the pet | Swipe the other way (up from the bottom on the glance, down from the top in settings), or short-press BOOT |
 | Wake the screen | Tap anywhere. The first tap only wakes it, it never presses a button |
 | Screen on/off | Short press BOOT |
-| Switch pet / ROM | Hold BOOT for 2 s (works from any screen), or pick ROM in settings: A up, C down, B pick, BOOT cancel |
+| Switch pet / ROM | Hold BOOT for 2 s (works from any screen), or Settings → ROM: tap a pet, then Switch. Tapping the running pet, back, a swipe down or a short BOOT press closes the list; on the Switch page they return to the list. At first start with several dumps, tap the pet to start |
 
-A touch that starts in the outer 24 px of any edge (top, bottom, left or right) never presses a pet button, even if it lifts without swiping, and a sideways swipe does nothing. Everywhere else, taps work as before. The pet's hunger, happy, age and the other stats are read from the emulator's RAM; if a stat can't be found reliably for a ROM it is left off, and an unknown ROM shows no stats (addresses in `docs/pet-ram.md`).
+A touch that starts in the outer 24 px of any edge (top, bottom, left or right) never presses a pet button, even if it lifts without swiping, and a sideways swipe does nothing. A press that starts on a button keeps it while the finger moves, even up onto the pet's screen. The pet's hunger, happy, age and the other stats are read from the emulator's RAM; if a stat can't be found reliably for a ROM it is left off, and an unknown ROM shows no stats (addresses in `docs/pet-ram.md`).
 
 Mute and time zone are settings (`muted`, `tz`), so the ball, the web panel, MCP and USB all see the same values. `tz` is an IANA name from the built-in table (`GET /api/timezones` lists them) or a POSIX string; the default is `Etc/UTC`. The glance clock uses it.
 
