@@ -64,7 +64,7 @@ Count the solid ones, 0 to 4. Two or more is fine; feed or play when a row drops
 ## A routine
 
 1. `look`. If `phase` is not `run` (boot or catch-up), wait and look again.
-2. Open the meter ("A A A A A A B"), read the hunger and happy hearts ("A A" then "A"), and leave with C.
+2. Press C until `icons: none`, so A presses count from the start. Open the meter ("A A A A A A B"), read the hunger and happy hearts ("A A" then "A"), and leave with C.
 3. Fix one need at a time: food, bathroom, medicine, light, game. After each, check again.
 4. Press C until `icons: none`.
 

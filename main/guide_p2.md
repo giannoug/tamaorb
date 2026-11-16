@@ -1,32 +1,27 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # Looking after the P2 pet through `look` and `press`
 
-Use this guide when the ball is running P2 (`status` reports `model: P2`). It is shorter than the P1 guide because most things are the same; read the P1 guide first (`tamaorb://guide/p1`). Everything here comes from general knowledge of this kind of pet, not from watching this ball run P2, so treat each difference as "may" and confirm it on screen before acting.
+Use this guide when the ball is running P2 (`status` reports `model: P2`). Read the P1 guide first (`tamaorb://guide/p1`): the buttons, icons and meter work the same way. Lines marked "checked" were confirmed by replaying a P2 save from this ball in the emulator on a PC; the rest is general knowledge, so confirm it on screen.
 
-## What stays the same
+## What is the same as P1 (checked)
 
-- The tools: `look` shows the LCD as text (`#` lit, `.` unlit), lit icons by name, the buzzer and the phase. `press` takes A, B, C or AC.
-- A cycles the icon, B selects, C cancels. Sequences are fine at the default press timing (the ROM reads about one press per 500 ms, so don't shorten `hold_ms` + `gap_ms` below 500); check `icons:` in the reply before going on.
-- The same icon names appear in the same order: food, light, game, medicine, bathroom, meter, discipline; one more A clears the selection. The attention icon lights by itself and is not selectable. With nothing selected, B may show the clock; B again goes back.
-- The care basics are the same: feed when hunger hearts are low, clean droppings, medicine when sick, light off while asleep, discipline only when attention lights without any other need, play when happy hearts are low.
-- The hearts on the meter screens look the same: solid is full, outline is empty.
+- The tools: `look` shows the LCD as text (`#` lit, `.` unlit), lit icons by name, the buzzer and the phase. `press` takes A, B, C or AC. Keep the default press timing: the ROM reads about one press per 500 ms.
+- The icons, in order: food, light, game, medicine, bathroom, meter, discipline; one more A clears the selection. `attention` lights by itself and is not selectable.
+- The meter opens on age and weight; A then shows discipline, hunger and happy, and wraps around. The hearts look the same: solid is full, outline is empty, four per row.
 
-## What may differ
+## What is different
 
-- **Pets and growth:** P2 may have different characters, different growth stages and different timings. The sprites will not match the ones in the P1 guide. Do not rely on what a sprite looks like; rely on icons, hearts and the owner's description.
-- **More to do:** on some versions there are extra rooms, extra characters, or a second game. If A cycles through more or different icons than listed above, believe the screen, not this guide.
-- **Games:** the guess game may be replaced or extended. Read the screen, try one step, look again.
-- **Meter screens:** the order and the number of screens may differ. Page through all of them with A, then C to leave. Check which hearts you are looking at by reading the word at the top.
-- **Sleep and wake:** the pet's sleeping hours may differ from P1. Use the picture, not the clock.
-- **Food:** meal and snack may behave differently. Check the hunger hearts before and after to see what the action did.
-- **Buttons:** AC may act as a sound toggle on some versions. Avoid it.
-
-- **Food flow:** believed similar to P1 (A to `food`, B opens a menu, A chooses, B feeds, C backs out). Verify by looking after each press.
+- **Japanese text (checked).** Menu items and meter titles are in Japanese characters, which don't read as words in `look`. Go by position instead: the meter order above, and the food menu below.
+- **The egg (checked).** A new P2 pet starts as an egg, and the buttons do nothing until it hatches; A does not light any icon. Wait and look again a few minutes later.
+- **Food (checked).** Select food (A once from `icons: none`) and press B: a two-line menu opens with the arrow on the first line, the meal. Press B to feed: after the eating animation the menu comes back, and each B there feeds another meal. One meal adds one hunger heart. Then press C **twice**: the first C leaves `food` still selected, and counting A presses from there lands one icon too far.
+- **Pets and growth.** P2 has its own characters and timings, so sprites won't match the P1 guide. Rely on icons, hearts and what the owner tells you.
+- **Games.** Not checked on P2. Read the screen, try one press, look again, and press C until `icons: none` if it is unclear.
+- **AC** may toggle the sound on some versions. Avoid it.
 
 ## Routine
 
 1. `look`. If `phase` is not `run`, wait.
-2. Note `icons`. If `attention` is lit, open the meter and read every screen.
-3. Act on one need at a time: food, bathroom, medicine, light, game. After each, `look` and compare hearts.
-4. Press C until `icons: none` and the pet is shown.
+2. Press C until `icons: none`.
+3. Open the meter ("A A A A A A B"), read hunger ("A A") and happy ("A"), then C until `icons: none`.
+4. Act on one need at a time: food, bathroom, medicine, light, game. After each, check the hearts again.
 5. If something is unexpected and you cannot tell what it means, stop and tell the owner what the screen shows instead of pressing more buttons.
