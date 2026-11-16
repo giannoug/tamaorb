@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// UI task: touch and BOOT → screen state → emulator buttons; redraws on new frames.
+// UI task: touch and BOOT → screen state → emulator buttons or the glance and settings screens; redraws.
 #include "ui_task.h"
 #include "board.h"
 #include "esp_heap_caps.h"
@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include "net.h"
 #include "rom_store.h"
 #include "settings_store.h"
 #include "power.h"
@@ -32,12 +34,13 @@ static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 
 static void picker_from_play(void);
 static uint8_t read_touch_buttons(ui_touch_tracker_t *tr);
+static void render_glance(const ui_palette_t *pal, int8_t batt_pct);
+static void resume_on_pet(ui_screen_t *screen, ui_gesture_t *gest, ui_nav_t *nav);
 
 static void ui_task(void *arg)
 {
     ui_screen_t screen;
     ui_screen_init(&screen, now_ms());
-    ui_touch_tracker_t tracker = { 0 };
     uint32_t frame_seq = 0;
     uint8_t shown_held = 0xFF;
     bool backlight = false;
@@ -77,24 +80,35 @@ static void ui_task(void *arg)
         }
         vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
     }
-    {
-        ui_touch_tracker_t probe = { 0 };  // a finger held through the catch-up screen isn't a press
-        ui_screen_resume(&screen, now_ms(), board_boot_down(), read_touch_buttons(&probe) != 0);
-    }
+    ui_gesture_t gest = { 0 };
+    ui_nav_t nav;
+    ui_nav_init(&nav);
+    resume_on_pet(&screen, &gest, &nav);
     power_screen_on(false);
     backlight = false;  // force a fresh pet frame and backlight on
     ESP_LOGI(TAG, "showing the pet");
 
-    uint32_t disp_seq = settings_display_seq();
-    uint8_t volume = cfg.volume;
+    // The QR page: mDNS answers to the boot name until a restart.
+    st_settings_t boot;
+    settings_get_boot(&boot);
+    char panel_name[40], panel_url[32] = "", ip[16];
+    snprintf(panel_name, sizeof panel_name, "%s.local", boot.name);
+
+    uint32_t disp_seq = settings_display_seq(), seq = settings_seq();
+    uint8_t volume = st_effective_volume(&cfg);
     int pal_id = cfg.palette;
+    uint32_t glance_ms = 0;
+    int8_t batt_pct = -1;
     for (;;) {
+        // cfg is updated in place: nav.view.cfg points at it between ui_nav_step calls.
         settings_get(&cfg);
         if (settings_display_seq() != disp_seq) {
             disp_seq = settings_display_seq();
             ui_screen_wake(&screen, now_ms());
         }
-        if (cfg.volume != volume) { volume = cfg.volume; board_volume_set(volume); }
+        bool cfg_changed = settings_seq() != seq;
+        seq = settings_seq();
+        if (st_effective_volume(&cfg) != volume) { volume = st_effective_volume(&cfg); board_volume_set(volume); }
         const ui_palette_t *pal = ui_palette_by_id(cfg.palette);
         bool pal_changed = (int)cfg.palette != pal_id;
         pal_id = cfg.palette;
@@ -106,6 +120,12 @@ static void ui_task(void *arg)
         tc_tone_t tone;
         tc_get_tone(&tone);
 
+        // The pet screen takes pet taps; the glance and settings take menu gestures. Edge swipes work on all.
+        ui_gmode_t mode = nav.screen == UI_SCREEN_PET ? UI_GMODE_PET : UI_GMODE_MENU;
+        ui_gevent_t ev;
+        uint8_t touch = ui_gesture_feed(&gest, mode, &t, now_ms(), &ev);
+        if (t.count) touch |= UI_TOUCH_PRESENT;  // swipes, menu taps and drags are activity too
+
         // Plugged in: no automatic timeout, and plugging in wakes the screen. On battery: 30 s.
         bool usb = board_usb_present();
         if (usb && !usb_was) ui_screen_wake(&screen, now_ms());
@@ -113,14 +133,39 @@ static void ui_task(void *arg)
         // Agent presses go through tc_post_remote_buttons, never the touch path: they aren't activity.
         // Their beeps wake the screen only with agent_feedback = visible.
         bool sound_quiet = press_window_active() && cfg.agent_feedback != ST_AGENT_VISIBLE;
-        ui_screen_out_t out = ui_screen_update(&screen, now_ms(), ui_touch_track(&tracker, &t),
+        screen.boot_nav = nav.screen != UI_SCREEN_PET;  // there a short BOOT press goes back to the pet
+        ui_screen_out_t out = ui_screen_update(&screen, now_ms(), touch,
                                                board_boot_down(), tone.on, sound_quiet, usb ? 0 : cfg.off_battery_s * 1000u);
-        tc_post_buttons(out.buttons);
-        if (ui_screen_long_press(&screen)) {
+        tc_post_buttons(mode == UI_GMODE_PET ? out.buttons : 0);
+        bool boot_short = ui_screen_short_press(&screen);
+        if (screen.swallowing) {  // the touch that woke the screen reaches no screen either
+            ui_gesture_reset(&gest);
+            ev.kind = UI_G_NONE;
+        }
+
+        ui_act_t act = UI_ACT_NONE;
+        if (out.backlight) {
+            st_settings_t edited;
+            bool display_changed;
+            act = ui_nav_step(&nav, &ev, boot_short, &cfg, &edited, &display_changed);
+            if (act == UI_ACT_SETTINGS) {
+                settings_put(&edited, display_changed);
+                settings_get(&cfg);  // the page shows the new value now, not next loop
+                seq = settings_seq();
+                if (st_effective_volume(&cfg) != volume) { volume = st_effective_volume(&cfg); board_volume_set(volume); }
+                pal_changed |= (int)cfg.palette != pal_id;
+                pal = ui_palette_by_id(cfg.palette);
+                pal_id = cfg.palette;
+            }
+        } else if (nav.screen != UI_SCREEN_PET) {
+            ui_nav_to_pet(&nav);  // switched off or timed out: it wakes on the pet
+            ui_gesture_reset(&gest);
+        }
+
+        if (ui_screen_long_press(&screen) || act == UI_ACT_OPEN_ROM_PICKER) {
             tc_post_buttons(0);
             picker_from_play();
-            ui_touch_tracker_t probe = { 0 };
-            ui_screen_resume(&screen, now_ms(), board_boot_down(), read_touch_buttons(&probe) != 0);
+            resume_on_pet(&screen, &gest, &nav);
             power_screen_on(false);
             backlight = false;  // force a fresh pet frame
             continue;
@@ -146,18 +191,86 @@ static void ui_task(void *arg)
         uint8_t level = dim ? dim_pct : cfg.brightness;
         if (backlight && !redraw && (dim != dimmed || level != shown_level)) board_backlight_set(level);
         dimmed = dim;
-        if (pal_changed) redraw = true;
-        if (backlight && (tc_frame_changed(&frame_seq) || out.buttons != shown_held || redraw)) {
-            tc_frame_t f;
-            tc_get_frame(&f);
-            ui_render_pet(s_fb, &f, s_model, out.buttons, true, pal);
-            board_display_flush(s_fb);
-            shown_held = out.buttons;
-            if (redraw) board_backlight_set(level);  // light up only after a fresh frame
+        bool dirty = redraw || pal_changed || act == UI_ACT_REDRAW || act == UI_ACT_SETTINGS;
+        bool frame_new = tc_frame_changed(&frame_seq);
+        bool drawn = false;
+        if (!backlight) {
+            // nothing to draw
+        } else if (nav.screen == UI_SCREEN_PET) {
+            if (frame_new || out.buttons != shown_held || dirty) {
+                tc_frame_t f;
+                tc_get_frame(&f);
+                ui_render_pet(s_fb, &f, s_model, out.buttons, true, pal);
+                board_display_flush(s_fb);
+                shown_held = out.buttons;
+                drawn = true;
+            }
+        } else if (nav.screen == UI_SCREEN_GLANCE) {
+            bool tick = now_ms() - glance_ms >= 1000;  // the clock and battery
+            if (frame_new || dirty || tick) {
+                if (tick || dirty) {
+                    uint32_t mv = board_battery_mv();
+                    batt_pct = mv ? (int8_t)power_battery_pct(mv) : -1;  // 0 mV: no reading
+                    glance_ms = now_ms();
+                }
+                render_glance(pal, batt_pct);
+                board_display_flush(s_fb);
+                drawn = true;
+            }
+        } else {
+            nav.view.cfg = &cfg;
+            nav.view.t_ms = now_ms();
+            char url[sizeof panel_url] = "";  // "": the page says Wi-Fi isn't connected
+            if (net_ip(ip)) snprintf(url, sizeof url, "http://%s/", ip);
+            bool url_changed = strcmp(url, panel_url) != 0;  // Wi-Fi came or went while a page is open
+            if (url_changed) strcpy(panel_url, url);
+            nav.view.panel_url = panel_url[0] ? panel_url : NULL;
+            nav.view.panel_name = panel_name;
+            if (dirty || cfg_changed || (url_changed && nav.view.page == UI_PAGE_PANEL)) {
+                ui_render_menu(s_fb, &nav.view, pal);
+                board_display_flush(s_fb);
+                drawn = true;
+            } else if (ui_menu_needs_tick(&nav.view)) {
+                int y0, y1;
+                ui_render_menu(s_fb, &nav.view, pal);
+                ui_menu_tick_band(&nav.view, &y0, &y1);
+                board_display_flush_rows(s_fb, y0, y1 + 1);  // the band is inclusive, flush_rows half-open
+            }
         }
+        if (drawn && redraw) board_backlight_set(level);  // light up only after a fresh frame
         if (backlight) shown_level = level;
         vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
     }
+}
+
+static void render_glance(const ui_palette_t *pal, int8_t batt_pct)
+{
+    static uint8_t ram[TC_PET_RAM_NIBBLES];
+    tc_frame_t f;
+    tc_get_frame(&f);
+    tc_pet_t pet;
+    tc_pet_decode(s_model, ram, tc_get_ram(ram, sizeof ram), &pet);
+    int64_t unix_s = 0;
+    bool known = net_now(&unix_s);
+    time_t tt = (time_t)unix_s;
+    struct tm tm = { 0 };
+    localtime_r(&tt, &tm);
+    char ip[16];
+    ui_glance_t g = {
+        .frame = &f, .pet = &pet, .model = s_model,
+        .clock_known = known, .hour = (uint8_t)tm.tm_hour, .minute = (uint8_t)tm.tm_min,
+        .batt_pct = batt_pct, .address = net_ip(ip) ? ip : "Wi-Fi off",
+    };
+    ui_render_glance(s_fb, &g, pal);
+}
+
+// After an overlay or at the start of play: the pet screen, and a BOOT press or touch still held is ignored.
+static void resume_on_pet(ui_screen_t *screen, ui_gesture_t *gest, ui_nav_t *nav)
+{
+    ui_touch_tracker_t probe = { 0 };
+    ui_screen_resume(screen, now_ms(), board_boot_down(), read_touch_buttons(&probe) != 0);
+    ui_gesture_reset(gest);
+    ui_nav_to_pet(nav);
 }
 
 esp_err_t ui_init(void)

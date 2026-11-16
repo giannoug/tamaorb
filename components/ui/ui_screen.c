@@ -40,20 +40,28 @@ ui_screen_out_t ui_screen_update(ui_screen_t *s, uint32_t now_ms, uint8_t touch_
         wake(s, now_ms);
     }
     if (!boot_down && s->boot_was_down && !s->long_fired) {
-        if (s->on) s->on = false;
+        if (s->on && s->boot_nav) { s->short_pending = true; wake(s, now_ms); }
+        else if (s->on) s->on = false;
         else wake(s, now_ms);
     }
     s->boot_was_down = boot_down;
 
     if (timeout_ms && s->on && now_ms - s->last_activity_ms >= timeout_ms) s->on = false;
 
-    return (ui_screen_out_t){ .buttons = (s->on && !s->swallowing) ? touch_buttons : 0, .backlight = s->on };
+    return (ui_screen_out_t){ .buttons = (s->on && !s->swallowing) ? (uint8_t)(touch_buttons & ~UI_TOUCH_PRESENT) : 0, .backlight = s->on };
 }
 
 bool ui_screen_long_press(ui_screen_t *s)
 {
     bool p = s->long_pending;
     s->long_pending = false;
+    return p;
+}
+
+bool ui_screen_short_press(ui_screen_t *s)
+{
+    bool p = s->short_pending;
+    s->short_pending = false;
     return p;
 }
 

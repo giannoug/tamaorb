@@ -67,14 +67,17 @@ esp_err_t ball_display_init(void)
     return esp_lcd_panel_disp_on_off(s_panel, true);
 }
 
-void board_display_flush(const uint16_t *fb)
+void board_display_flush_rows(const uint16_t *fb, int y0, int y1)
 {
-    for (int y = 0, b = 0; y < H; y += BAND_ROWS, b ^= 1) {
+    if (y0 < 0) y0 = 0;
+    if (y1 > H) y1 = H;
+    for (int y = y0, b = 0; y < y1; y += BAND_ROWS, b ^= 1) {
+        int rows = y1 - y < BAND_ROWS ? y1 - y : BAND_ROWS;
         xSemaphoreTake(s_band_free, portMAX_DELAY);
         const uint16_t *src = fb + y * W;
         uint16_t *dst = s_band[b];
-        for (int i = 0; i < W * BAND_ROWS; i++) dst[i] = (uint16_t)((src[i] >> 8) | (src[i] << 8));  // panel wants big-endian
-        esp_lcd_panel_draw_bitmap(s_panel, 0, y, W, y + BAND_ROWS, dst);
+        for (int i = 0; i < W * rows; i++) dst[i] = (uint16_t)((src[i] >> 8) | (src[i] << 8));  // panel wants big-endian
+        esp_lcd_panel_draw_bitmap(s_panel, 0, y, W, y + rows, dst);
     }
     // Wait for both bands to come back so the caller may reuse fb immediately.
     xSemaphoreTake(s_band_free, portMAX_DELAY);
@@ -82,3 +85,5 @@ void board_display_flush(const uint16_t *fb)
     xSemaphoreGive(s_band_free);
     xSemaphoreGive(s_band_free);
 }
+
+void board_display_flush(const uint16_t *fb) { board_display_flush_rows(fb, 0, H); }

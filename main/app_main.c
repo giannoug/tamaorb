@@ -91,7 +91,7 @@ void app_main(void)
     ESP_ERROR_CHECK(settings_init());
     st_settings_t st;
     settings_get(&st);  // name and ntp apply from boot to boot; everything else is read live
-    board_volume_set(st.volume);
+    board_volume_set(st_effective_volume(&st));
     ESP_ERROR_CHECK(ui_init());
     ESP_ERROR_CHECK(rom_store_init());
     if (!rom_store_nvs_ok()) {

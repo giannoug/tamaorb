@@ -47,7 +47,13 @@ typedef struct {
     bool sound_was_on;
     bool long_fired;        // this BOOT hold already reported a long press
     bool long_pending;      // not yet collected by ui_screen_long_press()
+    bool boot_nav;          // set by the caller: a short BOOT press on a lit screen is reported by
+                            // ui_screen_short_press instead of switching the screen off (glance, settings)
+    bool short_pending;     // not yet collected by ui_screen_short_press()
 } ui_screen_t;
+// touch_buttons bit for a touch that maps to no pet button (edge band, glance, settings): it wakes the screen,
+// counts as activity and is swallowed like a button, but is never part of the returned buttons.
+#define UI_TOUCH_PRESENT 0x80u
 typedef struct { uint8_t buttons; bool backlight; } ui_screen_out_t;
 
 void ui_screen_init(ui_screen_t *s, uint32_t now_ms);  // starts on
@@ -63,6 +69,8 @@ bool ui_screen_dimmed(const ui_screen_t *s, uint32_t now_ms, uint32_t dim_ms);
 void ui_screen_resume(ui_screen_t *s, uint32_t now_ms, bool boot_down, bool touch_down);
 // True once per BOOT hold of >= 2 s (reported while still held); that press doesn't toggle the screen.
 bool ui_screen_long_press(ui_screen_t *s);
+// True once per short BOOT press made while boot_nav was set and the screen was on; that press doesn't toggle.
+bool ui_screen_short_press(ui_screen_t *s);
 
 // ---- Text screens (layouts from the design canvas, ASCII only) ----
 // Draws with the 8x8 font; '\n' starts a new line (11 px * scale below). Returns the text width.

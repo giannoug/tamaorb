@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "settings_store.h"
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -54,10 +56,32 @@ static void write_all(const st_settings_t *s)
     else ESP_LOGI(TAG, "saved");
 }
 
+// Only settings_init and the writer task call this, so s_tz needs no lock. localtime_r anywhere then
+// uses the new zone (newlib's tzset and localtime_r share a lock).
+static void apply_tz(const st_settings_t *s)
+{
+    static char s_tz[sizeof s->tz];
+    if (s_tz[0] && !strcmp(s_tz, s->tz)) return;
+    strcpy(s_tz, s->tz);
+    setenv("TZ", st_tz_posix(s), 1);
+    tzset();
+    struct tm tm;
+    time_t now = time(NULL);
+    localtime_r(&now, &tm);
+    ESP_LOGI(TAG, "time zone %s (%s), local %02d:%02d", s->tz, st_tz_posix(s), tm.tm_hour, tm.tm_min);
+}
+
 static void writer_task(void *arg)
 {
+    uint32_t seq = s_seq;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(250));
+        if (s_seq != seq) {  // a time-zone change applies within 250 ms, whoever made it
+            seq = s_seq;
+            st_settings_t cur;
+            settings_get(&cur);
+            apply_tz(&cur);
+        }
         st_settings_t snap;
         bool due;
         taskENTER_CRITICAL(&s_lock);
@@ -73,6 +97,7 @@ esp_err_t settings_init(void)
     st_defaults(&s_cur, CONFIG_TAMAORB_VOLUME);
     load();
     s_boot = s_cur;
+    apply_tz(&s_cur);
     ESP_LOGI(TAG, "brightness %u dim %u volume %u palette %d", s_cur.brightness, s_cur.dim_level, s_cur.volume, (int)s_cur.palette);
     return xTaskCreatePinnedToCore(writer_task, "settings", 4096, NULL, 3, NULL, 0) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }
@@ -94,6 +119,8 @@ void settings_put(const st_settings_t *s, bool display_changed)
     if (display_changed) s_display_seq++;
     taskEXIT_CRITICAL(&s_lock);
 }
+
+void settings_get_boot(st_settings_t *out) { *out = s_boot; }  // fixed after settings_init
 
 bool settings_restart_pending(void)
 {

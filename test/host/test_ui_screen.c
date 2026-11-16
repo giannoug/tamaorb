@@ -203,9 +203,80 @@ static void test_quiet_beep_is_not_a_later_onset(void)
     TEST_ASSERT_FALSE(step(10, 0, false, true).backlight);  // same beep, now unmuted: still not an onset
 }
 
+static void test_touch_present_wakes_and_is_swallowed(void)
+{
+    go_dark();
+    ui_screen_out_t o = step(30, UI_TOUCH_PRESENT, false, false);
+    TEST_ASSERT_TRUE(o.backlight);
+    TEST_ASSERT_EQUAL_HEX8(0, o.buttons);
+    TEST_ASSERT_TRUE(s.swallowing);
+    TEST_ASSERT_EQUAL_HEX8(0, step(30, B, false, false).buttons);  // same touch slid onto a pet zone
+    step(30, 0, false, false);
+    TEST_ASSERT_FALSE(s.swallowing);
+    TEST_ASSERT_EQUAL_HEX8(B, step(30, B, false, false).buttons);
+}
+
+static void test_touch_present_is_activity_not_a_button(void)
+{
+    step(20000, 0, false, false);
+    TEST_ASSERT_TRUE(ui_screen_dimmed(&s, now, 15000));
+    ui_screen_out_t o = step(10, UI_TOUCH_PRESENT, false, false);
+    TEST_ASSERT_EQUAL_HEX8(0, o.buttons);
+    TEST_ASSERT_FALSE(ui_screen_dimmed(&s, now, 15000));
+    TEST_ASSERT_EQUAL_HEX8(B, step(10, B | UI_TOUCH_PRESENT, false, false).buttons);
+    for (int i = 0; i < 40; i++) step(1000, UI_TOUCH_PRESENT, false, false);  // a long menu drag
+    TEST_ASSERT_TRUE(step(10, 0, false, false).backlight);
+}
+
+static void test_boot_nav_reports_short_press(void)
+{
+    s.boot_nav = true;
+    step(10, 0, true, false);
+    TEST_ASSERT_TRUE(step(200, 0, false, false).backlight);  // not switched off
+    TEST_ASSERT_TRUE(ui_screen_short_press(&s));
+    TEST_ASSERT_FALSE(ui_screen_short_press(&s));
+    s.boot_nav = false;
+    step(10, 0, true, false);
+    TEST_ASSERT_FALSE(step(200, 0, false, false).backlight);  // back on the pet: toggles again
+    TEST_ASSERT_FALSE(ui_screen_short_press(&s));
+}
+
+static void test_boot_nav_short_press_is_activity(void)
+{
+    s.boot_nav = true;
+    step(20000, 0, true, false);
+    step(100, 0, false, false);
+    TEST_ASSERT_FALSE(ui_screen_dimmed(&s, now, 15000));
+}
+
+static void test_boot_nav_long_press_still_long(void)
+{
+    s.boot_nav = true;
+    step(10, 0, true, false);
+    for (int t = 0; t < 2500; t += 100) step(100, 0, true, false);
+    TEST_ASSERT_TRUE(ui_screen_long_press(&s));
+    TEST_ASSERT_TRUE(step(100, 0, false, false).backlight);
+    TEST_ASSERT_FALSE(ui_screen_short_press(&s));
+}
+
+static void test_boot_nav_on_dark_screen_wakes(void)
+{
+    go_dark();
+    s.boot_nav = true;
+    step(10, 0, true, false);
+    TEST_ASSERT_TRUE(step(200, 0, false, false).backlight);
+    TEST_ASSERT_FALSE(ui_screen_short_press(&s));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_touch_present_wakes_and_is_swallowed);
+    RUN_TEST(test_touch_present_is_activity_not_a_button);
+    RUN_TEST(test_boot_nav_reports_short_press);
+    RUN_TEST(test_boot_nav_short_press_is_activity);
+    RUN_TEST(test_boot_nav_long_press_still_long);
+    RUN_TEST(test_boot_nav_on_dark_screen_wakes);
     RUN_TEST(test_quiet_sound_does_not_wake);
     RUN_TEST(test_quiet_sound_does_not_undim);
     RUN_TEST(test_loud_sound_still_wakes);

@@ -7,6 +7,7 @@
 
 esp_err_t board_init(void);                        // power hold, amp off, buses, display, backlight
 void      board_display_flush(const uint16_t *fb); // 240x240 RGB565, host byte order; blocks until sent
+void      board_display_flush_rows(const uint16_t *fb, int y0, int y1);  // only rows [y0, y1) of the same frame
 void      board_backlight_set(uint8_t pct);        // 0 = off
 
 typedef struct { uint8_t count; struct { int16_t x, y; } pt[2]; } board_touch_t;

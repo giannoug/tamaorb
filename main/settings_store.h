@@ -9,6 +9,8 @@
 // After nvs_flash_init: loads defaults plus stored values and starts the writer task (core 0).
 esp_err_t settings_init(void);
 void settings_get(st_settings_t *out);
+// The values loaded at boot: name and ntp are in effect from these until a restart (e.g. the mDNS name).
+void settings_get_boot(st_settings_t *out);
 // Stores in RAM, schedules the NVS write, bumps the sequence numbers.
 void settings_put(const st_settings_t *s, bool display_changed);
 // True iff the stored name or ntp differs from the boot value, whoever changed it (web, MCP or USB). Cheap.
