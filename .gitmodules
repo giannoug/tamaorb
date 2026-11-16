@@ -1,3 +1,4 @@
 [submodule "components/tamalib/upstream"]
 	path = components/tamalib/upstream
-	url = https://github.com/jcrona/tamalib.git
+	url = https://github.com/giannoug/tamalib.git
+	branch = perf-and-fixes
