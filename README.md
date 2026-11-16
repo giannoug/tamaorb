@@ -117,7 +117,7 @@ cmake -S test/host -B build-fuzz -DTAMAORB_FUZZ=ON && cmake --build build-fuzz -
 build-fuzz/fuzz_parsers 1000000          # replay a find with: fuzz_parsers --replay fuzz-crash.bin
 ```
 
-`tools/tamaorb-load.py --host tamaorb.local` load-tests the web server on a running ball. CI runs the host tests, the tool tests, a short fuzz run and the firmware build on every push.
+`build-host/save_replay <rom> <save.sav> "w1000 A A B"` replays a save downloaded from the ball on the PC with a button script and prints every screen, which is how the agent guides were checked. `tools/tamaorb-load.py --host tamaorb.local` load-tests the web server on a running ball. CI runs the host tests, the tool tests, a short fuzz run and the firmware build on every push.
 
 ## Project layout and docs
 

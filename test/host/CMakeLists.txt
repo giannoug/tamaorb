@@ -74,6 +74,10 @@ tamaorb_test(test_remote_http ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PE
 add_executable(render_preview ${CMAKE_CURRENT_SOURCE_DIR}/render_preview.c ${UI_SRC})
 target_include_directories(render_preview PRIVATE ${TAMA_CORE_INC} ${UI_INC} ${COMP}/ui)
 
+# Dev tool, not a test: build-host/save_replay <rom.bin> <save.sav> "<script>" replays a ball save with presses
+add_executable(save_replay ${CMAKE_CURRENT_SOURCE_DIR}/save_replay.c ${TAMA_CORE_SRC} ${PERSIST_SRC})
+target_include_directories(save_replay PRIVATE ${TAMA_CORE_INC} ${PERSIST_INC})
+
 # Coverage-guided parser fuzzer (not part of ctest): cmake -DTAMAORB_FUZZ=ON, then build-host/fuzz_parsers [iterations] [seed]
 option(TAMAORB_FUZZ "Build the parser fuzzer with ASan/UBSan" OFF)
 if(TAMAORB_FUZZ)
