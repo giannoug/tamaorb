@@ -39,13 +39,22 @@ These are the MAME `tama` / `tamag2` sets; MAME zips work directly with the tool
 
 ## Controls
 
+![The glance and the settings list on the ball](docs/images/ball-screens.png)
+
 | Action | How |
 |---|---|
 | A / B / C | Touch the left / middle / right third of the screen |
 | A + C | Touch A and slide to C (the touch chip can't tell two side-by-side fingers apart) |
+| Glance | Swipe down from the top edge. It shows the clock, battery, hunger and happy hearts, a live copy of the pet, what the pet needs, age, weight, discipline and the panel address |
+| Settings | Swipe up from the bottom edge. Tap a row to open it, drag to change a value or scroll the list. Rows: Sound, Brightness, Dimming, Palette, Time zone, ROM, Web panel (a QR code) |
+| Back to the pet | Swipe the other way (up from the bottom on the glance, down from the top in settings), or short-press BOOT |
 | Wake the screen | Tap anywhere. The first tap only wakes it, it never presses a button |
 | Screen on/off | Short press BOOT |
-| Switch pet / ROM | Hold BOOT for 2 s: A up, C down, B pick, BOOT cancel |
+| Switch pet / ROM | Hold BOOT for 2 s (works from any screen), or pick ROM in settings: A up, C down, B pick, BOOT cancel |
+
+A touch that starts in the outer 24 px of any edge (top, bottom, left or right) never presses a pet button, even if it lifts without swiping, and a sideways swipe does nothing. Everywhere else, taps work as before. The pet's hunger, happy, age and the other stats are read from the emulator's RAM; if a stat can't be found reliably for a ROM it is left off, and an unknown ROM shows no stats (addresses in `docs/pet-ram.md`).
+
+Mute and time zone are settings (`muted`, `tz`), so the ball, the web panel, MCP and USB all see the same values. `tz` is an IANA name from the built-in table (`GET /api/timezones` lists them) or a POSIX string; the default is `Etc/UTC`. The glance clock uses it.
 
 ## Build and flash
 
@@ -123,7 +132,7 @@ build-fuzz/fuzz_parsers 1000000          # replay a find with: fuzz_parsers --re
 
 Start with [docs/architecture.md](docs/architecture.md): the tasks, which core each runs on, and how frames, buttons, saves and settings move between them.
 
-- `components/tama_core`, `ui`, `persist`, `hostlink`, `settings`, `remote`: portable code, host-tested.
+- `components/tama_core`, `ui`, `persist`, `hostlink`, `settings`, `tzdb`, `remote`: portable code, host-tested.
 - `components/web`: the HTTP server, the embedded panel page and mDNS.
 - `components/board/spotpear_ball_128`: the only hardware-specific code. Hardware notes are in `docs/hardware/`.
 - `main/`: the tasks that tie it together (emulator, UI, saves, network, the agent's press runner).
@@ -134,6 +143,9 @@ Start with [docs/architecture.md](docs/architecture.md): the tasks, which core e
 
 TamaOrb is GPL-3.0-or-later (`LICENSE`). It builds on:
 - [tamalib](https://github.com/jcrona/tamalib) by Jean-Christophe Rona, GPL-2.0-or-later;
-- [font8x8](https://github.com/dhepper/font8x8) by Daniel Hepper, public domain.
+- [font8x8](https://github.com/dhepper/font8x8) by Daniel Hepper, public domain;
+- [QR Code generator](https://github.com/nayuki/QR-Code-generator) (qrcodegen) by Nayuki, MIT, vendored in `components/ui/third_party`;
+- [posix_tz_db](https://github.com/nayarsystems/posix_tz_db) by Nayar Systems, MIT, the source of the time zone table (`tools/gen_tzdb.py` regenerates it);
+- [tamagotchi-carebot](https://github.com/Sagestum/tamagotchi-carebot) by Sagestum: its published P1 RAM addresses were the starting point for the pet stats. Only facts were used, no code, and each was checked against real saves.
 
 The icons are TamaOrb's own pixel art. The references we looked at are recorded in `docs/references/icons/`. Tamagotchi is a trademark of Bandai; this project is not affiliated with Bandai.
