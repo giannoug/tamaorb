@@ -74,6 +74,10 @@ header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-betw
 .row>label b,.row>.lg b,.lbl{font-weight:600}
 .ctl{flex:2 1 280px;display:flex;align-items:center;gap:12px}
 .ctl input[type=range]{flex:1;min-width:0;accent-color:var(--accent);height:32px;margin:0}
+.sw2{appearance:none;-webkit-appearance:none;width:52px;height:32px;border-radius:16px;background:var(--line-control);position:relative;cursor:pointer;margin:0;flex:none;transition:background .15s}
+.sw2::after{content:"";position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:#fff;transition:left .15s}
+.sw2:checked{background:var(--accent)}.sw2:checked::after{left:24px}
+.sw2:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 output{min-width:56px;text-align:right;font-family:var(--mono);font-size:14px}
 .field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .field label{font-weight:600}
@@ -184,6 +188,20 @@ dialog h2{font-size:19px}
     <div class="ctl"><input id="volume" type="range" min="0" max="100" value="1"><output for="volume" id="o-volume">1 %</output></div>
     <div class="ferr" id="e-volume" hidden></div>
   </div>
+  <div class="row sep">
+    <label for="muted"><b>Mute</b><span class="hint">Silences the speaker and keeps the volume for when you unmute</span></label>
+    <div class="ctl"><input class="sw2" id="muted" type="checkbox" role="switch"><output for="muted" id="o-muted">Off</output></div>
+    <div class="ferr" id="e-muted" hidden></div>
+  </div>
+</section>
+
+<section class="card" aria-labelledby="h-time">
+  <h2 id="h-time">Time</h2>
+  <div class="row">
+    <label for="tz"><b>Time zone</b><span class="hint" id="h-tz">The ball’s clock and its day and night follow it</span></label>
+    <div class="ctl" style="flex-wrap:wrap"><select class="in" id="tz" style="flex:1 1 220px" aria-describedby="e-tz"></select><button type="button" class="btn" id="tzuse" hidden></button></div>
+    <div class="ferr" id="e-tz" hidden></div>
+  </div>
 </section>
 
 <section class="card" style="gap:16px" aria-labelledby="h-net">
@@ -284,8 +302,9 @@ var MSG={
   brightness:'Between 1 and 100',dim_level:'Between 0 and 100',volume:'Between 0 and 100',
   dim_usb_s:'0 (never) or 5 to 3600 seconds',dim_battery_s:'0 (never) or 5 to 3600 seconds',off_battery_s:'10 to 3600 seconds',
   name:'Only letters, digits and dashes, not at the start or end (1 to 32)',ntp:'Only letters, digits, dots and dashes (1 to 63)',
-  palette:'Not a known palette',agent_feedback:'Not a known choice',ssid:'Enter a network name (up to 32 characters)',password:'8 to 63 characters, or empty'
+  palette:'Not a known palette',tz:'Not a known time zone or POSIX string',muted:'Must be on or off',agent_feedback:'Not a known choice',ssid:'Enter a network name (up to 32 characters)',password:'8 to 63 characters, or empty'
 };
+var ZONES=[];
 var runName='',S=null,good=null,st=null,pets=[],confirmSha=null,restartPending=false;
 var polls=0,fails=0,lost=false,petsAt=0,petsSig='',lastPhase='',cu=null,overlay=false,gerrT=0;
 
@@ -337,7 +356,9 @@ function render(){
   var b=S.brightness,dim=Math.min(S.dim_level,b);
   $('brightness').value=b;$('o-brightness').textContent=b+' %';
   $('dim_level').max=b;$('dim_level').value=dim;$('o-dim_level').textContent=dim+' %';
-  $('volume').value=S.volume;$('o-volume').textContent=S.volume===0?'Muted':S.volume+' %';
+  $('volume').value=S.volume;$('o-volume').textContent=S.volume===0?'Silent':S.volume+' %';
+  $('muted').checked=!!S.muted;$('o-muted').textContent=S.muted?'On':'Off';
+  tzRender();
   var pal=PAL[S.palette]||PAL.classic;
   $('orbbg').setAttribute('fill',pal.bg);$('orbink').setAttribute('fill',pal.ink);
   setIcon(pal);
@@ -347,6 +368,18 @@ function render(){
   hints();
   ['name','ntp'].forEach(function(k){if(document.activeElement!==$(k))$(k).value=S[k]});
   pendName();
+}
+function tzRender(){
+  var sel=$('tz'),cur=S.tz;if(!sel||cur==null)return;
+  var key=ZONES.length+'|'+cur;if(sel.dataset.key===key)return;sel.dataset.key=key;
+  sel.textContent='';
+  var inList=ZONES.indexOf(cur)>=0;
+  if(!inList)sel.append(h('option',{value:cur,selected:true},'Custom: '+cur));
+  ZONES.forEach(function(z){sel.append(h('option',{value:z,selected:z===cur},z.replace(/_/g,' ')))});
+  var br='';try{br=Intl.DateTimeFormat().resolvedOptions().timeZone||''}catch(e){}
+  var b=$('tzuse');
+  b.hidden=!(cur==='Etc/UTC'&&br&&br!==cur&&ZONES.indexOf(br)>=0);
+  if(!b.hidden){b.textContent='Use '+br.replace(/_/g,' ');b.onclick=function(){change({tz:br})}}
 }
 function hints(){
   $('h-dim_usb_s').textContent=S.dim_usb_s===0?'Never dims. On USB the screen never turns off.':'On USB the screen never turns off. 0 = never dim.';
@@ -384,6 +417,8 @@ function buildControls(){
       var v=+el.value,o={};o[k]=v;S[k]=v;render();queue(o,false)});
     el.addEventListener('change',function(){var o={};o[k]=+el.value;queue(o,true)});
   });
+  $('muted').addEventListener('change',function(e){change({muted:e.target.checked})});
+  $('tz').addEventListener('change',function(e){change({tz:e.target.value})});
   $('name').addEventListener('change',function(e){
     var v=e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,32);e.target.value=v;change({name:v})});
   $('ntp').addEventListener('change',function(e){change({ntp:e.target.value.trim().slice(0,63)})});
@@ -646,6 +681,7 @@ api('GET','/api/settings').then(function(r){
   if(r.ok&&r.j.settings){good=r.j.settings;S=Object.assign({},good);setPending(r.j.restart_pending);render();if(st)renderStatus()}
   else gerr('Couldn’t load the settings.');
 },function(){gerr('Couldn’t reach the ball.')});
+api('GET','/api/timezones').then(function(r){if(r.ok&&r.j.zones){ZONES=r.j.zones;if(S)render()}},function(){});
 poll();
 })();
 </script>

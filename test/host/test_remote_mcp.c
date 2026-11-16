@@ -233,6 +233,27 @@ static void test_set_settings_bad_key_changes_nothing(void)
     cJSON_Delete(r);
 }
 
+static void test_set_settings_schema_has_muted_and_tz(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", NULL);
+    cJSON *tools = cJSON_GetObjectItem(result(r), "tools");
+    cJSON *props = NULL;
+    for (cJSON *t = tools->child; t; t = t->next)
+        if (!strcmp(cJSON_GetObjectItem(t, "name")->valuestring, "set_settings"))
+            props = cJSON_GetObjectItem(cJSON_GetObjectItem(t, "inputSchema"), "properties");
+    TEST_ASSERT_NOT_NULL(props);
+    TEST_ASSERT_EQUAL_STRING("boolean", cJSON_GetObjectItem(cJSON_GetObjectItem(props, "muted"), "type")->valuestring);
+    cJSON *tz = cJSON_GetObjectItem(props, "tz");
+    TEST_ASSERT_EQUAL_STRING("string", cJSON_GetObjectItem(tz, "type")->valuestring);
+    TEST_ASSERT_NOT_NULL(strstr(cJSON_GetObjectItem(tz, "description")->valuestring, "IANA"));
+    cJSON_Delete(r);
+    r = tool("set_settings", "{\"muted\":true,\"tz\":\"Europe/Berlin\"}");
+    TEST_ASSERT_FALSE(is_error(r));
+    TEST_ASSERT_TRUE(fake.settings.muted);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(cJSON_Parse(text0(r)), "muted")));
+    cJSON_Delete(r);
+}
+
 static void test_set_settings_ok(void)
 {
     cJSON *r = tool("set_settings", "{\"brightness\":50,\"palette\":\"night\"}");
@@ -441,6 +462,7 @@ int main(void)
     RUN_TEST(test_press_validated_before_ops);
     RUN_TEST(test_unknown_tool);
     RUN_TEST(test_set_settings_bad_key_changes_nothing);
+    RUN_TEST(test_set_settings_schema_has_muted_and_tz);
     RUN_TEST(test_set_settings_ok);
     RUN_TEST(test_patch_settings_types);
     RUN_TEST(test_status_and_pets_json);

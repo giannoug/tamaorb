@@ -4,6 +4,7 @@
 #include "unity.h"
 #include "fake_ops.h"
 #include "test_support.h"
+#include "tzdb.h"
 
 // Real ROM hashes so rm_save_check recognises the model: active pet is P2, the other P1 (upper case in URLs).
 static const char *SHA_ACTIVE = "09e5101b37636a314fc599d5d69b4846721b3c88";
@@ -137,6 +138,60 @@ static void test_patch_settings_bad_key_changes_nothing(void)
     expect_err(400, "invalid", "dim_level");
     TEST_ASSERT_EQUAL(80, fake.settings.brightness);
     TEST_ASSERT_EQUAL(0, fake.put_calls);
+}
+
+static void test_settings_json_muted_is_bool(void)
+{
+    go(RM_GET, "/api/settings", NULL, NULL, NULL);
+    cJSON *j0 = json();
+    cJSON *st = cJSON_GetObjectItem(j0, "settings");
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(st, "muted")));
+    TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItem(st, "tz")));
+    TEST_ASSERT_EQUAL_STRING("Etc/UTC", cJSON_GetObjectItem(st, "tz")->valuestring);
+    cJSON_Delete(j0);
+    go(RM_PATCH, "/api/settings", NULL, NULL, "{\"muted\":true,\"tz\":\"Europe/Berlin\"}");
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_TRUE(fake.settings.muted);
+    cJSON *j = json();
+    st = cJSON_GetObjectItem(j, "settings");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(st, "muted")));
+    TEST_ASSERT_EQUAL_STRING("Europe/Berlin", cJSON_GetObjectItem(st, "tz")->valuestring);
+    cJSON_Delete(j);
+}
+
+static void test_patch_muted_rejects_string(void)
+{
+    go(RM_PATCH, "/api/settings", NULL, NULL, "{\"muted\":\"true\"}");
+    expect_err(400, "invalid", "muted");
+    go(RM_PATCH, "/api/settings", NULL, NULL, "{\"muted\":1}");
+    expect_err(400, "invalid", "muted");
+    TEST_ASSERT_FALSE(fake.settings.muted);
+    TEST_ASSERT_EQUAL(0, fake.put_calls);
+}
+
+static void test_patch_tz_bad_is_400_and_unchanged(void)
+{
+    go(RM_PATCH, "/api/settings", NULL, NULL, "{\"volume\":5,\"tz\":\"Mars/Base\"}");
+    expect_err(400, "invalid", "tz");
+    TEST_ASSERT_EQUAL_STRING("Etc/UTC", fake.settings.tz);
+    TEST_ASSERT_EQUAL(0, fake.put_calls);
+}
+
+static void test_get_timezones_lists_names(void)
+{
+    go(RM_GET, "/api/timezones", NULL, "https://example.com", NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    cJSON *j = json();
+    cJSON *z = cJSON_GetObjectItem(j, "zones");
+    TEST_ASSERT_TRUE(cJSON_IsArray(z));
+    TEST_ASSERT_EQUAL(tzdb_count(), cJSON_GetArraySize(z));
+    TEST_ASSERT_EQUAL_STRING(tzdb_at(0)->name, cJSON_GetArrayItem(z, 0)->valuestring);
+    int found = 0;
+    for (cJSON *e = z->child; e; e = e->next) if (!strcmp(e->valuestring, "Europe/Berlin")) found = 1;
+    TEST_ASSERT_TRUE(found);
+    cJSON_Delete(j);
+    go(RM_POST, "/api/timezones", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(405, resp.status);
 }
 
 static void test_patch_not_object(void)
@@ -451,6 +506,10 @@ int main(void)
     RUN_TEST(test_patch_settings_ok);
     RUN_TEST(test_patch_settings_skips_full_status);
     RUN_TEST(test_patch_settings_bad_key_changes_nothing);
+    RUN_TEST(test_settings_json_muted_is_bool);
+    RUN_TEST(test_patch_muted_rejects_string);
+    RUN_TEST(test_patch_tz_bad_is_400_and_unchanged);
+    RUN_TEST(test_get_timezones_lists_names);
     RUN_TEST(test_patch_not_object);
     RUN_TEST(test_unknown_path_404);
     RUN_TEST(test_wrong_method_405);

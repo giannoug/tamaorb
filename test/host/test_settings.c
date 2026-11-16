@@ -26,7 +26,7 @@ static void test_defaults(void)
     TEST_ASSERT_EQUAL(ST_AGENT_QUIET, s.agent_feedback);
     TEST_ASSERT_EQUAL_STRING("tamaorb", s.name);
     TEST_ASSERT_EQUAL_STRING("pool.ntp.org", s.ntp);
-    TEST_ASSERT_EQUAL(10, st_key_count());
+    TEST_ASSERT_EQUAL(12, st_key_count());
 }
 
 static void test_ranges(void)
@@ -194,6 +194,94 @@ static void test_writer_debounce(void)
     TEST_ASSERT_TRUE(st_writer_due(&w, 0x000003D0u));
 }
 
+static void test_muted_roundtrip(void)
+{
+    char b[16];
+    TEST_ASSERT_FALSE(s.muted);
+    TEST_ASSERT_TRUE(st_get(&s, "muted", b, sizeof b));
+    TEST_ASSERT_EQUAL_STRING("false", b);
+    TEST_ASSERT_TRUE(st_set(&s, "muted", "true"));
+    TEST_ASSERT_TRUE(s.muted);
+    TEST_ASSERT_TRUE(st_get(&s, "muted", b, sizeof b));
+    TEST_ASSERT_EQUAL_STRING("true", b);
+    TEST_ASSERT_TRUE(st_set(&s, "muted", "false"));
+    TEST_ASSERT_FALSE(s.muted);
+    TEST_ASSERT_FALSE(ok("muted", "1"));
+    TEST_ASSERT_FALSE(ok("muted", "True"));
+    TEST_ASSERT_FALSE(ok("muted", ""));
+    TEST_ASSERT_TRUE(st_is_bool("muted"));
+    TEST_ASSERT_FALSE(st_is_bool("volume"));
+    TEST_ASSERT_FALSE(st_is_bool("tz"));
+    TEST_ASSERT_FALSE(st_is_bool(NULL));
+    TEST_ASSERT_FALSE(st_needs_restart("muted"));
+    TEST_ASSERT_FALSE(st_needs_restart("tz"));
+    TEST_ASSERT_FALSE(st_is_display("muted"));
+    TEST_ASSERT_FALSE(st_is_display("tz"));
+    TEST_ASSERT_FALSE(st_is_numeric("muted"));
+    TEST_ASSERT_FALSE(st_is_numeric("tz"));
+}
+
+static void test_effective_volume_muted_keeps_volume(void)
+{
+    TEST_ASSERT_TRUE(st_set(&s, "volume", "20"));
+    TEST_ASSERT_TRUE(st_set(&s, "muted", "true"));
+    TEST_ASSERT_EQUAL(0, st_effective_volume(&s));
+    TEST_ASSERT_EQUAL(20, s.volume);
+    TEST_ASSERT_TRUE(st_set(&s, "muted", "false"));
+    TEST_ASSERT_EQUAL(20, st_effective_volume(&s));
+}
+
+static void test_tz_accepts_name_and_posix(void)
+{
+    char b[80];
+    TEST_ASSERT_EQUAL_STRING("Etc/UTC", s.tz);
+    TEST_ASSERT_TRUE(st_set(&s, "tz", "Europe/Berlin"));
+    TEST_ASSERT_TRUE(st_get(&s, "tz", b, sizeof b));
+    TEST_ASSERT_EQUAL_STRING("Europe/Berlin", b);
+    TEST_ASSERT_TRUE(st_set(&s, "tz", "<+03>-3"));
+    TEST_ASSERT_EQUAL_STRING("<+03>-3", s.tz);
+    TEST_ASSERT_TRUE(ok("tz", "EST5EDT,M3.2.0,M11.1.0"));
+}
+
+static void test_tz_rejects_unknown_name(void)
+{
+    TEST_ASSERT_FALSE(ok("tz", "Europe/Nowhere"));
+    TEST_ASSERT_FALSE(ok("tz", "Berlin"));
+    TEST_ASSERT_FALSE(ok("tz", ""));
+    TEST_ASSERT_FALSE(ok("tz", "\"; rm"));
+    char longv[80];
+    memset(longv, 'A', sizeof longv - 1);
+    longv[sizeof longv - 1] = 0;
+    TEST_ASSERT_FALSE(ok("tz", longv));
+    longv[63] = 0;   // 63 chars of letters is still not POSIX (no offset)
+    TEST_ASSERT_FALSE(ok("tz", longv));
+}
+
+static void test_tz_posix_lookup(void)
+{
+    st_set(&s, "tz", "Europe/Berlin");
+    TEST_ASSERT_EQUAL_STRING("CET-1CEST,M3.5.0,M10.5.0/3", st_tz_posix(&s));
+    st_set(&s, "tz", "<+03>-3");
+    TEST_ASSERT_EQUAL_STRING("<+03>-3", st_tz_posix(&s));
+    st_defaults(&s, 1);
+    TEST_ASSERT_EQUAL_STRING("UTC0", st_tz_posix(&s));
+}
+
+static void test_set_many_bad_tz_is_all_or_nothing(void)
+{
+    const char *k[] = {"muted", "tz", "volume"};
+    const char *v[] = {"true", "Europe/Nowhere", "50"};
+    st_settings_t before = s;
+    int bad = -1;
+    TEST_ASSERT_FALSE(st_set_many(&s, k, v, 3, &bad));
+    TEST_ASSERT_EQUAL(1, bad);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &s, sizeof s);
+    v[1] = "Asia/Tokyo";
+    TEST_ASSERT_TRUE(st_set_many(&s, k, v, 3, &bad));
+    TEST_ASSERT_TRUE(s.muted);
+    TEST_ASSERT_EQUAL_STRING("Asia/Tokyo", s.tz);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -209,5 +297,11 @@ int main(void)
     RUN_TEST(test_flags);
     RUN_TEST(test_restart_pending_against_boot_values);
     RUN_TEST(test_writer_debounce);
+    RUN_TEST(test_muted_roundtrip);
+    RUN_TEST(test_effective_volume_muted_keeps_volume);
+    RUN_TEST(test_tz_accepts_name_and_posix);
+    RUN_TEST(test_tz_rejects_unknown_name);
+    RUN_TEST(test_tz_posix_lookup);
+    RUN_TEST(test_set_many_bad_tz_is_all_or_nothing);
     return UNITY_END();
 }

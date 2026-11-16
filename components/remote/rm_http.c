@@ -6,6 +6,7 @@
 #include <string.h>
 #include <strings.h>
 #include "remote.h"
+#include "tzdb.h"
 
 #define SAVE_MAX 16384
 #define PETS_MAX 16
@@ -183,6 +184,19 @@ static void h_patch_settings(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *
     settings_reply(ops, r);
 }
 
+static void h_timezones(rm_resp_t *r)
+{
+    cJSON *j = cJSON_CreateObject(), *a = cJSON_CreateArray();
+    if (!j || !a) { cJSON_Delete(j); cJSON_Delete(a); set_json(r, 500, NULL); return; }
+    cJSON_AddItemToObject(j, "zones", a);
+    for (int i = 0; i < tzdb_count(); i++) {
+        cJSON *n = cJSON_CreateString(tzdb_at(i)->name);
+        if (!n) { cJSON_Delete(j); set_json(r, 500, NULL); return; }
+        cJSON_AddItemToArray(a, n);
+    }
+    set_json(r, 200, j);
+}
+
 static void h_wifi(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
 {
     cJSON *p = parse_body(q);
@@ -320,6 +334,7 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         {"/api/wifi", M(RM_POST)},         {"/api/restart", M(RM_POST)},
         {"/api/pets", M(RM_GET)},          {"/api/pets/switch", M(RM_POST)},
         {"/api/look", M(RM_GET)},          {"/api/press", M(RM_POST)},
+        {"/api/timezones", M(RM_GET)},
     };
     if (match_save_path(path, sha)) {
         if (q->method == RM_GET) h_save_get(ops, sha, r);
@@ -339,6 +354,7 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         case 5: h_switch(ops, q, r); break;
         case 6: look_reply(ops, r); break;
         case 7: h_press(ops, q, r); break;
+        case 8: h_timezones(r); break;
         }
         return;
     }

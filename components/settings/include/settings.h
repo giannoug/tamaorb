@@ -15,6 +15,8 @@ typedef struct {
     st_agent_fx_t agent_feedback;
     char name[33];
     char ntp[64];
+    bool muted;
+    char tz[64];       // IANA name from tzdb, or a POSIX TZ string
 } st_settings_t;
 
 #define ST_WRITE_DELAY_MS 2000u
@@ -27,12 +29,17 @@ bool st_set(st_settings_t *s, const char *key, const char *value);
 // All or nothing. On failure *bad is the index of the first rejected pair.
 bool st_set_many(st_settings_t *s, const char *const *keys, const char *const *values, int n, int *bad);
 bool st_is_numeric(const char *key);
+bool st_is_bool(const char *key);
 bool st_needs_restart(const char *key);
 // True iff a key that applies after a restart (name, ntp) differs between the values the ball booted with and
 // the current ones. Renaming back to the boot name clears it.
 bool st_restart_pending(const st_settings_t *boot, const st_settings_t *cur);
 bool st_is_display(const char *key);
 uint8_t st_effective_dim(const st_settings_t *s);
+// 0 while muted; the stored volume is kept, so unmuting restores it.
+uint8_t st_effective_volume(const st_settings_t *s);
+// POSIX TZ string for s->tz: the table entry for an IANA name, else the raw string.
+const char *st_tz_posix(const st_settings_t *s);
 
 typedef struct { bool dirty; uint32_t changed_ms; } st_writer_t;
 void st_writer_changed(st_writer_t *w, uint32_t now_ms);

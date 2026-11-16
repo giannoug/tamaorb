@@ -29,8 +29,12 @@ set(UI_INC ${COMP}/ui/include)
 set(PERSIST_SRC ${COMP}/persist/ps_record.c ${COMP}/persist/ps_policy.c)
 set(PERSIST_INC ${COMP}/persist/include)
 
-set(SETTINGS_SRC ${COMP}/settings/st_settings.c)
-set(SETTINGS_INC ${COMP}/settings/include)
+set(TZDB_SRC ${COMP}/tzdb/tzdb.c ${COMP}/tzdb/tzdb_table.c)
+set(TZDB_INC ${COMP}/tzdb/include)
+
+# settings validates tz through tzdb, so every user of settings links it too
+set(SETTINGS_SRC ${COMP}/settings/st_settings.c ${TZDB_SRC})
+set(SETTINGS_INC ${COMP}/settings/include ${TZDB_INC})
 
 set(HOSTLINK_SRC ${COMP}/hostlink/hl_proto.c ${COMP}/hostlink/hl_base64.c)
 set(HOSTLINK_INC ${COMP}/hostlink/include)
@@ -64,6 +68,7 @@ tamaorb_test(test_ui_screen ${UI_SRC})
 tamaorb_test(test_ui_text ${UI_SRC})
 tamaorb_test(test_persist ${PERSIST_SRC})
 tamaorb_test(test_settings ${SETTINGS_SRC})
+tamaorb_test(test_tzdb ${TZDB_SRC})
 tamaorb_test(test_hostlink ${HOSTLINK_SRC} ${TAMA_CORE_SRC} ${SETTINGS_SRC})
 tamaorb_test(test_remote_look ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})
 tamaorb_test(test_remote_press ${REMOTE_TEST_SRC} ${UI_SRC} ${TAMA_CORE_SRC} ${PERSIST_SRC})

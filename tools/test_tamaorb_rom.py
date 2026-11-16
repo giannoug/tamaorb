@@ -161,7 +161,8 @@ def multi_port(replies):
 
 
 ALL_SETTINGS = ["brightness=80", "dim_level=5", "dim_usb_s=30", "dim_battery_s=15", "off_battery_s=30", "volume=0",
-                "palette=classic", "name=tamaorb", "ntp=pool.ntp.org", "agent_feedback=quiet"]
+                "palette=classic", "name=tamaorb", "ntp=pool.ntp.org", "agent_feedback=quiet", "muted=false",
+                "tz=Etc/UTC"]
 
 
 def test_get_prints_settings(monkeypatch, capsys):
@@ -185,6 +186,20 @@ def test_set_rejected_exit_code(monkeypatch, capsys):
     monkeypatch.setattr(tool, "open_port", lambda name: port)
     assert tool.main(["set", "dim_level=999"]) == 1
     assert "rejected: dim_level" in capsys.readouterr().err
+
+
+def test_set_muted_and_tz(monkeypatch, capsys):
+    port = multi_port(["@TO OK"])
+    monkeypatch.setattr(tool, "open_port", lambda name: port)
+    assert tool.main(["set", "muted=true", "tz=Europe/Berlin"]) == 0
+    assert port.written == ["@TO SET muted=true tz=Europe/Berlin"]
+
+
+def test_get_incomplete_without_muted_and_tz():
+    old = [p for p in ALL_SETTINGS if not p.startswith(("muted", "tz"))]
+    port = multi_port(["@TO SET " + p for p in old] + ["@TO OK"])
+    with pytest.raises(tool.ToolError, match="muted, tz"):
+        tool.Link(port, timeout=1).get()
 
 
 class FragmentPort(FakePort):

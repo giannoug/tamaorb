@@ -42,6 +42,8 @@ static const tool_def_t TOOLS[] = {
      "\"dim_battery_s\":{\"type\":\"integer\",\"description\":\"0 (never) or 5-3600\"},"
      "\"off_battery_s\":{\"type\":\"integer\",\"minimum\":10,\"maximum\":3600},"
      "\"volume\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":100},"
+     "\"muted\":{\"type\":\"boolean\",\"description\":\"Silences the speaker; the volume is kept and comes back on unmute\"},"
+     "\"tz\":{\"type\":\"string\",\"description\":\"IANA name such as Europe/Berlin, or a POSIX TZ string\"},"
      "\"palette\":{\"type\":\"string\",\"enum\":[\"classic\",\"neutral\",\"night\"]},"
      "\"name\":{\"type\":\"string\",\"description\":\"1-32 of a-z 0-9 -, not starting or ending with -\"},"
      "\"ntp\":{\"type\":\"string\",\"description\":\"NTP host, 1-63 of A-Z a-z 0-9 . -\"},"

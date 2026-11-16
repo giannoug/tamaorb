@@ -9,6 +9,7 @@
   tamaorb-rom.py status
   tamaorb-rom.py get                                  # all settings as key=value
   tamaorb-rom.py set brightness=30 palette=night      # all or nothing
+  tamaorb-rom.py set muted=true tz=Europe/Berlin      # mute; time zone (IANA name or POSIX string)
 
 Talks the "@TO" line protocol (docs: components/hostlink/include/hostlink.h) over the same
 USB serial port used for flashing. Only P1 and P2 dumps are sent; nothing else leaves the PC.
@@ -33,7 +34,7 @@ ROM_BYTES = 12288
 CHUNK = 768
 # Every key "@TO GET" lists (components/settings/st_settings.c); a listing missing any is incomplete.
 SETTINGS_KEYS = ("brightness", "dim_level", "dim_usb_s", "dim_battery_s", "off_battery_s", "volume", "palette",
-                 "name", "ntp", "agent_feedback")
+                 "name", "ntp", "agent_feedback", "muted", "tz")
 
 
 class ToolError(Exception):

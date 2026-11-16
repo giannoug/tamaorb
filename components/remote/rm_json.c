@@ -35,7 +35,8 @@ cJSON *rm_json_settings(const st_settings_t *s)
         const char *k = st_key(i);
         char v[64];
         if (!st_get(s, k, v, sizeof v)) continue;
-        if (st_is_numeric(k)) cJSON_AddNumberToObject(o, k, atoi(v));
+        if (st_is_bool(k)) cJSON_AddBoolToObject(o, k, !strcmp(v, "true"));
+        else if (st_is_numeric(k)) cJSON_AddNumberToObject(o, k, atoi(v));
         else cJSON_AddStringToObject(o, k, v);
     }
     return o;
@@ -60,7 +61,10 @@ const char *rm_json_patch_settings(const cJSON *patch, st_settings_t *s, bool *d
         const char *key = it->string ? it->string : "";
         char num[16];
         const char *val;
-        if (cJSON_IsNumber(it)) {
+        if (st_is_bool(key)) {  // booleans are JSON booleans only
+            if (!cJSON_IsBool(it)) return key;
+            val = cJSON_IsTrue(it) ? "true" : "false";
+        } else if (cJSON_IsNumber(it)) {
             int n;
             if (!whole(it, &n)) return key;
             snprintf(num, sizeof num, "%d", n);

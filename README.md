@@ -58,7 +58,7 @@ idf.py set-target esp32s3 build
 idf.py -p /dev/ttyACM0 flash
 ```
 
-`TAMAORB_VOLUME` (0–100, in `idf.py menuconfig` → *TamaOrb board*) is only the default volume. Change it live from the web panel or with `tamaorb-rom.py set volume=…`.
+`TAMAORB_VOLUME` (0–100, in `idf.py menuconfig` → *TamaOrb board*) is only the default volume. Change it live from the web panel or with `tamaorb-rom.py set volume=…`; `muted=true` silences the speaker and keeps the volume, and `tz=Europe/Berlin` sets the time zone (an IANA name, or a POSIX TZ string).
 
 ## ROMs and Wi-Fi over USB
 

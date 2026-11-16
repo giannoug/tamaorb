@@ -186,7 +186,7 @@ static void test_get_lists_all_settings(void)
     feed("@TO GET");
     TEST_ASSERT_EQUAL(st_key_count() + 1, replies);
     TEST_ASSERT_EQUAL_STRING("@TO OK", last);
-    TEST_ASSERT_EQUAL(10, st_key_count());
+    TEST_ASSERT_EQUAL(12, st_key_count());
 }
 
 static char first[256];

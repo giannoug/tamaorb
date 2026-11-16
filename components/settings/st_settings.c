@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "settings.h"
+#include "tzdb.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum { K_NUM, K_ZERO_OR_NUM, K_PALETTE, K_AGENT, K_NAME, K_NTP } kind_t;
+typedef enum { K_NUM, K_ZERO_OR_NUM, K_PALETTE, K_AGENT, K_NAME, K_NTP, K_BOOL, K_TZ } kind_t;
 
 typedef struct {
     const char *key;
@@ -23,6 +24,8 @@ static const entry_t TABLE[] = {
     {"name", K_NAME, 1, 32},
     {"ntp", K_NTP, 1, 63},
     {"agent_feedback", K_AGENT, 0, 0},
+    {"muted", K_BOOL, 0, 0},
+    {"tz", K_TZ, 1, 63},
 };
 #define N_KEYS ((int)(sizeof TABLE / sizeof TABLE[0]))
 
@@ -86,6 +89,8 @@ void st_defaults(st_settings_t *s, uint8_t volume_default)
     s->agent_feedback = ST_AGENT_QUIET;
     strcpy(s->name, "tamaorb");
     strcpy(s->ntp, "pool.ntp.org");
+    s->muted = false;
+    strcpy(s->tz, "Etc/UTC");
 }
 
 int st_key_count(void) { return N_KEYS; }
@@ -105,6 +110,8 @@ bool st_get(const st_settings_t *s, const char *key, char *out, size_t cap)
     else if (strcmp(key, "palette") == 0) n = snprintf(out, cap, "%s", PALETTES[s->palette]);
     else if (strcmp(key, "agent_feedback") == 0) n = snprintf(out, cap, "%s", AGENTS[s->agent_feedback]);
     else if (strcmp(key, "name") == 0) n = snprintf(out, cap, "%s", s->name);
+    else if (strcmp(key, "muted") == 0) n = snprintf(out, cap, "%s", s->muted ? "true" : "false");
+    else if (strcmp(key, "tz") == 0) n = snprintf(out, cap, "%s", s->tz);
     else n = snprintf(out, cap, "%s", s->ntp);
     return n >= 0 && (size_t)n < cap;
 }
@@ -134,6 +141,18 @@ bool st_set(st_settings_t *s, const char *key, const char *value)
         if (!in_list(AGENTS, value, &idx)) return false;
         s->agent_feedback = (st_agent_fx_t)idx;
         return true;
+    case K_BOOL:
+        if (strcmp(value, "true") == 0) s->muted = true;
+        else if (strcmp(value, "false") == 0) s->muted = false;
+        else return false;
+        return true;
+    case K_TZ: {
+        size_t len = strlen(value);
+        if (len < (size_t)e->min || len > (size_t)e->max) return false;
+        if (!tzdb_find(value) && !tzdb_posix_valid(value)) return false;
+        memcpy(s->tz, value, len + 1);
+        return true;
+    }
     case K_NAME:
     case K_NTP: {
         size_t len = strlen(value);
@@ -165,6 +184,12 @@ bool st_is_numeric(const char *key)
     return e && (e->kind == K_NUM || e->kind == K_ZERO_OR_NUM);
 }
 
+bool st_is_bool(const char *key)
+{
+    const entry_t *e = find(key);
+    return e && e->kind == K_BOOL;
+}
+
 bool st_needs_restart(const char *key)
 {
     const entry_t *e = find(key);
@@ -190,6 +215,14 @@ bool st_is_display(const char *key)
 uint8_t st_effective_dim(const st_settings_t *s)
 {
     return s->dim_level < s->brightness ? s->dim_level : s->brightness;
+}
+
+uint8_t st_effective_volume(const st_settings_t *s) { return s->muted ? 0 : s->volume; }
+
+const char *st_tz_posix(const st_settings_t *s)
+{
+    const tzdb_zone_t *z = tzdb_find(s->tz);
+    return z ? z->posix : s->tz;
 }
 
 void st_writer_changed(st_writer_t *w, uint32_t now_ms)
