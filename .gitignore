@@ -17,6 +17,9 @@ build/
 sdkconfig
 sdkconfig.old
 managed_components/
+.pio/
+sdkconfig.*
+!sdkconfig.defaults
 build-host/
 
 # Python bytecode
