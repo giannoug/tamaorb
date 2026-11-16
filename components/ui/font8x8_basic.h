@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: LicenseRef-PublicDomain
 // Public domain 8x8 font by Daniel Hepper, from https://github.com/dhepper/font8x8 (font8x8_basic.h).
 // Changed for TamaOrb: the array is static const. Bit 0 of each byte is the leftmost pixel.
 /**

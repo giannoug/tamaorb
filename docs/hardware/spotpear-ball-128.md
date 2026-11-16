@@ -24,7 +24,6 @@ Sources: xiaozhi-esp32 `main/boards/spotpear/sp-esp32-s3-1.28-box`, RealDeco/xia
 
 The full flash as found on 2026-11-15 (the owner's TamaPoke firmware, not stock xiaozhi) is backed up at `hw-backup/device-flash-2026-11-15-full-16MB.bin` (git-ignored; it may contain Wi-Fi credentials).
 
-The detailed hardware notes above should live in `docs/hardware/spotpear-ball-128.md` in the repo.
 
 ## CST816D register layout (measured)
 
