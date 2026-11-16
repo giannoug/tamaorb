@@ -28,16 +28,21 @@ jobs:
       - run: pytest tools
 
   firmware:
-    name: Firmware build (ESP-IDF v6.1.1, esp32s3)
+    name: Firmware build (PlatformIO, espressif32 8.0.0)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: espressif/esp-idf-ci-action@v1
+      - uses: actions/setup-python@v5
         with:
-          esp_idf_version: v6.1.1
-          target: esp32s3
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio==6.2.0
+      - run: pio run
 
   fuzz:
     name: Parser fuzz (ASan/UBSan, short run)

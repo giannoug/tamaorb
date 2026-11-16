@@ -58,16 +58,27 @@ Mute and time zone are settings (`muted`, `tz`), so the ball, the web panel, MCP
 
 ## Build and flash
 
-Needs ESP-IDF **v6.1.1**.
+TamaOrb builds with [PlatformIO](https://platformio.org/) on Windows, Linux and macOS. PlatformIO downloads the right toolchain and ESP-IDF (6.1.0, through the pinned `espressif32 @ 8.0.0` platform) on the first build, which takes a few minutes.
 
-```bash
-git submodule update --init
-. ~/esp/esp-idf-v6.1.1/export.sh
-idf.py set-target esp32s3 build
-idf.py -p /dev/ttyACM0 flash
-```
+1. Install PlatformIO: the **PlatformIO IDE** extension in VS Code, or `pip install platformio` for the command line.
+2. Get the code with its submodule:
 
-`TAMAORB_VOLUME` (0–100, in `idf.py menuconfig` → *TamaOrb board*) is only the default volume. Change it live from the web panel or with `tamaorb-rom.py set volume=…`; `muted=true` silences the speaker and keeps the volume, and `tz=Europe/Berlin` sets the time zone (an IANA name, or a POSIX TZ string).
+   ```bash
+   git clone --recursive https://github.com/giannoug/tamaorb.git
+   ```
+
+   In an existing clone, run `git submodule update --init` once.
+3. Plug the ball in over USB-C and build, flash and watch the log. In VS Code these are the ✓ (Build), → (Upload) and plug (Monitor) buttons in the status bar. On the command line, from the project folder:
+
+   ```bash
+   pio run
+   pio run -t upload
+   pio device monitor
+   ```
+
+PlatformIO finds the ball's port by itself. If it picks the wrong one, add `--upload-port` (and `--port` for the monitor): `COM5` or similar on Windows, `/dev/ttyACM0` on Linux, `/dev/cu.usbmodem…` on macOS. The ball's USB serial needs no driver on Windows 10 or later; it shows up as a COM port. On WSL, attach it with `usbipd attach --wsl --busid <id>`. Flashing keeps your pets and settings.
+
+`TAMAORB_VOLUME` (0–100, in `pio run -t menuconfig` → *TamaOrb board*) is only the default volume. Change it live from the web panel or with `tamaorb-rom.py set volume=…`; `muted=true` silences the speaker and keeps the volume, and `tz=Europe/Berlin` sets the time zone (an IANA name, or a POSIX TZ string).
 
 ## ROMs and Wi-Fi over USB
 
@@ -96,7 +107,7 @@ Once the ball is on Wi-Fi it serves a settings and status page at **`http://tama
 
 The same operations, plus reading the screen (`GET /api/look`) and pressing buttons (`POST /api/press`), are a JSON API under `/api/`.
 
-**If `tamaorb.local` doesn't resolve,** use the ball's IP address instead (`http://<ip>/`). Some routers stop forwarding mDNS names about 2 minutes after the ball boots, typically when the PC and the ball are on different subnets. To find the IP, look in your router's DHCP client list, read the boot log over USB (`idf.py -p /dev/ttyACM0 monitor`, the line `esp_netif_handlers: sta ip: …`), run `tools/tamaorb-rom.py status` over USB (`ip=…`), or open the panel and read the Wi-Fi tile. Give the ball a DHCP reservation so the address doesn't change.
+**If `tamaorb.local` doesn't resolve,** use the ball's IP address instead (`http://<ip>/`). Some routers stop forwarding mDNS names about 2 minutes after the ball boots, typically when the PC and the ball are on different subnets. To find the IP, look in your router's DHCP client list, read the boot log over USB (`pio device monitor`, the line `esp_netif_handlers: sta ip: …`), run `tools/tamaorb-rom.py status` over USB (`ip=…`), or open the panel and read the Wi-Fi tile. Give the ball a DHCP reservation so the address doesn't change.
 
 Without Wi-Fi, the same settings work over the cable with `tamaorb-rom.py get` and `set`.
 

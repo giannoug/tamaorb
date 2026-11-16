@@ -4,4 +4,6 @@
 
 **Decision.** Use ESP-IDF v6.1.1 directly, in C, matching tamalib. No LVGL: the UI is a pixel grid plus a few text screens.
 
+**Amended by [ADR 0006](0006-platformio.md)** (build tool): PlatformIO now builds the project, on the ESP-IDF version its pinned platform ships.
+
 **Consequences.** We get first-class light sleep, power locks, NVS and the official component drivers. The UI drawing code is small and host-testable. PlatformIO support could be added later as a wrapper.
