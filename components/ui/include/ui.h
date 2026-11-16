@@ -213,7 +213,7 @@ typedef struct {
                                  // city count is cached per pointer)
     const char *panel_url, *panel_name;  // PANEL: the panel's URL (NULL = no Wi-Fi), mDNS name
     const ui_qr_t *panel_qr;     // PANEL: panel_url encoded; NULL or size 0: the address only
-    uint32_t t_ms;               // drives marquees
+    uint32_t t_ms;               // now: drives marquees and the confirm guard; set it before ui_nav_step and rendering
     // ROM and ROM_CONFIRM. The caller fills roms/rom_count/rom_current while roms is NULL (ui_nav_open_roms
     // leaves it NULL; ui_nav_to_pet clears it); the rows must stay valid while the page shows.
     const ui_rom_row_t *roms;    // NULL: not loaded yet (nothing listed)
@@ -250,7 +250,11 @@ typedef struct {
     ui_menu_view_t view;   // valid while screen == UI_SCREEN_MENU; view.cfg is set on every ui_nav_step
     int active_ctl;        // private: the control under the current drag's start point, -1 none
     bool rom_from_pet;     // "< back" on the ROM list returns to the pet (else to the settings list)
+    uint32_t confirm_ms;   // private: view.t_ms when the confirm page opened
 } ui_nav_t;
+// The confirm page's pills ignore taps for this long after it opens (by view.t_ms), so the second half of a
+// double tap on a list row that lies where a pill appears can't switch pets.
+#define UI_CONFIRM_GUARD_MS 500
 // ROM_SWITCH: switch to view.roms[view.rom_pick] (confirmed, or picked on first start).
 typedef enum { UI_ACT_NONE, UI_ACT_REDRAW, UI_ACT_SETTINGS, UI_ACT_ROM_SWITCH } ui_act_t;
 void ui_nav_init(ui_nav_t *n);

@@ -102,6 +102,7 @@ static ui_act_t tap_row(ui_nav_t *n, int row, const st_settings_t *cur, st_setti
         if (row == v->rom_current) { ui_nav_to_pet(n); return UI_ACT_REDRAW; }  // the running pet: nothing changes
         menu_open(n, UI_PAGE_ROM_CONFIRM);
         v->rom_pick = row;
+        n->confirm_ms = v->t_ms;
         return UI_ACT_REDRAW;
     }
     if (v->page == UI_PAGE_TZ_REGION) {
@@ -161,6 +162,8 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
             return row < 0 ? UI_ACT_NONE : tap_row(n, row, cur, out, display_changed);
         }
         int val, ctl = ui_menu_control_at(v, ev->x, ev->y, &val);
+        if ((ctl == UI_CTL_ROM_CANCEL || ctl == UI_CTL_ROM_SWITCH) && v->t_ms - n->confirm_ms < UI_CONFIRM_GUARD_MS)
+            return UI_ACT_NONE;  // too soon: the rest of a double tap on the row that opened this page
         if (ctl == UI_CTL_ROM_CANCEL) { menu_open(n, UI_PAGE_ROM); return UI_ACT_REDRAW; }
         if (ctl == UI_CTL_ROM_SWITCH) return UI_ACT_ROM_SWITCH;
         return ctl < 0 ? UI_ACT_NONE : edit_ctl(cur, out, display_changed, ctl, val);

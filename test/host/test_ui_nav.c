@@ -20,6 +20,7 @@ void tearDown(void) {}
 static ui_act_t step(ui_gkind_t k, int x, int y, int dx, int dy, bool boot)
 {
     ui_gevent_t ev = { k, (int16_t)x, (int16_t)y, (int16_t)dx, (int16_t)dy, false };
+    nav.view.t_ms += 1000;  // deliberate inputs, well apart (see test_confirm_ignores_quick_second_tap)
     return ui_nav_step(&nav, &ev, boot, &cfg, &out, &dc);
 }
 static ui_act_t tap(int x, int y) { return step(UI_G_TAP, x, y, 0, 0, false); }
@@ -284,6 +285,41 @@ static void test_confirm_boot_and_swipe_return_to_list(void)
     TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
 }
 
+// Review finding: the Switch pill overlaps where a lower list row sat, so a double tap on that row must not
+// switch pets: the confirm page ignores its pills for UI_CONFIRM_GUARD_MS after it opens.
+static ui_act_t tap_at_ms(int x, int y, uint32_t t_ms)
+{
+    ui_gevent_t ev = { UI_G_TAP, (int16_t)x, (int16_t)y, 0, 0, false, (int16_t)x, (int16_t)y, true };
+    nav.view.t_ms = t_ms;
+    return ui_nav_step(&nav, &ev, false, &cfg, &out, &dc);
+}
+
+static void test_confirm_ignores_quick_second_tap(void)
+{
+    static const ui_rom_row_t THREE[3] = { { "P1", "Gen 1 - a.bin" }, { "P2", "Gen 2 - b.bin" }, { "P2", "Gen 2 - c.bin" } };
+    ui_nav_open_roms(&nav, true);
+    nav.view.roms = THREE;
+    nav.view.rom_count = 3;
+    nav.view.rom_current = 0;
+    // a point that is on row 2 of the list and on the Switch pill of the confirm page
+    int px = -1, py = -1;
+    for (int y = 0; y < UI_H && px < 0; y++)
+        for (int x = 0; x < UI_W && px < 0; x++) {
+            nav.view.page = UI_PAGE_ROM_CONFIRM;
+            bool on_pill = ui_menu_control_at(&nav.view, x, y, NULL) == UI_CTL_ROM_SWITCH;
+            nav.view.page = UI_PAGE_ROM;
+            if (on_pill && ui_menu_row_at(&nav.view, x, y) == 2) { px = x; py = y; }
+        }
+    TEST_ASSERT_TRUE_MESSAGE(px >= 0, "row 2 and the Switch pill no longer overlap");
+    const uint32_t t0 = 50000;
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap_at_ms(px, py, t0));          // first tap: the confirm page
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, tap_at_ms(px, py, t0 + 250));      // the double tap's second half
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, tap_at_ms(px, py, t0 + UI_CONFIRM_GUARD_MS - 1));
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
+    TEST_ASSERT_EQUAL(UI_ACT_ROM_SWITCH, tap_at_ms(px, py, t0 + UI_CONFIRM_GUARD_MS));  // a deliberate tap
+}
+
 static void test_rom_back(void)
 {
     open_roms(false, 0);
@@ -480,6 +516,7 @@ int main(void)
     RUN_TEST(test_tap_other_confirms);
     RUN_TEST(test_confirm_cancel_and_switch);
     RUN_TEST(test_confirm_boot_and_swipe_return_to_list);
+    RUN_TEST(test_confirm_ignores_quick_second_tap);
     RUN_TEST(test_rom_back);
     RUN_TEST(test_rom_first_start);
     RUN_TEST(test_rom_current_unlisted);

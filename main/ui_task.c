@@ -154,6 +154,7 @@ static void ui_task(void *arg)
         if (out.backlight) {
             st_settings_t edited;
             bool display_changed;
+            nav.view.t_ms = now_ms();  // the confirm page's guard counts from here
             act = ui_nav_step(&nav, &ev, boot_short, &cfg, &edited, &display_changed);
             if (act == UI_ACT_SETTINGS) {
                 settings_put(&edited, display_changed);
@@ -400,6 +401,7 @@ int ui_pick_rom(const tc_rom_entry_t *roms, int n)
         ui_gesture_feed(&gest, UI_GMODE_MENU, &t, now_ms(), &ev);
         st_settings_t edited;
         bool display_changed;
+        nav.view.t_ms = now_ms();
         ui_act_t a = ui_nav_step(&nav, &ev, false, &cfg, &edited, &display_changed);
         if (a == UI_ACT_ROM_SWITCH && nav.view.rom_pick >= 0 && nav.view.rom_pick < m) {
             ESP_LOGI(TAG, "first start: picked %s", roms[s_row_entry[nav.view.rom_pick]].name);
