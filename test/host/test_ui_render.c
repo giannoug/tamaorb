@@ -688,6 +688,95 @@ static void test_hit_test_matches_render_deep_scroll(void)
     }
 }
 
+// ---- ROM picker pages ----
+static const ui_rom_row_t ROMS[2] = { { "P1", "Gen 1 - tama.bin" }, { "P2", "Gen 2 - tamag2.bin" } };
+
+static ui_menu_view_t rom_view(ui_page_t page, int count, int current, bool first)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(page);
+    v.roms = ROMS;
+    v.rom_count = count;
+    v.rom_current = current;
+    v.rom_pick = 1;
+    v.rom_first = first;
+    return v;
+}
+
+static void test_rom_list_render(void)
+{
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 2, 0, false);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("< back", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Pet ROM", 2, INK, NULL, NULL));
+    int x, y1, y2;
+    TEST_ASSERT_TRUE(find_text("P1", 2, BG, &x, &y1));          // current row: filled ink, text in bg
+    TEST_ASSERT_TRUE(find_text("Gen 1 - tama.bin", 1, BG, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("P2", 2, INK, &x, &y2));
+    TEST_ASSERT_TRUE(find_text("Gen 2 - tamag2.bin", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(y2 > y1);
+    // the check mark: bg pixels on the right end of the current row (rows 0's fill is ink)
+    int r0 = ui_menu_row_at(&v, 120, y1), bgs = 0;
+    TEST_ASSERT_EQUAL(0, r0);
+    for (int yy = y1; yy < y1 + 30; yy++)
+        for (int xx = 170; xx < 215; xx++) bgs += PX(xx, yy) == BG && ui_menu_row_at(&v, xx, yy) == 0;
+    TEST_ASSERT_GREATER_THAN(10, bgs);
+    TEST_ASSERT_TRUE(find_text("tap a pet to switch", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    assert_nothing_outside_circle("rom list");
+}
+
+static void test_rom_confirm_render(void)
+{
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM_CONFIRM, 2, 0, false);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("Switch to P2?", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Your P1 pet is saved", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("and waits for you.", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("The ball restarts.", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    int cx, cy, sx, sy;
+    TEST_ASSERT_TRUE(find_text("Cancel", 1, INK, &cx, &cy));
+    TEST_ASSERT_TRUE(find_text("Switch", 1, BG, &sx, &sy));   // the filled pill
+    TEST_ASSERT_EQUAL(UI_CTL_ROM_CANCEL, ui_menu_control_at(&v, cx + 4, cy + 4, NULL));
+    TEST_ASSERT_EQUAL(UI_CTL_ROM_SWITCH, ui_menu_control_at(&v, sx + 4, sy + 4, NULL));
+    TEST_ASSERT_FALSE(find_text("< back", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    v.rom_current = -1;
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("Your pet is saved", 1, INK, NULL, NULL));
+    assert_nothing_outside_circle("rom confirm");
+}
+
+static void test_rom_first_render(void)
+{
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 2, -1, true);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("Pick a pet", 2, INK, NULL, NULL));
+    TEST_ASSERT_FALSE(find_text("< back", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("P1", 2, INK, NULL, NULL));      // no row is the current one
+    TEST_ASSERT_TRUE(find_text("P2", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("tap one to start", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    TEST_ASSERT_FALSE(ui_menu_back_at(&v, 120, 5));
+}
+
+static void test_rom_page_empty_render(void)
+{
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 0, -1, false);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("No pets on the SD card", 1, INK, NULL, NULL));
+    TEST_ASSERT_FALSE(find_text("tap a pet to switch", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    TEST_ASSERT_TRUE(ui_menu_back_at(&v, 120, 5));
+}
+
+static void test_rom_long_sub_ellipsis(void)
+{
+    static const ui_rom_row_t LONG[1] = { { "P2", "Gen 2 - averyveryverylongname.bin" } };
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 1, 0, false);
+    v.roms = LONG;
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_FALSE(find_text(LONG[0].sub, 1, BG, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Gen 2 - avery", 1, BG, NULL, NULL));
+    assert_nothing_outside_circle("rom long sub");
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -717,5 +806,10 @@ int main(void)
     RUN_TEST(test_dimming_label_line_is_no_control);
     RUN_TEST(test_long_centred_text_is_ellipsized);
     RUN_TEST(test_hit_test_matches_render_deep_scroll);
+    RUN_TEST(test_rom_list_render);
+    RUN_TEST(test_rom_confirm_render);
+    RUN_TEST(test_rom_first_render);
+    RUN_TEST(test_rom_page_empty_render);
+    RUN_TEST(test_rom_long_sub_ellipsis);
     return UNITY_END();
 }

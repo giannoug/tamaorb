@@ -194,12 +194,148 @@ static void test_pages_and_back(void)
     TEST_ASSERT_EQUAL(UI_PAGE_TZ_REGION, nav.view.page);
 }
 
-static void test_rom_row_requests_picker(void)
+// ---- ROM picker pages ----
+static const ui_rom_row_t ROMS[2] = { { "P1", "Gen 1 - tama.bin" }, { "P2", "Gen 2 - tamag2.bin" } };
+
+// What ui_task does when the ROM page opens: fill the rows.
+static void load_roms(int count, int current)
+{
+    nav.view.roms = ROMS;
+    nav.view.rom_count = count;
+    nav.view.rom_current = current;
+}
+static void open_roms(bool from_pet, int current)
+{
+    if (from_pet) ui_nav_open_roms(&nav, true);
+    else open_page(UI_ROW_ROM);
+    load_roms(2, current);
+}
+static bool find_any_ctl(int ctl, int *x, int *y)
+{
+    for (int yy = 0; yy < UI_H; yy++)
+        for (int xx = 0; xx < UI_W; xx++)
+            if (ui_menu_control_at(&nav.view, xx, yy, NULL) == ctl) { *x = xx + 4; *y = yy + 4; return true; }
+    return false;
+}
+
+static void test_settings_rom_row_opens_page(void)
 {
     to_menu();
     int y = row_y(UI_ROW_ROM);
     TEST_ASSERT_TRUE(y >= 0);
-    TEST_ASSERT_EQUAL(UI_ACT_OPEN_ROM_PICKER, tap(120, y));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, y));
+    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
+    TEST_ASSERT_NULL(nav.view.roms);
+    TEST_ASSERT_FALSE(nav.rom_from_pet);
+    TEST_ASSERT_FALSE(nav.view.rom_first);
+}
+
+static void test_tap_current_closes(void)
+{
+    open_roms(false, 0);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(0)));
+    TEST_ASSERT_EQUAL(UI_SCREEN_PET, nav.screen);
+    TEST_ASSERT_NULL(nav.view.roms);
+}
+
+static void test_tap_other_confirms(void)
+{
+    open_roms(false, 0);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(1)));
+    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
+    TEST_ASSERT_EQUAL(1, nav.view.rom_pick);
+    TEST_ASSERT_TRUE(nav.view.roms == ROMS);
+    TEST_ASSERT_EQUAL(2, nav.view.rom_count);
+}
+
+static void test_confirm_cancel_and_switch(void)
+{
+    open_roms(false, 0);
+    tap(120, row_y(1));
+    int x, y;
+    TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_ROM_CANCEL, &x, &y));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(x, y));
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
+    tap(120, row_y(1));
+    TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_ROM_SWITCH, &x, &y));
+    TEST_ASSERT_EQUAL(UI_ACT_ROM_SWITCH, tap(x, y));
+    TEST_ASSERT_EQUAL(1, nav.view.rom_pick);
+}
+
+static void test_confirm_boot_and_swipe_return_to_list(void)
+{
+    open_roms(true, 0);
+    tap(120, row_y(1));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, step(UI_G_NONE, 0, 0, 0, 0, true));
+    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
+    tap(120, row_y(1));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, step(UI_G_SWIPE_DOWN, 120, 0, 0, 80, false));
+    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
+    // a drag across the Switch pill neither switches nor edits a setting
+    tap(120, row_y(1));
+    int x, y;
+    TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_ROM_SWITCH, &x, &y));
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, drag_from(x, y, x + 2, y, 0, true));
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, drag_from(x, y, x + 6, y, 0, false));
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
+}
+
+static void test_rom_back(void)
+{
+    open_roms(false, 0);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));
+    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
+    TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
+    ui_nav_init(&nav);
+    open_roms(true, 0);
+    TEST_ASSERT_TRUE(nav.rom_from_pet);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));
+    TEST_ASSERT_EQUAL(UI_SCREEN_PET, nav.screen);
+    open_roms(false, 0);
+    step(UI_G_NONE, 0, 0, 0, 0, true);
+    TEST_ASSERT_EQUAL(UI_SCREEN_PET, nav.screen);
+    open_roms(false, 0);
+    step(UI_G_SWIPE_DOWN, 120, 0, 0, 80, false);
+    TEST_ASSERT_EQUAL(UI_SCREEN_PET, nav.screen);
+}
+
+static void test_rom_first_start(void)
+{
+    ui_nav_open_roms(&nav, false);
+    nav.view.rom_first = true;
+    load_roms(2, -1);
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, step(UI_G_NONE, 0, 0, 0, 0, true));
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, step(UI_G_SWIPE_DOWN, 120, 0, 0, 80, false));
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(120, 5));
+    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
+    TEST_ASSERT_EQUAL(UI_ACT_ROM_SWITCH, tap(120, row_y(1)));
+    TEST_ASSERT_EQUAL(1, nav.view.rom_pick);
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);  // no confirm page
+}
+
+static void test_rom_current_unlisted(void)
+{
+    open_roms(false, -1);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(0)));
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
+    TEST_ASSERT_EQUAL(0, nav.view.rom_pick);
+}
+
+static void test_rom_page_empty(void)
+{
+    open_page(UI_ROW_ROM);
+    for (int y = 0; y < UI_H; y += 4)  // not loaded yet: nothing to tap below the header
+        if (y >= 30) TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(120, y));
+    load_roms(0, -1);
+    for (int y = 30; y < UI_H; y += 4) TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(120, y));
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));
+    TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
 }
 
 static void test_edit_changes_only_touched_key(void)
@@ -314,7 +450,8 @@ static void test_drag_never_taps(void)
     nav.view.page = UI_PAGE_TZ_REGION;
     ui_act_t a = drag(120, 120, 30);
     TEST_ASSERT_NOT_EQUAL(UI_ACT_SETTINGS, a);
-    TEST_ASSERT_NOT_EQUAL(UI_ACT_OPEN_ROM_PICKER, a);
+    TEST_ASSERT_NOT_EQUAL(UI_ACT_ROM_SWITCH, a);
+    TEST_ASSERT_NOT_EQUAL(UI_PAGE_ROM, nav.view.page);
 }
 
 static void test_scroll_clamped(void)
@@ -338,7 +475,15 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_transitions);
     RUN_TEST(test_pages_and_back);
-    RUN_TEST(test_rom_row_requests_picker);
+    RUN_TEST(test_settings_rom_row_opens_page);
+    RUN_TEST(test_tap_current_closes);
+    RUN_TEST(test_tap_other_confirms);
+    RUN_TEST(test_confirm_cancel_and_switch);
+    RUN_TEST(test_confirm_boot_and_swipe_return_to_list);
+    RUN_TEST(test_rom_back);
+    RUN_TEST(test_rom_first_start);
+    RUN_TEST(test_rom_current_unlisted);
+    RUN_TEST(test_rom_page_empty);
     RUN_TEST(test_edit_changes_only_touched_key);
     RUN_TEST(test_mute_toggle_keeps_volume);
     RUN_TEST(test_dim_slider_snaps);

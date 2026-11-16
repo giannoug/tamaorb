@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Writes a PPM of one screen for eyeballing. Not a test.
-// Usage: render_preview out.ppm [pet|catchup|battery|picker|message] [held_mask] [palette 0-2] [frame.txt]
+// Usage: render_preview out.ppm [pet|catchup|battery|message] [held_mask] [palette 0-2] [frame.txt]
 //        frame.txt (pet only): 16 lines of 32 '#'/'.' then "icons <hex>"; default: a sample face, Attention lit
 //        render_preview out.ppm <screen> [palette 0-2] [scroll px] [t_ms]
 //        screens: glance, glance-asleep, glance-unknown, settings, sound, brightness, dimming, palette,
-//                 tzregion, tzcity, panel, panel-nowifi (sample values from the design canvas)
+//                 tzregion, tzcity, panel, panel-nowifi, rom, rom-confirm, rom-first (sample values from the design canvas)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,9 +80,13 @@ int main(int argc, char **argv)
         ui_render_glance(fb, &g, ui_palette_by_id(pal));
     } else if (!strcmp(mode, "catchup")) ui_render_catchup(fb, 8040, 29100, 760, p);
     else if (!strcmp(mode, "battery")) ui_render_low_battery(fb, p);
-    else if (!strcmp(mode, "picker")) {
-        const char *names[] = { "P1", "P2" }, *subs[] = { "Gen 1 - tama.bin", "Gen 2 - tamag2.bin" };
-        ui_render_picker(fb, names, subs, 2, 0, p);
+    else if (!strncmp(mode, "rom", 3)) {
+        static const ui_rom_row_t roms[] = { { "P1", "Gen 1 - tama.bin" }, { "P2", "Gen 2 - tamag2.bin" } };
+        ui_menu_view_t v = { .page = strcmp(mode, "rom-confirm") ? UI_PAGE_ROM : UI_PAGE_ROM_CONFIRM, .pressed = -1,
+                             .cfg = &cfg, .roms = roms, .rom_count = 2, .rom_current = 0, .rom_pick = 1,
+                             .rom_first = !strcmp(mode, "rom-first") };
+        if (v.rom_first) v.rom_current = -1;
+        ui_render_menu(fb, &v, ui_palette_by_id(pal));
     } else if (!strcmp(mode, "message")) ui_render_message(fb, "No ROM found", "Put a P1 or P2 dump in\n/tamaorb/roms/ on the SD card,\nor push one over USB.", p);
     else {
         FILE *in = argc > 5 ? fopen(argv[5], "r") : NULL;

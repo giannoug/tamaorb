@@ -95,16 +95,6 @@ int  ui_text_width(const char *line, uint8_t scale);  // first line only; the tr
 void ui_render_message(uint16_t *fb, const char *title, const char *body, const ui_palette_t *p);
 void ui_render_catchup(uint16_t *fb, uint64_t done_s, uint64_t total_s, uint32_t eta_s, const ui_palette_t *p);
 void ui_render_low_battery(uint16_t *fb, const ui_palette_t *p);
-void ui_render_picker(uint16_t *fb, const char *const *names, const char *const *subs,
-                      int n, int selected, const ui_palette_t *p);
-
-// Picker geometry, shared with the touch handling that selects entries.
-#define UI_PICKER_X      40
-#define UI_PICKER_W      160
-#define UI_PICKER_TOP    70
-#define UI_PICKER_H      32
-#define UI_PICKER_STEP   37
-#define UI_PICKER_MAX    3
 
 // ---- Geometry and text helpers (layouts take positions from these, never from round-screen literals) ----
 #define UI_ELLIPSIS "\x7f"  // single glyph: three dots on the baseline row
@@ -193,7 +183,7 @@ typedef struct {
 void ui_render_glance(uint16_t *fb, const ui_glance_t *g, const ui_palette_t *p);
 
 typedef enum { UI_PAGE_LIST, UI_PAGE_SOUND, UI_PAGE_BRIGHTNESS, UI_PAGE_DIMMING, UI_PAGE_PALETTE,
-               UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL } ui_page_t;
+               UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL, UI_PAGE_ROM, UI_PAGE_ROM_CONFIRM } ui_page_t;
 // Rows of UI_PAGE_LIST, top to bottom (ui_menu_row_at's result on that page).
 typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, UI_ROW_TZ, UI_ROW_ROM,
                UI_ROW_PANEL, UI_ROW_COUNT } ui_row_t;
@@ -206,9 +196,13 @@ typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, 
 //   DIM_BATTERY "dim_battery_s"  same steps as DIM_USB
 //   OFF_BATTERY "off_battery_s"  10, 15, 30, 60, 120, 300, 600, 1800, 3600
 //   PALETTE     "palette"        st_palette_t id
+//   ROM_CANCEL, ROM_SWITCH       the confirm page's pills (no setting; value 0)
 // A slider reports a value for any x on its track band (clamped at the ends), so a drag can keep feeding it.
 typedef enum { UI_CTL_MUTE, UI_CTL_VOLUME, UI_CTL_BRIGHTNESS, UI_CTL_DIM_LEVEL, UI_CTL_DIM_USB, UI_CTL_DIM_BATTERY,
-               UI_CTL_OFF_BATTERY, UI_CTL_PALETTE } ui_ctl_t;
+               UI_CTL_OFF_BATTERY, UI_CTL_PALETTE, UI_CTL_ROM_CANCEL, UI_CTL_ROM_SWITCH } ui_ctl_t;
+
+// One row of the ROM picker: the model name ("P1") and a line under it ("Gen 1 - tama.bin").
+typedef struct { const char *name, *sub; } ui_rom_row_t;
 
 typedef struct {
     ui_page_t page;
@@ -220,6 +214,13 @@ typedef struct {
     const char *panel_url, *panel_name;  // PANEL: the panel's URL (NULL = no Wi-Fi), mDNS name
     const ui_qr_t *panel_qr;     // PANEL: panel_url encoded; NULL or size 0: the address only
     uint32_t t_ms;               // drives marquees
+    // ROM and ROM_CONFIRM. The caller fills roms/rom_count/rom_current while roms is NULL (ui_nav_open_roms
+    // leaves it NULL; ui_nav_to_pet clears it); the rows must stay valid while the page shows.
+    const ui_rom_row_t *roms;    // NULL: not loaded yet (nothing listed)
+    int rom_count;
+    int rom_current;             // row of the running ROM, -1 if it isn't listed
+    int rom_pick;                // the row tapped, shown on the confirm page (UI_ACT_ROM_SWITCH switches to it)
+    bool rom_first;              // first start: "Pick a pet", no back, no confirm: a tap picks
 } ui_menu_view_t;
 void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p);
 
@@ -248,8 +249,10 @@ typedef struct {
     ui_screen_kind_t screen;
     ui_menu_view_t view;   // valid while screen == UI_SCREEN_MENU; view.cfg is set on every ui_nav_step
     int active_ctl;        // private: the control under the current drag's start point, -1 none
+    bool rom_from_pet;     // "< back" on the ROM list returns to the pet (else to the settings list)
 } ui_nav_t;
-typedef enum { UI_ACT_NONE, UI_ACT_REDRAW, UI_ACT_SETTINGS, UI_ACT_OPEN_ROM_PICKER } ui_act_t;
+// ROM_SWITCH: switch to view.roms[view.rom_pick] (confirmed, or picked on first start).
+typedef enum { UI_ACT_NONE, UI_ACT_REDRAW, UI_ACT_SETTINGS, UI_ACT_ROM_SWITCH } ui_act_t;
 void ui_nav_init(ui_nav_t *n);
 // ev comes from ui_gesture_feed (MENU mode on GLANCE and MENU, PET mode on PET); cur is the latest settings and
 // must stay valid until the next call (the view points at it). On UI_ACT_SETTINGS, *out is cur with exactly one
@@ -257,6 +260,9 @@ void ui_nav_init(ui_nav_t *n);
 ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const st_settings_t *cur,
                      st_settings_t *out, bool *display_changed);
 void ui_nav_to_pet(ui_nav_t *n);   // screen off/timeout and picker close land here
+// The ROM list (MENU, page ROM, roms NULL, rom_current/rom_pick -1, rom_first false). from_pet: a BOOT long
+// press opened it, so back returns to the pet. The caller then fills the rows (and sets rom_first if wanted).
+void ui_nav_open_roms(ui_nav_t *n, bool from_pet);
 
 // ---- Sending frames: only the rows that changed ----
 // Remembers a hash of each row the panel shows. Every frame for the panel must go through ui_send_changed, or

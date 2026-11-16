@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Text screens: catch-up, low battery, ROM picker, messages. Layouts follow the design canvas
+// Text screens: catch-up, low battery, messages. Layouts follow the design canvas
 // artboards at device scale.
 #include <stdio.h>
 #include <string.h>
@@ -228,23 +228,4 @@ void ui_render_low_battery(uint16_t *fb, const ui_palette_t *p)
     rect(fb, 88, 66, 7, 23, c.ink);            // nearly empty charge
     text_centred(fb, 124, "Battery low", 2, c.ink);
     text_centred(fb, 150, "Pet saved.\nPlug in USB to wake.", 1, c.soft);
-}
-
-void ui_render_picker(uint16_t *fb, const char *const *names, const char *const *subs,
-                      int n, int selected, const ui_palette_t *p)
-{
-    colors_t c = colors(p);
-    clear(fb, c.bg);
-    text_centred(fb, 40, "Pick a pet", 2, c.ink);  // "Choose a pet" is wider than the circle at this height
-    if (n > UI_PICKER_MAX) n = UI_PICKER_MAX;
-    for (int i = 0; i < n; i++) {
-        int top = UI_PICKER_TOP + i * UI_PICKER_STEP;
-        bool sel = i == selected;
-        if (sel) rect(fb, UI_PICKER_X, top, UI_PICKER_W, UI_PICKER_H, c.ink);
-        else frame_rect(fb, UI_PICKER_X, top, UI_PICKER_W, UI_PICKER_H, 2, c.ink);
-        uint16_t fg = sel ? c.bg : c.ink;
-        ui_draw_text(fb, UI_PICKER_X + 8, top + 4, names[i], 2, fg);
-        ui_draw_text(fb, UI_PICKER_X + 8, top + 21, subs[i], 1, fg);
-    }
-    text_centred(fb, 196, "A up  B pick  C down", 1, c.soft);
 }

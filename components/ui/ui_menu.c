@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Settings screens (design canvas "Settings", "Sound", "Brightness", "Dimming", "Palette", "ZoneRegion",
-// "ZoneCity", "Panel") and their hit testing. Vertical positions are the canvas's at device scale; every
+// "ZoneCity", "Panel", "PickerList", "PickerConfirm", "PickerFirst") and their hit testing. Vertical positions are the canvas's at device scale; every
 // horizontal extent comes from the screen geometry (ui_span / ui_geom_safe).
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,20 +23,41 @@
 typedef struct { int top, row_h; } list_layout_t;
 static const list_layout_t LIST_LAYOUT[] = {
     [UI_PAGE_LIST] = { 50, 38 }, [UI_PAGE_TZ_REGION] = { 66, 28 }, [UI_PAGE_TZ_CITY] = { 52, 28 },
+    [UI_PAGE_ROM] = { 50, 34 },
 };
 #define REGION_NOW_Y 51   // "now: Isle of Man" under the Time zone title
 
-static bool is_list(ui_page_t p) { return p == UI_PAGE_LIST || p == UI_PAGE_TZ_REGION || p == UI_PAGE_TZ_CITY; }
-static int list_bottom(void) { return UI_GEOM.h - UI_GEOM.h / 6 - 1; }  // last row of the list area
+// ROM picker (canvas PickerList / PickerFirst / PickerConfirm)
+#define ROM_FIRST_TITLE_Y 44  // "Pick a pet"
+#define ROM_FIRST_TOP 66      // its list starts lower, under the title
+#define ROM_HINT_Y 176        // "tap a pet to switch"; the list ends above it
+#define ROM_HINT_GAP 15       // first start: the hint follows the rows this far below, up to ROM_HINT_Y
+#define ROM_EMPTY_Y 100       // "No pets on the SD card"
 
-// The list area and the x range of its rows: inside the visible span of every row of the area.
-static void list_box(ui_page_t page, int *top, int *bottom, int *x0, int *x1)
+static bool is_list(ui_page_t p)
 {
-    *top = LIST_LAYOUT[page].top;
-    *bottom = list_bottom();
+    return p == UI_PAGE_LIST || p == UI_PAGE_TZ_REGION || p == UI_PAGE_TZ_CITY || p == UI_PAGE_ROM;
+}
+static bool is_tz(ui_page_t p) { return p == UI_PAGE_TZ_REGION || p == UI_PAGE_TZ_CITY; }
+static int list_top(const ui_menu_view_t *v)
+{
+    return v->page == UI_PAGE_ROM && v->rom_first ? ROM_FIRST_TOP : LIST_LAYOUT[v->page].top;
+}
+// Last row of the list area: the ROM list stops above its hint line.
+static int list_bottom(const ui_menu_view_t *v)
+{
+    return v->page == UI_PAGE_ROM ? ROM_HINT_Y - 5 : UI_GEOM.h - UI_GEOM.h / 6 - 1;
+}
+
+// The list area and the x range of its rows: inside the visible span of every row of the area (first start's
+// lower list keeps the ROM list's width, as on the canvas).
+static void list_box(const ui_menu_view_t *v, int *top, int *bottom, int *x0, int *x1)
+{
+    *top = list_top(v);
+    *bottom = list_bottom(v);
     *x0 = 0;
     *x1 = UI_W - 1;
-    ui_span(*top, *bottom, x0, x1);
+    ui_span(LIST_LAYOUT[v->page].top, *bottom, x0, x1);
     *x0 += LIST_INSET;
     *x1 -= LIST_INSET;
 }
@@ -164,6 +185,7 @@ int ui_menu_row_count(const ui_menu_view_t *v)
     case UI_PAGE_LIST: return UI_ROW_COUNT;
     case UI_PAGE_TZ_REGION: return ui_menu_region_at(0) ? s_region_n : 0;
     case UI_PAGE_TZ_CITY: return city_count(v->region);
+    case UI_PAGE_ROM: return v->roms && v->rom_count > 0 ? v->rom_count : 0;
     default: return 0;
     }
 }
@@ -172,7 +194,7 @@ int ui_menu_scroll_max(const ui_menu_view_t *v)
 {
     if (!is_list(v->page)) return 0;
     int n = ui_menu_row_count(v), top, bottom, x0, x1;
-    list_box(v->page, &top, &bottom, &x0, &x1);
+    list_box(v, &top, &bottom, &x0, &x1);
     int content = 2 * LIST_PAD + n * LIST_LAYOUT[v->page].row_h + (n > 0 ? (n - 1) * ROW_GAP : 0);
     int view = bottom - top + 1;
     return content > view ? content - view : 0;
@@ -187,14 +209,14 @@ static int clamp_scroll(const ui_menu_view_t *v)
 // Top of row i; scroll is clamp_scroll(v), worked out once per render or hit test by the caller.
 static int row_top(const ui_menu_view_t *v, int i, int scroll)
 {
-    return LIST_LAYOUT[v->page].top + LIST_PAD + i * (LIST_LAYOUT[v->page].row_h + ROW_GAP) - scroll;
+    return list_top(v) + LIST_PAD + i * (LIST_LAYOUT[v->page].row_h + ROW_GAP) - scroll;
 }
 
 int ui_menu_row_at(const ui_menu_view_t *v, int x, int y)
 {
     if (!is_list(v->page)) return -1;
     int top, bottom, x0, x1;
-    list_box(v->page, &top, &bottom, &x0, &x1);
+    list_box(v, &top, &bottom, &x0, &x1);
     if (y < top || y > bottom || x < x0 || x > x1) return -1;
     int step = LIST_LAYOUT[v->page].row_h + ROW_GAP;
     int rel = y - row_top(v, 0, clamp_scroll(v));
@@ -206,13 +228,16 @@ int ui_menu_row_at(const ui_menu_view_t *v, int x, int y)
 
 bool ui_menu_back_at(const ui_menu_view_t *v, int x, int y)
 {
-    return v->page != UI_PAGE_LIST && y >= 0 && y < TITLE_Y && x >= 0 && x < UI_W;
+    return v->page != UI_PAGE_LIST && v->page != UI_PAGE_ROM_CONFIRM && !(v->page == UI_PAGE_ROM && v->rom_first) &&
+           y >= 0 && y < TITLE_Y && x >= 0 && x < UI_W;
 }
 
-// The row that is the current choice on the TZ pages, -1 if none.
+// The row that is the current choice on the TZ and ROM pages, -1 if none.
 static int current_row(const ui_menu_view_t *v)
 {
     char r[32];
+    if (v->page == UI_PAGE_ROM)
+        return !v->rom_first && v->rom_current >= 0 && v->rom_current < ui_menu_row_count(v) ? v->rom_current : -1;
     if (v->page == UI_PAGE_TZ_REGION) {
         tz_region(v->cfg->tz, r, sizeof r);
         for (int i = 0; ui_menu_region_at(i); i++)
@@ -241,11 +266,17 @@ static const char *page_title(const ui_menu_view_t *v)
     case UI_PAGE_TZ_REGION: return "Time zone";
     case UI_PAGE_TZ_CITY: return v->region ? v->region : "";
     case UI_PAGE_PANEL: return "Web panel";
+    case UI_PAGE_ROM: return v->rom_first ? "Pick a pet" : "Pet ROM";
+    case UI_PAGE_ROM_CONFIRM: return "";  // drawn by draw_rom_confirm
     }
     return "";
 }
 
-static int title_y(const ui_menu_view_t *v) { return v->page == UI_PAGE_LIST ? LIST_TITLE_Y : TITLE_Y; }
+static int title_y(const ui_menu_view_t *v)
+{
+    if (v->page == UI_PAGE_ROM && v->rom_first) return ROM_FIRST_TITLE_Y;
+    return v->page == UI_PAGE_LIST ? LIST_TITLE_Y : TITLE_Y;
+}
 
 static int title_box(int y, int *x0, int *x1)
 {
@@ -281,10 +312,10 @@ static void row_name(const ui_menu_view_t *v, int i, char *out, size_t cap)
 // True if the current TZ row is (partly) in the list area and its name is too long for its strip.
 static bool current_row_moves(const ui_menu_view_t *v, int *y0, int *y1)
 {
-    int cur = current_row(v);
+    int cur = is_tz(v->page) ? current_row(v) : -1;
     if (cur < 0) return false;
     int top, bottom, x0, x1, n0, n1;
-    list_box(v->page, &top, &bottom, &x0, &x1);
+    list_box(v, &top, &bottom, &x0, &x1);
     int ry = row_top(v, cur, clamp_scroll(v)), rh = LIST_LAYOUT[v->page].row_h;
     if (ry + rh <= top || ry > bottom) return false;
     char name[64];
@@ -334,7 +365,7 @@ static void draw_title(uint16_t *fb, const ui_menu_view_t *v, uint16_t ink)
 
 static void draw_header(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
 {
-    if (v->page != UI_PAGE_LIST) ui_text_centred_at(fb, BACK_Y, "< back", 1, c->soft);
+    if (ui_menu_back_at(v, UI_W / 2, BACK_Y)) ui_text_centred_at(fb, BACK_Y, "< back", 1, c->soft);
     draw_title(fb, v, c->ink);
 }
 
@@ -358,7 +389,7 @@ static const char *const CHECK[6] = { "......#", ".....#.", "#...#..", ".#.#..."
 static void draw_list(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
 {
     int top, bottom, x0, x1;
-    list_box(v->page, &top, &bottom, &x0, &x1);
+    list_box(v, &top, &bottom, &x0, &x1);
     const int rh = LIST_LAYOUT[v->page].row_h, n = ui_menu_row_count(v), cur = current_row(v);
     const int max = ui_menu_scroll_max(v), scroll = v->scroll < 0 ? 0 : v->scroll > max ? max : v->scroll;
     // Rows wholly above the list area are skipped without a look: row i ends at top + LIST_PAD + i*step + rh - scroll.
@@ -377,6 +408,13 @@ static void draw_list(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
             list_value(v->cfg, i, value, sizeof value);
             ui_draw_text_ellipsis(fb, tx0, tx1 - 7 - 4, y + 25, value, 1, fg);
             ui_draw_text(fb, tx1 - 7, y + 25, ">", 1, fg);
+            continue;
+        }
+        if (v->page == UI_PAGE_ROM) {  // name over "Gen N - file", the running pet checked
+            int t1 = i == cur ? tx1 - 14 - 4 : tx1;
+            ui_draw_text_ellipsis(fb, tx0, t1, y + 4, v->roms[i].name ? v->roms[i].name : "", 2, fg);
+            ui_draw_text_ellipsis(fb, tx0, t1, y + 23, v->roms[i].sub ? v->roms[i].sub : "", 1, fg);
+            if (i == cur) ui_draw_bits(fb, tx1 - 14, y + 11, CHECK, 7, 6, 2, fg);
             continue;
         }
         int n0, n1;
@@ -591,6 +629,61 @@ static void draw_panel(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
     if (v->panel_name) ui_text_centred_at(fb, PANEL_NAME_Y, v->panel_name, 1, c->soft);
 }
 
+// ---- ROM picker ----
+#define CONFIRM_TITLE_Y 66
+#define CONFIRM_BODY_Y 101   // two lines, 14 px apart
+#define CONFIRM_NOTE_Y 131
+#define PILL_Y 150
+#define PILL_W 84
+#define PILL_H 36
+#define PILL_GAP 4
+
+static void draw_rom_list(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
+{
+    draw_list(fb, v, c);
+    if (!v->roms) return;  // not loaded yet
+    int n = ui_menu_row_count(v);
+    if (n == 0) {
+        ui_text_centred_at(fb, ROM_EMPTY_Y, "No pets on the SD card", 1, c->ink);
+        return;
+    }
+    int hint_y = ROM_HINT_Y;
+    if (v->rom_first) {  // the hint sits under the rows (canvas PickerFirst), never lower than the list's own
+        int end = row_top(v, n - 1, clamp_scroll(v)) + LIST_LAYOUT[UI_PAGE_ROM].row_h - 1 + ROM_HINT_GAP;
+        if (end < hint_y) hint_y = end;
+    }
+    ui_text_centred_at(fb, hint_y, v->rom_first ? "tap one to start" : "tap a pet to switch", 1, c->soft);
+}
+
+// The two pills, centred side by side: i 0 Cancel, 1 Switch.
+static int pill_x(int i) { return UI_W / 2 - PILL_W - PILL_GAP / 2 + i * (PILL_W + PILL_GAP); }
+
+static const char *rom_name(const ui_menu_view_t *v, int i)
+{
+    return v->roms && i >= 0 && i < v->rom_count && v->roms[i].name ? v->roms[i].name : NULL;
+}
+
+static void draw_rom_confirm(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
+{
+    char line[48];
+    const char *to = rom_name(v, v->rom_pick), *from = rom_name(v, v->rom_current);
+    snprintf(line, sizeof line, "Switch to %s?", to ? to : "it");
+    ui_text_centred_at(fb, CONFIRM_TITLE_Y, line, 2, c->ink);
+    if (from) snprintf(line, sizeof line, "Your %s pet is saved", from);
+    else snprintf(line, sizeof line, "Your pet is saved");
+    ui_text_centred_at(fb, CONFIRM_BODY_Y, line, 1, c->ink);
+    ui_text_centred_at(fb, CONFIRM_BODY_Y + 14, "and waits for you.", 1, c->ink);
+    ui_text_centred_at(fb, CONFIRM_NOTE_Y, "The ball restarts.", 1, c->soft);
+    static const char *const LABEL[2] = { "Cancel", "Switch" };
+    for (int i = 0; i < 2; i++) {
+        int x = pill_x(i);
+        ui_fill_rrect(fb, x, PILL_Y, PILL_W, PILL_H, PILL_H / 2, c->ink);
+        if (i == 0) ui_fill_rrect(fb, x + 2, PILL_Y + 2, PILL_W - 4, PILL_H - 4, PILL_H / 2 - 2, c->bg);
+        ui_draw_text(fb, x + (PILL_W - ui_text_width(LABEL[i], 1)) / 2, PILL_Y + (PILL_H - 8) / 2, LABEL[i], 1,
+                     i == 0 ? c->ink : c->bg);
+    }
+}
+
 void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p)
 {
     colors_t c = colors_of(p);
@@ -615,6 +708,8 @@ void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p
     case UI_PAGE_DIMMING: draw_dimming(fb, v, &c); break;
     case UI_PAGE_PALETTE: draw_palette(fb, v, p, &c); break;
     case UI_PAGE_PANEL: draw_panel(fb, v, &c); break;
+    case UI_PAGE_ROM: draw_rom_list(fb, v, &c); break;
+    case UI_PAGE_ROM_CONFIRM: draw_rom_confirm(fb, v, &c); break;
     }
     draw_header(fb, v, &c);
 }
@@ -661,6 +756,11 @@ int ui_menu_control_at(const ui_menu_view_t *v, int x, int y, int *value_out)
     case UI_PAGE_PALETTE:
         for (int i = 0; i < 3; i++)
             if (x >= tile_x(i) && x < tile_x(i) + TILE && y >= TILE_Y && y < TILE_Y + TILE) { ctl = UI_CTL_PALETTE; val = i; }
+        break;
+    case UI_PAGE_ROM_CONFIRM:
+        for (int i = 0; i < 2; i++)
+            if (x >= pill_x(i) && x < pill_x(i) + PILL_W && y >= PILL_Y && y < PILL_Y + PILL_H)
+                ctl = i ? UI_CTL_ROM_SWITCH : UI_CTL_ROM_CANCEL;
         break;
     default: break;
     }

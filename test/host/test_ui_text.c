@@ -47,16 +47,6 @@ static void test_catchup_zero_total(void)
     TEST_ASSERT_EQUAL_HEX16(GHOST, PX(120 - 71 + 3, 156));
 }
 
-static void test_picker_selected_inverted(void)
-{
-    const char *names[] = { "P1", "P2" };
-    const char *subs[] = { "Gen 1 - tama.bin", "Gen 2 - tamag2.bin" };
-    ui_render_picker(fb, names, subs, 2, 0, &UI_PALETTE_CLASSIC);
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(195, UI_PICKER_TOP + 16));
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(195, UI_PICKER_TOP + UI_PICKER_STEP + 16));
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(UI_PICKER_X, UI_PICKER_TOP + UI_PICKER_STEP + 16));  // unselected border
-}
-
 static void test_message_centred(void)
 {
     ui_render_message(fb, "X", "", &UI_PALETTE_CLASSIC);
@@ -86,7 +76,6 @@ int main(void)
     RUN_TEST(test_text_width_excludes_trailing_column);
     RUN_TEST(test_catchup_segments);
     RUN_TEST(test_catchup_zero_total);
-    RUN_TEST(test_picker_selected_inverted);
     RUN_TEST(test_message_centred);
     RUN_TEST(test_low_battery_has_title);
     return UNITY_END();
