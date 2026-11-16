@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// GC9A01A over SPI with xiaozhi's extra init registers (spec §3). Frames go out in DMA bands.
+// GC9A01A over SPI with xiaozhi's extra init registers. Frames go out in DMA bands.
 #include <string.h>
 #include "board.h"
 #include "ball_internal.h"

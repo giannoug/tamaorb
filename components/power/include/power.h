@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Battery gauge, low-battery deep sleep and light sleep (spec §9).
+// Battery gauge, low-battery deep sleep and light sleep.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

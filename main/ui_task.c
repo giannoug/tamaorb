@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// UI task: touch and BOOT → screen state → emulator buttons; redraws on new frames (spec §5).
+// UI task: touch and BOOT → screen state → emulator buttons; redraws on new frames.
 #include "ui_task.h"
 #include "board.h"
 #include "esp_heap_caps.h"
@@ -111,7 +111,7 @@ static void ui_task(void *arg)
         if (usb && !usb_was) ui_screen_wake(&screen, now_ms());
         usb_was = usb;
         // Agent presses go through tc_post_remote_buttons, never the touch path: they aren't activity.
-        // Their beeps wake the screen only with agent_feedback = visible (spec §8.2).
+        // Their beeps wake the screen only with agent_feedback = visible.
         bool sound_quiet = press_window_active() && cfg.agent_feedback != ST_AGENT_VISIBLE;
         ui_screen_out_t out = ui_screen_update(&screen, now_ms(), ui_touch_track(&tracker, &t),
                                                board_boot_down(), tone.on, sound_quiet, usb ? 0 : cfg.off_battery_s * 1000u);
@@ -230,7 +230,7 @@ int ui_pick_rom(const tc_rom_entry_t *roms, int n, int current, bool allow_cance
     }
 }
 
-// BOOT long press during play: pick a ROM; a different one is saved-then-rebooted into (spec §7.3).
+// BOOT long press during play: pick a ROM; a different one is saved-then-rebooted into.
 // The switch itself is shared with the remote API (rom_switch_to); the messages stay here.
 static void picker_from_play(void)
 {

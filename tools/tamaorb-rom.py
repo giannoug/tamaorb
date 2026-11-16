@@ -24,7 +24,7 @@ import time
 import zipfile
 from dataclasses import dataclass
 
-# SHA-1 of the supported dumps (MAME src/mame/handheld/hh_e0c6200.cpp, spec §7.1).
+# SHA-1 of the supported dumps (MAME src/mame/handheld/hh_e0c6200.cpp).
 KNOWN = {
     "4b4979cf92dc9d2fb6d7295a38f209f3da144f72": "P1",
     "09e5101b37636a314fc599d5d69b4846721b3c88": "P2",

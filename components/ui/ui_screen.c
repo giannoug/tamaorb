@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Screen timeout and wake rules (spec §5.3–5.4). Pure: the caller supplies the time.
+// Screen timeout and wake rules. Pure: the caller supplies the time.
 #include "ui.h"
 
 #define BOOT_LONG_MS 2000u

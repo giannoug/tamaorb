@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// SpotPear 1.28" ball pin map (spec §3, docs/hardware/spotpear-ball-128.md).
+// SpotPear 1.28" ball pin map (docs/hardware/spotpear-ball-128.md).
 #pragma once
 
 #define PIN_POWER_HOLD  3    // not a latch on the measured unit, driven high anyway

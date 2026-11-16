@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 # ADR 0005: Web panel and MCP served from the ball
 
-**Context.** The owner wanted to change settings without the USB cable, back up and restore saves, and let AI agents look at and care for the pet (spec `2026-11-15-web-panel-design.md`). The ball has 8 MB of PSRAM but only about 100 KB of free internal RAM with Wi-Fi up and the pet running, and core 1 belongs to the emulator.
+**Context.** The owner wanted to change settings without the USB cable, back up and restore saves, and let AI agents look at and care for the pet. The ball has 8 MB of PSRAM but only about 100 KB of free internal RAM with Wi-Fi up and the pet running, and core 1 belongs to the emulator.
 
 **Decision.** The ball serves everything itself, open on the LAN:
 - **`esp_http_server`** (part of ESP-IDF) on core 0, with 4 sockets, LRU purge and an 8 KB stack. It serves the gzipped panel page from flash, the JSON API under `/api/` and MCP (Streamable HTTP, JSON responses only) at `POST /mcp`.
@@ -10,7 +10,7 @@
 - **The API, the MCP dispatcher, look and press live in `components/remote`,** which is portable and host-tested. Its large buffers come from an allocator hook (`rm_set_alloc`) that the device points at PSRAM.
 - **Wi-Fi and lwIP allocate from PSRAM** (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`).
 
-**Why on the ball, and why these pieces.** A PC-side bridge would need a machine running all the time. MCP and the page need nothing beyond the LAN. All three pieces are Espressif's own and small. A spike on the ball (spec §3.1) measured:
+**Why on the ball, and why these pieces.** A PC-side bridge would need a machine running all the time. MCP and the page need nothing beyond the LAN. All three pieces are Espressif's own and small. A spike on the ball measured:
 
 | | Internal RAM free |
 |---|---|

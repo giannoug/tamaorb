@@ -1,6 +1,6 @@
 # Icon references
 
-TamaOrb draws its own LCD icons (see the design spec, §5.1). This folder records what we looked at, and under which terms, so future icon work can start from here.
+TamaOrb draws its own LCD icons. This folder records what we looked at, and under which terms, so future icon work can start from here.
 
 **Only material whose license allows redistribution is stored in this folder.** Everything else is linked.
 

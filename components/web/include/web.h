@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// HTTP server (page, REST API, MCP endpoint) and mDNS (spec §7, §8.1).
+// HTTP server (page, REST API, MCP endpoint) and mDNS.
 #pragma once
 #include "esp_err.h"
 #include "remote.h"

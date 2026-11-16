@@ -13,7 +13,7 @@
 #include "settings.h"
 #include "tama_core.h"
 
-#define BODY_MAX  16384  // spec §7: bigger bodies get 413 before anything is read
+#define BODY_MAX  16384  // bigger bodies get 413 before anything is read
 #define DRAIN_MAX 65536  // a refused body up to this size is read off so the client sees the reply; beyond, close
 
 static const char *TAG = "web";
@@ -162,7 +162,7 @@ static esp_err_t mcp_post(httpd_req_t *req)
 static esp_err_t mcp_get(httpd_req_t *req)
 {
     httpd_resp_set_hdr(req, "Allow", "POST");
-    return send_plain(req, 405);  // no SSE stream (spec §8.1)
+    return send_plain(req, 405);  // no SSE stream
 }
 
 extern const uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");

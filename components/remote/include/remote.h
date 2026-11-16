@@ -52,7 +52,7 @@ uint8_t rm_press_mask(const rm_press_t *p, uint32_t now_ms);
 bool rm_press_done(const rm_press_t *p, uint32_t now_ms);
 bool rm_press_window(const rm_press_t *p, uint32_t now_ms);
 
-// ---- Save backup / restore (spec §7.3) ----
+// ---- Save backup / restore ----
 #include "persist.h"
 typedef enum { RM_RESTORE_FROZEN, RM_RESTORE_REPLAY } rm_restore_mode_t;
 bool rm_restore_mode_parse(const char *s, rm_restore_mode_t *out);  // "frozen" | "replay"
@@ -63,7 +63,7 @@ const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20]
 // e.g. "tamaorb-P1-4b4979cf-2026-11-08.sav" (UTC date of meta->unix_time; "undated" if 0)
 void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[48]);
 
-// ---- Operations table, JSON helpers and the MCP dispatcher (spec §8.1) ----
+// ---- Operations table, JSON helpers and the MCP dispatcher ----
 #include "cJSON.h"
 #include "settings.h"
 
@@ -134,7 +134,7 @@ cJSON *rm_json_parse(const char *body, size_t len);
 // or 500 with *out NULL when memory runs out.
 int rm_mcp_handle(const rm_ops_t *ops, const char *body, size_t len, char **out);
 
-// ---- REST router and Origin check (spec §7) ----
+// ---- REST router and Origin check ----
 typedef enum { RM_GET, RM_POST, RM_PUT, RM_PATCH, RM_OTHER } rm_method_t;
 typedef struct {
     rm_method_t method;

@@ -23,7 +23,7 @@ ui_rgb_t ui_mix(ui_rgb_t a, ui_rgb_t b, uint8_t pct);  // a + (b - a) * pct / 10
 void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model,
                    uint8_t held_mask, bool hints, const ui_palette_t *p);
 
-// ---- Touch (spec §5.2) ----
+// ---- Touch ----
 typedef struct { uint8_t count; struct { int16_t x, y; } pt[2]; } ui_touch_t;
 // OR of the zone masks of the active points: x < 80 → A, 80..159 → B, >= 160 → C.
 uint8_t ui_touch_buttons(const ui_touch_t *t);
@@ -35,7 +35,7 @@ uint8_t ui_touch_buttons(const ui_touch_t *t);
 typedef struct { bool down; uint8_t start_mask; } ui_touch_tracker_t;
 uint8_t ui_touch_track(ui_touch_tracker_t *tr, const ui_touch_t *t);
 
-// ---- Screen timeout and BOOT button (spec §5.3–5.4) ----
+// ---- Screen timeout and BOOT button ----
 typedef struct {
     bool on;
     uint32_t last_activity_ms;
@@ -62,7 +62,7 @@ void ui_screen_resume(ui_screen_t *s, uint32_t now_ms, bool boot_down, bool touc
 // True once per BOOT hold of >= 2 s (reported while still held); that press doesn't toggle the screen.
 bool ui_screen_long_press(ui_screen_t *s);
 
-// ---- Text screens (spec §5.5; layouts from the design canvas, ASCII only) ----
+// ---- Text screens (layouts from the design canvas, ASCII only) ----
 // Draws with the 8x8 font; '\n' starts a new line (11 px * scale below). Returns the text width.
 int  ui_draw_text(uint16_t *fb, int x, int y, const char *s, uint8_t scale, uint16_t color);
 int  ui_text_width(const char *line, uint8_t scale);  // first line only; the trailing blank column is excluded

@@ -16,7 +16,7 @@
 
 static const char *TAG = "net";
 
-// Survives software resets and deep sleep, not power loss (spec §6.4 "known time").
+// Survives software resets and deep sleep, not power loss ("known time").
 static RTC_NOINIT_ATTR uint32_t s_time_trust;
 static volatile bool s_connected, s_configured;
 static bool s_started;

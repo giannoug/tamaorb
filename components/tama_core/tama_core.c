@@ -6,7 +6,7 @@
 
 #define STATE_VERSION     1
 #define PUBLISH_TICKS     (32768u / 30u)   // publish a frame every 1/30 s of emulated time
-#define SLEEP_BATCH_US    2000             // only really sleep once this far ahead (spec §4)
+#define SLEEP_BATCH_US    2000             // only really sleep once this far ahead
 
 static const tc_platform_t *g_plat;
 static bool g_realtime;
@@ -183,7 +183,7 @@ uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_eve
     uint64_t done = 0;
     uint64_t next_cb = cb_every_ticks ? cb_every_ticks : UINT64_MAX;
     uint32_t prev = ticks_now();
-    while (done < ticks) {  // input is ignored during catch-up (spec §6.4)
+    while (done < ticks) {  // input is ignored during catch-up
         step_once();
         uint32_t now = ticks_now();
         done += tc_ticks_since(prev, now);

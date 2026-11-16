@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Delayed restarts and the ROM switch shared by the on-device picker and the remote API (spec §7.1).
+// Delayed restarts and the ROM switch shared by the on-device picker and the remote API.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

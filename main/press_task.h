@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Runs agent button sequences with on-ball timing (spec §8.2).
+// Runs agent button sequences with on-ball timing.
 #pragma once
 #include <stdbool.h>
 #include "remote.h"

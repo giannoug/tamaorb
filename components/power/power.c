@@ -16,7 +16,7 @@ static void (*s_show_low)(void);
 uint8_t power_battery_pct(uint32_t mv)
 {
     // xiaozhi's raw-ADC table converted to cell millivolts with this board's measured scale
-    // (raw 2557 ≈ 4170 mV); needs a proper discharge-curve calibration later (spec §9).
+    // (raw 2557 ≈ 4170 mV); needs a proper discharge-curve calibration later.
     static const struct { uint16_t mv; uint8_t pct; } T[] = {
         { 3230, 0 }, { 3390, 20 }, { 3525, 40 }, { 3670, 60 }, { 3815, 80 }, { 4040, 100 },
     };

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Saves in the "tamaorb" NVS partition, two alternating keys per pet (spec §6.2–6.3).
+// Saves in the "tamaorb" NVS partition, two alternating keys per pet.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>

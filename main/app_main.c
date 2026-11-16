@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Boot sequence (spec §6.4). Later tasks add saves, time, catch-up, the picker and power handling.
+// Boot sequence. Later tasks add saves, time, catch-up, the picker and power handling.
 #include <stdio.h>
 #include <string.h>
 #include "esp_app_desc.h"
@@ -41,7 +41,7 @@ static void show_no_rom(const tc_rom_entry_t *roms, int n)
     ui_message("No ROM found", "Put a P1 or P2 dump\nin /tamaorb/roms/\non the SD card, or\npush one over USB.");
 }
 
-// Picks the ROM to run (spec §7.3). Returns its model, or TC_MODEL_UNKNOWN if there is none.
+// Picks the ROM to run. Returns its model, or TC_MODEL_UNKNOWN if there is none.
 static tc_model_t choose_rom(void)
 {
     static tc_rom_entry_t roms[16];

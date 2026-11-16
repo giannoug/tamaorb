@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Text screens: catch-up, low battery, ROM picker, messages. Layouts follow the design canvas
-// artboards at device scale (spec §5.5).
+// artboards at device scale.
 #include <stdio.h>
 #include <string.h>
 #include "ui.h"

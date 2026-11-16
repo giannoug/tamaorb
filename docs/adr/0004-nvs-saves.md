@@ -1,6 +1,6 @@
 # ADR 0004: Saves in NVS with A/B keys
 
-**Context.** The spec (§6.3) asked for crash-safe, wear-levelled saves that survive the power button cutting power at any moment, and left the exact layout to the builder. It suggested a raw ring of slots.
+**Context.** The design asked for crash-safe, wear-levelled saves that survive the power button cutting power at any moment, and left the exact layout to the builder. It suggested a raw ring of slots.
 
 **Decision.** Store saves in a dedicated NVS partition (`tamaorb`, 384 KB):
 - **Two alternating keys per pet**, `s<10 hex of ROM SHA-1>_<pet><a|b>`.

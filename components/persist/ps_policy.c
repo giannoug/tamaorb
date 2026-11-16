@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// When to save (spec §6.2): a few seconds after the last button release, and periodically.
+// When to save: a few seconds after the last button release, and periodically.
 #include "persist.h"
 
 void ps_policy_init(ps_policy_t *p, uint32_t now_ms)

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Line protocol over the USB serial console (spec §7.4). Portable: no ESP-IDF headers.
+// Line protocol over the USB serial console. Portable: no ESP-IDF headers.
 // Requests and replies start with "@TO "; every other line (logs) is ignored by both sides.
 //
 //   @TO PUT <name> <size> <sha1hex>   -> @TO OK | @TO ERR name|size|busy|io

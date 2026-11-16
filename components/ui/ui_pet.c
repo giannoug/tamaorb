@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Pet screen: the 32x16 LCD at 6x plus 8 icons (spec §5.1, Global Constraints geometry).
+// Pet screen: the 32x16 LCD at 6x plus 8 icons .
 #include "ui.h"
 #include "ui_internal.h"
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Load test for the TamaOrb web API (spec §10.3).
+"""Load test for the TamaOrb web API.
 
   tamaorb-load.py [--host tamaorb.local] [--seconds 180] [--workers 4] [--large]
 
@@ -8,7 +8,7 @@ Each worker thread loops over GET /api/status, GET /api/look and POST /mcp (tool
 --large adds two 16 KB-class bodies per loop: a PATCH /api/settings padded with whitespace to
 exactly 16384 bytes (the cap; it re-sends a current value, so nothing changes) and a 16385-byte
 PUT of a save, which must get 413. Prints requests=<n> failures=<n> and the ball's heap_min,
-and exits 1 if any request failed or heap_min is under 20 KB (spec §10.3). Pace is checked in the
+and exits 1 if any request failed or heap_min is under 20 KB. Pace is checked in the
 serial log. Standard library only.
 """
 import argparse
@@ -20,7 +20,7 @@ import urllib.error
 import urllib.request
 
 BODY_MAX = 16384
-HEAP_MIN_FLOOR = 20480  # internal RAM, spec §10.3
+HEAP_MIN_FLOOR = 20480  # internal RAM floor (ADR 0005)
 MCP_LOOK = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                        "params": {"name": "look", "arguments": {}}}).encode()
 

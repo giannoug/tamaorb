@@ -28,7 +28,7 @@ static hl_store_result_t op_store(void *ctx, const char *name, const uint8_t *da
         s_reboot = true;  // nothing running yet: reboot to pick it up
         return HL_STORE_OK_REBOOT;
     }
-    // No SD card: the pushed ROM becomes the active one (spec §7.3), applied by a reboot.
+    // No SD card: the pushed ROM becomes the active one, applied by a reboot.
     if (rom_store_set_active(data) != ESP_OK) return HL_STORE_FAIL;
     s_reboot = true;
     return HL_STORE_OK_REBOOT;

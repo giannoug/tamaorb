@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Battery voltage (GPIO1, divider x2) and USB presence (GPIO41), spec §3.
+// Battery voltage (GPIO1, divider x2) and USB presence (GPIO41).
 #include "board.h"
 #include "ball_pins.h"
 #include "driver/gpio.h"

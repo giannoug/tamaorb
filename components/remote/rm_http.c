@@ -284,7 +284,7 @@ static void h_save_put(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha
     ps_meta_t meta;
     const char *bad = rm_save_check(q->body, q->body_len, sha, q->state_ok, &meta);
     if (bad) { set_err(r, 400, "invalid", bad); return; }
-    // The ROM need not be on the card (spec 7.3): the pet list only decides "restarting".
+    // The ROM need not be on the card — the pet list only decides "restarting".
     rm_pet_t pet;
     int f = find_pet(ops, sha, &pet);
     if (f < 0) { set_json(r, 500, NULL); return; }

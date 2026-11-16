@@ -2,5 +2,5 @@
 #pragma once
 #include "tc_rom.h"
 
-// Serves the hostlink protocol on the USB serial console (spec §7.4).
+// Serves the hostlink protocol on the USB serial console.
 void hostlink_task_start(tc_model_t active_model);

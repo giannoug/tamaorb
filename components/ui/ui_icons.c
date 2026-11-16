@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// TamaOrb's own 12x12 icon art (design canvas "TamaOrb Display", spec §5.1).
+// TamaOrb's own 12x12 icon art (design canvas "TamaOrb Display").
 // Not traced from Bandai, MAME or TamaTool artwork; references in docs/references/icons/.
 #include "ui_internal.h"
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Wi-Fi station, SNTP and "known time" (spec §6.4–6.5).
+// Wi-Fi station, SNTP and "known time".
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// ES8311 + speaker amp: a square wave at the ROM's buzzer frequency (spec §5.6).
+// ES8311 + speaker amp: a square wave at the ROM's buzzer frequency.
 #include "board.h"
 #include "ball_internal.h"
 #include "ball_pins.h"

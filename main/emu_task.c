@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Emulator task: runs tamalib in real time on core 1 (spec §8).
+// Emulator task: runs tamalib in real time on core 1.
 #include "emu_task.h"
 #include "board.h"
 #include "press_task.h"
@@ -31,7 +31,7 @@ static void lock(void) { taskENTER_CRITICAL(&s_mux); }
 static void unlock(void) { taskEXIT_CRITICAL(&s_mux); }
 
 // Buzzer changes go straight to the audio driver: polling from the UI task missed short key clicks.
-// agent_feedback = silent mutes the speaker during agent press sequences (one flag read, spec §8.2).
+// agent_feedback = silent mutes the speaker during agent press sequences (one flag read).
 static void tone(uint32_t freq_dhz, bool on) { board_tone(freq_dhz / 10, on && !g_agent_mute); }
 
 static const tc_platform_t s_plat = { .now_us = now_us, .sleep_until_us = sleep_until_us, .tone = tone,

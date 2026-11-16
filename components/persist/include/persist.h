@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Save records and save timing (spec §6.1–6.3). Portable: no ESP-IDF headers.
+// Save records and save timing. Portable: no ESP-IDF headers.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
