@@ -9,3 +9,5 @@ extern const char *const UI_ICON_P2_MEDICINE[12];
 
 bool ui_in_circle(int x, int y);
 void ui_draw_glyph(uint16_t *fb, int x, int y, char c, uint8_t scale, uint16_t color);
+// Same, but only pixels with cx0 <= x < cx1 are written.
+void ui_draw_glyph_clip(uint16_t *fb, int x, int y, char c, uint8_t scale, uint16_t color, int cx0, int cx1);

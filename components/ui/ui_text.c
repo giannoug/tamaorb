@@ -45,6 +45,55 @@ int ui_text_width(const char *line, uint8_t scale)
     return n ? (8 * n - 1) * scale : 0;
 }
 
+int ui_text_fit(const char *s, uint8_t scale, int max_w)
+{
+    int n = 0;
+    while (s[n] && s[n] != '\n' && (8 * (n + 1) - 1) * scale <= max_w) n++;
+    return n;
+}
+
+// First n chars of s (stopping at '\n'), starting at x0 - dx, only inside [x0,x1).
+static void draw_clipped_n(uint16_t *fb, int x0, int x1, int y, int dx, const char *s, int n,
+                           uint8_t scale, uint16_t color)
+{
+    for (int i = 0; i < n && s[i] && s[i] != '\n'; i++)
+        ui_draw_glyph_clip(fb, x0 - dx + i * 8 * scale, y, s[i], scale, color, x0, x1);
+}
+
+int ui_draw_text_clipped(uint16_t *fb, int x0, int x1, int y, int dx, const char *s, uint8_t scale, uint16_t color)
+{
+    draw_clipped_n(fb, x0, x1, y, dx, s, 1 << 20, scale, color);
+    return ui_text_width(s, scale);
+}
+
+int ui_draw_text_ellipsis(uint16_t *fb, int x0, int x1, int y, const char *s, uint8_t scale, uint16_t color)
+{
+    int box = x1 - x0, tw = ui_text_width(s, scale);
+    if (tw <= box) {
+        draw_clipped_n(fb, x0, x1, y, 0, s, 1 << 20, scale, color);
+        return tw;
+    }
+    int n = ui_text_fit(s, scale, box - 8 * scale);  // leave a cell for the ellipsis
+    draw_clipped_n(fb, x0, x1, y, 0, s, n, scale, color);
+    ui_draw_glyph_clip(fb, x0 + n * 8 * scale, y, UI_ELLIPSIS[0], scale, color, x0, x1);
+    return (8 * (n + 1) - 1) * scale;
+}
+
+int ui_marquee_offset(int text_w, int box_w, uint32_t t_ms)
+{
+    int overflow = text_w - box_w;
+    if (overflow <= 0) return 0;
+    const uint32_t pause = 1000, px_per_s = 30;
+    uint32_t scroll = ((uint32_t)overflow * 1000 + px_per_s - 1) / px_per_s;  // ms to cover the overflow
+    uint32_t t = t_ms % (2 * (pause + scroll));
+    int off;
+    if (t < pause) off = 0;
+    else if (t < pause + scroll) off = (int)((t - pause) * px_per_s / 1000);
+    else if (t < 2 * pause + scroll) off = overflow;
+    else off = overflow - (int)((t - 2 * pause - scroll) * px_per_s / 1000);
+    return off < 0 ? 0 : off > overflow ? overflow : off;
+}
+
 int ui_draw_text(uint16_t *fb, int x, int y, const char *s, uint8_t scale, uint16_t color)
 {
     int width = ui_text_width(s, scale);

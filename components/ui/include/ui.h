@@ -79,3 +79,20 @@ void ui_render_picker(uint16_t *fb, const char *const *names, const char *const 
 #define UI_PICKER_H      32
 #define UI_PICKER_STEP   37
 #define UI_PICKER_MAX    3
+
+// ---- Geometry and text helpers (layouts take positions from these, never from round-screen literals) ----
+#define UI_ELLIPSIS "\x7f"  // single glyph: three dots on the baseline row
+typedef struct { int16_t w, h; bool round; } ui_geom_t;
+extern const ui_geom_t UI_GEOM;  // {UI_W, UI_H, true} on this board
+// Widest x range [*x0, *x1] visible on every row y0..y1 (clamped to the screen); returns its width, 0 if none.
+int  ui_geom_span(const ui_geom_t *g, int y0, int y1, int *x0, int *x1);
+// Largest centred square that is fully visible (round: inscribed square; otherwise the whole screen).
+void ui_geom_safe(const ui_geom_t *g, int *x, int *y, int *w, int *h);
+int  ui_text_fit(const char *s, uint8_t scale, int max_w);  // chars of the first line that fit whole in max_w
+// Draws s clipped to [x0,x1); if it doesn't fit, draws the longest prefix that fits with room for UI_ELLIPSIS,
+// then the ellipsis. Returns the drawn width.
+int  ui_draw_text_ellipsis(uint16_t *fb, int x0, int x1, int y, const char *s, uint8_t scale, uint16_t color);
+// Ping-pong scroll offset (0..overflow) for text wider than its box: 1000 ms pause, 30 px/s, 1000 ms pause, back.
+int  ui_marquee_offset(int text_w, int box_w, uint32_t t_ms);
+// Draws s starting at x0 - dx, writing only inside [x0,x1). Returns the text width.
+int  ui_draw_text_clipped(uint16_t *fb, int x0, int x1, int y, int dx, const char *s, uint8_t scale, uint16_t color);
