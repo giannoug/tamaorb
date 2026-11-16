@@ -4,7 +4,8 @@
 #include "tamalib.h"
 #include "tc_time.h"
 
-#define STATE_VERSION     1
+#define STATE_VERSION     2   // 2: + previous_cycles, scaled_cycle_accumulator, cpu_frequency (tamalib 223ba64)
+#define STATE_V2_EXTRA    9   // bytes version 2 adds at the end; version 1 saves are this much shorter
 #define PUBLISH_TICKS     (32768u / 30u)   // publish a frame every 1/30 s of emulated time
 #define SLEEP_BATCH_US    2000             // only really sleep once this far ahead
 
@@ -35,9 +36,9 @@ static void hal_free(void *p) { (void)p; }
 static void hal_halt(void) {}
 static bool_t hal_is_log_enabled(log_level_t level) { (void)level; return 0; }
 static void hal_log(log_level_t level, char *buff, ...) { (void)level; (void)buff; }
-// tamalib timestamps are in 1/32768 s units (TC_TICK_HZ). tamalib computes each wait as
-// cycles * ts_freq / cpu_freq with integer division; in microseconds that truncated every
-// instruction and ran the emulator 0.35 % fast. At ts_freq == 32768 Hz the division is exact.
+// tamalib timestamps are in 1/32768 s units (TC_TICK_HZ): the CPU's own clock, so every wait is an exact
+// number of ticks. (Older tamalib truncated each wait and ran 0.35 % fast at other rates; 223ba64 paces
+// exactly at any rate, and 32768 stays the natural choice.)
 static uint32_t us_to_ts(uint64_t us) { return (uint32_t)(us * TC_TICK_HZ / 1000000u); }
 
 // In fast mode (catch-up) tamalib still asks for the time after every instruction, but only keeps it as the
@@ -268,8 +269,8 @@ static uint32_t r8(rd_t *r) { if (r->n < r->len) return r->p[r->n++]; r->ok = fa
 static uint32_t r16(rd_t *r) { uint32_t v = r8(r); return v | r8(r) << 8; }
 static uint32_t r32(rd_t *r) { uint32_t v = r16(r); return v | r16(r) << 16; }
 
-// One routine for both directions keeps save and load in lockstep.
-static void walk(state_t *s, wr_t *w, rd_t *r)
+// One routine for both directions keeps save and load in lockstep. version picks the layout (1 or 2).
+static void walk(state_t *s, wr_t *w, rd_t *r, int version)
 {
 #define U8(f, m)  do { if (w) w8(w, *(f) & (m)); else *(f) = r8(r) & (m); } while (0)
 #define U16(f, m) do { if (w) w16(w, *(f) & (m)); else *(f) = r16(r) & (m); } while (0)
@@ -291,6 +292,11 @@ static void walk(state_t *s, wr_t *w, rd_t *r)
     }
     U8(s->cpu_halted, 0x1);
     for (int i = 0; i < MEM_BUFFER_SIZE; i++) U8(&s->memory[i], 0xFF);
+    if (version >= 2) {  // without these a restore replayed up to 12 cycles of the last instruction
+        U8(s->previous_cycles, 0xFF);
+        U32(s->scaled_cycle_accumulator);
+        U32(s->cpu_frequency);
+    }
 #undef U8
 #undef U16
 #undef U32
@@ -301,7 +307,7 @@ size_t tc_state_size(void)
     static uint8_t scratch[1024];
     wr_t w = { scratch, 0, sizeof scratch, true };
     w8(&w, STATE_VERSION);
-    walk(tamalib_get_state(), &w, NULL);
+    walk(tamalib_get_state(), &w, NULL, STATE_VERSION);
     return w.n;
 }
 
@@ -309,16 +315,35 @@ size_t tc_state_save(uint8_t *buf, size_t cap)
 {
     wr_t w = { buf, 0, cap, true };
     w8(&w, STATE_VERSION);
-    walk(tamalib_get_state(), &w, NULL);
+    walk(tamalib_get_state(), &w, NULL, STATE_VERSION);
     return w.ok ? w.n : 0;
+}
+
+// The layout a save claims (its version byte) must match its length; a version 2 clock must be OSC1 or OSC3.
+// full_len is the length of a current (version 2) save. Returns the version, or 0 if the save is unusable.
+static int check_layout(const uint8_t *buf, size_t len, size_t full_len)
+{
+    if (!buf || !len || !full_len) return 0;
+    if (buf[0] == 1 && len == full_len - STATE_V2_EXTRA) return 1;
+    if (buf[0] != 2 || len != full_len) return 0;
+    const uint8_t *f = buf + len - 4;  // cpu_frequency, the last field
+    uint32_t hz = f[0] | f[1] << 8 | f[2] << 16 | (uint32_t)f[3] << 24;
+    return hz == 32768u || hz == 1000000u ? 2 : 0;
 }
 
 bool tc_state_load(const uint8_t *buf, size_t len)
 {
-    if (len != tc_state_size() || buf[0] != STATE_VERSION) return false;
+    int version = check_layout(buf, len, tc_state_size());
+    if (!version) return false;  // checked before walking: a refused save leaves the running state alone
     rd_t r = { buf, 1, len, true };
-    walk(tamalib_get_state(), NULL, &r);
+    state_t *s = tamalib_get_state();
+    walk(s, NULL, &r, version);
     if (!r.ok) return false;
+    if (version == 1) {  // saved before tamalib kept these: exact for P1/P2 apart from the old 12-cycle replay
+        *s->previous_cycles = 0;
+        *s->scaled_cycle_accumulator = 0;
+        *s->cpu_frequency = 32768;
+    }
     tamalib_refresh_hw();                 // redraw the LCD and buzzer from the restored memory
     tamalib_set_exec_mode(EXEC_MODE_RUN); // re-sync timing
     publish();
@@ -328,7 +353,7 @@ bool tc_state_load(const uint8_t *buf, size_t len)
 // The state length is fixed for a build; tc_init measured it (g_boot_len), so no walk over live state here.
 bool tc_state_compatible(const uint8_t *buf, size_t len)
 {
-    return buf && g_boot_len && len == g_boot_len && buf[0] == STATE_VERSION;
+    return check_layout(buf, len, g_boot_len) != 0;
 }
 
 uint8_t tc_applied_buttons(void) { return g_applied; }

@@ -7,6 +7,7 @@
 #include "tc_rom.h"
 #include "tama_core.h"
 #include "cpu.h"
+#include "tamalib.h"
 
 static uint64_t fake_now;
 static uint64_t now_us(void) { return fake_now; }
@@ -17,7 +18,7 @@ static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_un
 
 static bool have_rom;
 static uint16_t program[TC_ROM_WORDS];
-static uint8_t s1[4096], s2[4096];
+static uint8_t s1[4096], s2[4096], s3[4096];
 
 static bool inited;  // tc_init runs once, after the fork-based test (which needs uninitialised parents)
 void setUp(void) { if (inited) { tc_reset_to_boot(); tc_set_realtime(false); } }
@@ -163,6 +164,72 @@ static void test_state_compatible(void)
     TEST_ASSERT_FALSE(tc_state_compatible(NULL, 0));
 }
 
+// Version 2 saves carry the CPU's timing fields (tamalib 223ba64), so a restore resumes exactly where it was.
+#define V2_EXTRA 9  // previous_cycles (1) + scaled_cycle_accumulator (4) + cpu_frequency (4)
+
+static void put32(uint8_t *p, uint32_t v) { p[0] = v; p[1] = v >> 8; p[2] = v >> 16; p[3] = v >> 24; }
+
+static void test_state_v2_saves_timing_fields(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    run_seconds(1);
+    state_t *st = tamalib_get_state();
+    *st->previous_cycles = 7;
+    *st->scaled_cycle_accumulator = 1234;
+    size_t len = tc_state_save(s1, sizeof s1);
+    TEST_ASSERT_EQUAL(tc_state_size(), len);
+    TEST_ASSERT_EQUAL_HEX8(2, s1[0]);
+    *st->previous_cycles = 0;
+    *st->scaled_cycle_accumulator = 0;
+    TEST_ASSERT_TRUE(tc_state_load(s1, len));
+    TEST_ASSERT_EQUAL(7, *st->previous_cycles);
+    TEST_ASSERT_EQUAL(1234, *st->scaled_cycle_accumulator);
+    TEST_ASSERT_EQUAL(32768, *st->cpu_frequency);
+}
+
+// Saves made before the timing fields existed (version 1, 9 bytes shorter) still load, with the fields reset.
+static void test_state_loads_version_1(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    run_seconds(2);
+    size_t len = tc_state_save(s1, sizeof s1), v1len = len - V2_EXTRA;
+    memcpy(s2, s1, v1len);
+    s2[0] = 1;
+    run_seconds(3);  // move on, so the load has something to undo
+    state_t *st = tamalib_get_state();
+    *st->previous_cycles = 5;
+    *st->scaled_cycle_accumulator = 9;
+    TEST_ASSERT_TRUE(tc_state_compatible(s2, v1len));
+    TEST_ASSERT_TRUE(tc_state_load(s2, v1len));
+    TEST_ASSERT_EQUAL(0, *st->previous_cycles);
+    TEST_ASSERT_EQUAL(0, *st->scaled_cycle_accumulator);
+    TEST_ASSERT_EQUAL(32768, *st->cpu_frequency);
+    size_t again = tc_state_save(s3, sizeof s3);
+    TEST_ASSERT_EQUAL(len, again);
+    TEST_ASSERT_EQUAL_MEMORY(s1 + 1, s3 + 1, v1len - 1);  // every old field came back
+    // A version byte that doesn't match the length is refused.
+    TEST_ASSERT_FALSE(tc_state_compatible(s2, len));
+    TEST_ASSERT_FALSE(tc_state_load(s2, len));
+    s1[0] = 1;
+    TEST_ASSERT_FALSE(tc_state_compatible(s1, len));
+}
+
+// A clock other than OSC1 (32768 Hz) or OSC3 (1 MHz) is corrupt: refused, and the running state is untouched.
+static void test_load_rejects_bad_cpu_frequency(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    run_seconds(1);
+    size_t len = tc_state_save(s1, sizeof s1);
+    put32(s1 + len - 4, 12345);
+    TEST_ASSERT_FALSE(tc_state_compatible(s1, len));
+    TEST_ASSERT_EQUAL(len, tc_state_save(s2, sizeof s2));
+    TEST_ASSERT_FALSE(tc_state_load(s1, len));
+    TEST_ASSERT_EQUAL(len, tc_state_save(s3, sizeof s3));
+    TEST_ASSERT_EQUAL_MEMORY(s2, s3, len);
+    put32(s1 + len - 4, 1000000);
+    TEST_ASSERT_TRUE(tc_state_compatible(s1, len));
+}
+
 static void test_post_buttons_mask(void)
 {
     tc_post_buttons(TC_BTN_MASK(TC_BTN_B));
@@ -194,8 +261,9 @@ static void test_ram_snapshot_follows_publish(void)
     run_seconds(1);
     size_t len = tc_state_save(s1, sizeof s1);
     TEST_ASSERT_GREATER_THAN(0, len);
-    // The packed memory is the tail of the state; the RAM nibble pair (0x010, 0x011) is byte 8 of it.
-    s1[len - MEM_BUFFER_SIZE + 8] = 0x5A;
+    // The packed memory ends V2_EXTRA bytes before the end of the state (the timing fields follow it);
+    // the RAM nibble pair (0x010, 0x011) is byte 8 of it.
+    s1[len - V2_EXTRA - MEM_BUFFER_SIZE + 8] = 0x5A;
     TEST_ASSERT_TRUE(tc_state_load(s1, len));  // publishes
     uint8_t ram[TC_RAM_NIBBLES + 8];
     memset(ram, 0xEE, sizeof ram);
@@ -226,6 +294,9 @@ int main(void)
     RUN_TEST(test_remote_buttons_or_touch);
     RUN_TEST(test_load_rejects_wrong_version);
     RUN_TEST(test_state_compatible);
+    RUN_TEST(test_state_v2_saves_timing_fields);
+    RUN_TEST(test_state_loads_version_1);
+    RUN_TEST(test_load_rejects_bad_cpu_frequency);
     RUN_TEST(test_boots_and_draws);
     RUN_TEST(test_frame_changed_sequence);
     RUN_TEST(test_state_roundtrip_deterministic);
