@@ -31,7 +31,7 @@ Checked on this ball, one A at a time from `icons: none`:
 
 ## What the pet needs
 
-- **Feeding.** Select food (A once from `icons: none`), press B: a menu opens. The first option is usually the meal, and A moves between options, so check which one is marked before going on. With the meal marked, press B, wait for the eating animation to finish, then check the hunger hearts on the meter. C backs out without feeding. A meal fills hunger hearts; a snack mainly cheers the pet up and adds weight, so prefer meals.
+- **Feeding.** Select food (A once from `icons: none`), press B: a menu opens. The first option is usually the meal, and A moves between options, so check which one is marked before going on. With the meal marked, press B and wait about 6 s for the eating animation; the food menu then comes back. Press C (back to the pet), then check the hunger hearts on the meter: on this ball one meal took hunger from 3 to 4 hearts. C in the menu backs out without feeding. A meal fills hunger hearts; a snack mainly cheers the pet up and adds weight, so prefer meals.
 - **Droppings** (a small pile beside the pet): bathroom, then B. A cleaning animation plays; when there is nothing to clean it still plays and does no harm.
 - **Sick** (a skull-like shape on screen): medicine. It may take more than one dose.
 - **Asleep** (eyes closed, picture mostly still or dark): turn the light off, then back on when it wakes. `icons:` does not report the light state; judge by the picture.
