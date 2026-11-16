@@ -5,8 +5,10 @@
 void rm_press_defaults(rm_press_req_t *r)
 {
     memset(r, 0, sizeof *r);
-    r->hold_ms = 150;
-    r->gap_ms = 200;
+    // The P1/P2 ROMs take about one press per 500 ms. Measured on the ball with six A presses:
+    // 150+200 ms dropped a press every time, 250+250 never did; 200+400 leaves margin.
+    r->hold_ms = 200;
+    r->gap_ms = 400;
     r->settle_ms = 500;
 }
 

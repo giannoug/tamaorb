@@ -158,7 +158,7 @@ static void test_press_passes_request(void)
     TEST_ASSERT_EQUAL(RM_STEP_A, fake.press_seen.steps[0]);
     TEST_ASSERT_EQUAL(RM_STEP_AC, fake.press_seen.steps[1]);
     TEST_ASSERT_EQUAL(100, fake.press_seen.hold_ms);
-    TEST_ASSERT_EQUAL(200, fake.press_seen.gap_ms);
+    TEST_ASSERT_EQUAL(400, fake.press_seen.gap_ms);
     TEST_ASSERT_EQUAL(2, cJSON_GetArraySize(cJSON_GetObjectItem(result(r), "content")));
     cJSON_Delete(r);
     r = tool("press", "{\"buttons\":\"B C\"}");

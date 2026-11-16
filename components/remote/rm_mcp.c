@@ -20,12 +20,13 @@ static const tool_def_t TOOLS[] = {
      "Returns the LCD as text (# lit, . unlit) plus a PNG, the lit icons by name, the buzzer state and the phase (boot, run or catch-up).",
      "{\"type\":\"object\",\"properties\":{}}"},
     {"press",
-     "Presses buttons in sequence, then returns what look returns. At most 32 steps; the whole sequence must take at most 10 s. "
+     "Presses buttons in sequence, then returns what look returns. At most 32 steps; the whole sequence must take at most 10 s (about 16 steps at the default timing). "
+     "The game reads about one press per 500 ms: keep hold_ms + gap_ms at 500 or more, or presses get lost. "
      "Fails if another sequence is running or the ball is catching up.",
      "{\"type\":\"object\",\"properties\":{"
      "\"buttons\":{\"description\":\"" BUTTONS_DESC "\",\"oneOf\":[{\"type\":\"string\"},{\"type\":\"array\",\"items\":{\"type\":\"string\",\"enum\":[\"A\",\"B\",\"C\",\"AC\"]}}]},"
-     "\"hold_ms\":{\"type\":\"integer\",\"minimum\":50,\"maximum\":2000,\"default\":150,\"description\":\"How long each step is held.\"},"
-     "\"gap_ms\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":2000,\"default\":200,\"description\":\"Pause between steps.\"},"
+     "\"hold_ms\":{\"type\":\"integer\",\"minimum\":50,\"maximum\":2000,\"default\":200,\"description\":\"How long each step is held.\"},"
+     "\"gap_ms\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":2000,\"default\":400,\"description\":\"Pause between steps.\"},"
      "\"settle_ms\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3000,\"default\":500,\"description\":\"Wait after the last step before looking.\"}},"
      "\"required\":[\"buttons\"]}"},
     {"status", "Returns the ball's status: ROM, model, phase, Wi-Fi, battery, memory, time and last save.",

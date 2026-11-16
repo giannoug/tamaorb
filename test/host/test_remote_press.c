@@ -11,8 +11,8 @@ static void test_parse_tokens(void)
     rm_press_req_t r;
     rm_press_defaults(&r);
     TEST_ASSERT_EQUAL(0, r.n);
-    TEST_ASSERT_EQUAL(150, r.hold_ms);
-    TEST_ASSERT_EQUAL(200, r.gap_ms);
+    TEST_ASSERT_EQUAL(200, r.hold_ms);
+    TEST_ASSERT_EQUAL(400, r.gap_ms);
     TEST_ASSERT_EQUAL(500, r.settle_ms);
     TEST_ASSERT_TRUE(rm_press_parse(&r, "a C ac"));
     TEST_ASSERT_EQUAL(3, r.n);
@@ -61,6 +61,8 @@ static rm_press_t seq_ac(void)
 {
     rm_press_req_t r;
     rm_press_defaults(&r);
+    r.hold_ms = 150;  // explicit, so the timeline below doesn't follow the defaults
+    r.gap_ms = 200;
     rm_press_add(&r, "A");
     rm_press_add(&r, "C");
     rm_press_t p;
@@ -96,6 +98,7 @@ static void test_wraparound(void)
 {
     rm_press_req_t r;
     rm_press_defaults(&r);
+    r.hold_ms = 150;
     rm_press_add(&r, "AC");
     rm_press_t p;
     rm_press_begin(&p, &r, 0xFFFFFFF0u);
