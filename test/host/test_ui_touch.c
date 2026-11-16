@@ -15,8 +15,9 @@ static void test_strip_split(void)
     TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(99, 190));
     TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(140, 190));
     TEST_ASSERT_EQUAL_INT(TC_BTN_C, ui_button_at(141, 190));
-    TEST_ASSERT_EQUAL_INT(-1, ui_button_at(120, 151));
-    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(120, 152));
+    TEST_ASSERT_EQUAL_INT(-1, ui_button_at(120, 167));  // the LCD's last row
+    TEST_ASSERT_EQUAL_INT(-1, ui_button_at(120, 169));
+    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(120, 170));
     TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(120, 215));
     TEST_ASSERT_EQUAL_INT(-1, ui_button_at(120, 216));
     TEST_ASSERT_EQUAL_INT(-1, ui_button_at(120, 100));  // the LCD
@@ -187,7 +188,7 @@ static void test_track_new_touch_restarts(void)
 static void test_track_real_two_points_pass_through(void)
 {
     ui_touch_tracker_t tr = { 0 };
-    ui_touch_t t = { 2, { { 20, 160 }, { 200, 180 } } };
+    ui_touch_t t = { 2, { { 20, 175 }, { 200, 180 } } };
     TEST_ASSERT_EQUAL_HEX8(A | C, ui_touch_track(&tr, &t));
 }
 
@@ -208,7 +209,7 @@ static void test_track_lift_a_of_a_c_is_not_chord(void)
     ui_touch_tracker_t tr = { 0 };
     ui_touch_t t = at(20);
     ui_touch_track(&tr, &t);                                  // A down
-    t = (ui_touch_t){ 2, { { 20, 160 }, { 210, 180 } } };      // C added
+    t = (ui_touch_t){ 2, { { 20, 175 }, { 210, 180 } } };      // C added
     ui_touch_track(&tr, &t);
     t = at(210);                                              // A lifted
     TEST_ASSERT_EQUAL_HEX8(C, ui_touch_track(&tr, &t));

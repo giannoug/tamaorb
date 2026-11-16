@@ -42,37 +42,37 @@ static void test_lit_and_ghost(void)
 {
     frame.rows[0] = 1u;  // pixel (0,0)
     render(0);
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(24, 54));
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(28, 58));
-    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(30, 54));   // pixel (1,0) unlit
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(24, 72));
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(28, 76));
+    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(30, 72));   // pixel (1,0) unlit
 }
 
 static void test_pixel_gap(void)
 {
     frame.rows[0] = 0xFFFFFFFFu;
     render(0);
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(29, 54));   // gap column of pixel (0,0)
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(24, 59));   // gap row
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(29, 72));   // gap column of pixel (0,0)
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(24, 77));   // gap row
 }
 
 static void test_last_pixel_position(void)
 {
-    frame.rows[15] = 1u << 31;  // pixel (31,15) at x=24+186, y=54+90
+    frame.rows[15] = 1u << 31;  // pixel (31,15) at x=24+186, y=72+90
     render(0);
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(210, 144));
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(214, 148));
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(210, 162));
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(214, 166));
 }
 
 static void test_icon_lit(void)
 {
-    frame.icons = 1u << 7;  // Attention: bottom row, centre (183,164), top-left (171,152)
+    frame.icons = 1u << 7;  // Attention: bottom row, centre (183,182), top-left (171,170)
     render(0);
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 2, 152 + 2));
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 3, 152 + 3));
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(171, 152));     // cell (0,0) is off
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 2, 170 + 2));
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 3, 170 + 3));
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(171, 170));     // cell (0,0) is off
     frame.icons = 0;
     render(0);
-    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(171 + 2, 152 + 2));
+    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(171 + 2, 170 + 2));
 }
 
 static void test_p2_medicine_differs(void)
@@ -84,7 +84,7 @@ static void test_p2_medicine_differs(void)
     for (int y = 0; y < UI_H; y++)
         for (int x = 0; x < UI_W; x++)
             if (fb[y * UI_W + x] != fb2[y * UI_W + x]) {
-                TEST_ASSERT_TRUE_MESSAGE(x >= 171 && x <= 194 && y >= 26 && y <= 49, "diff outside Medicine icon");
+                TEST_ASSERT_TRUE_MESSAGE(x >= 171 && x <= 194 && y >= 36 && y <= 59, "diff outside Medicine icon");
                 diffs++;
             }
     TEST_ASSERT_GREATER_THAN(0, diffs);
@@ -97,8 +97,9 @@ static void test_pet_layout(void)
     TEST_ASSERT_EQUAL_HEX16(GHOST, PX(UI_LCD_X, UI_LCD_Y));   // first dot, unlit
     TEST_ASSERT_EQUAL_HEX16(BG, PX(UI_LCD_X, UI_LCD_Y - 1));
     TEST_ASSERT_EQUAL_HEX16(BG, PX(UI_LCD_X, UI_LCD_Y + 96));  // just under the LCD's last dot row
-    // icon boxes: 24 px centred at y 38 (top) and 164 (bottom), x centres 57, 97, 143, 183
-    static const int cx[4] = { 57, 97, 143, 183 }, cy[2] = { 38, 164 };
+    // LCD centred on the screen; icon boxes: 24 px centred at y 48 (top) and 182 (bottom), x centres 57, 97, 143, 183
+    TEST_ASSERT_EQUAL_INT(UI_H / 2, UI_LCD_Y + 16 * UI_LCD_PITCH / 2);
+    static const int cx[4] = { 57, 97, 143, 183 }, cy[2] = { 48, 182 };
     for (int r = 0; r < 2; r++)
         for (int i = 0; i < 4; i++) {
             int ink = 0;
@@ -108,8 +109,8 @@ static void test_pet_layout(void)
         }
     // nothing ink between the top icons and the LCD, or between the LCD and the bottom icons
     for (int x = 30; x < 210; x++) {
-        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 51));
-        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 151));
+        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 66));
+        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 168));
     }
 }
 

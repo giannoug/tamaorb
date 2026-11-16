@@ -4,7 +4,7 @@
 #include "ui_internal.h"
 
 static const int ICON_CX[4] = { 57, 97, 143, 183 };
-static const int ICON_CY[2] = { 38, 164 };  // top row partly in the top swipe band: drawn, never pressed
+static const int ICON_CY[2] = { 48, 182 };  // bottom row sits in the button strip, just above A and C
 
 static void fill(uint16_t *fb, int x, int y, int w, int h, uint16_t c)
 {
