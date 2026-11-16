@@ -9,7 +9,7 @@ idf_component_register(
 # Gzipped by CMake itself while configuring: PlatformIO's build reads this project but skips custom build
 # commands, and Windows has no gzip program. Editing the page re-runs the configure step (CONFIGURE_DEPENDS).
 # PlatformIO lists the output in platformio.ini (board_build.embed_files) and re-gzips it before every build
-# (tools/pio_gzip_page.py), because it doesn't re-run this configure step when only the page changes.
+# (tools/pio_prebuild.py), because it doesn't re-run this configure step when only the page changes.
 set(page_src ${CMAKE_CURRENT_SOURCE_DIR}/page/index.html)
 set(page_gz ${CMAKE_CURRENT_BINARY_DIR}/index.html.gz)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${page_src})
