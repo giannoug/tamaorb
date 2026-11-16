@@ -4,6 +4,18 @@
 
 const ui_geom_t UI_GEOM = { UI_W, UI_H, true };
 
+static unsigned isqrt(unsigned n)  // floor(sqrt(n))
+{
+    unsigned r = 0, b = 1u << 30;
+    while (b > n) b >>= 2;
+    while (b) {
+        if (n >= r + b) { n -= r + b; r = (r >> 1) + b; }
+        else r >>= 1;
+        b >>= 2;
+    }
+    return r;
+}
+
 // Visible x range of row y; false if the row is off screen or empty. Round screens are the circle
 // inscribed in the w x h area (pixel centres, as ui_in_circle).
 static bool row_range(const ui_geom_t *g, int y, int *x0, int *x1)
@@ -12,13 +24,14 @@ static bool row_range(const ui_geom_t *g, int y, int *x0, int *x1)
     if (!g->round) { *x0 = 0; *x1 = g->w - 1; return true; }
     int d = g->w < g->h ? g->w : g->h;  // circle diameter
     int dy = 2 * y + 1 - g->h;
-    int r2 = d * d;
-    int lo = -1, hi = -1;
-    for (int x = 0; x < g->w; x++) {
-        int dx = 2 * x + 1 - g->w;
-        if (dx * dx + dy * dy <= r2) { if (lo < 0) lo = x; hi = x; }
-    }
-    if (lo < 0) return false;
+    int m = d * d - dy * dy;
+    if (m < 0) return false;
+    // Pixel x is inside when |2x + 1 - w| <= s, s = floor(sqrt(m)): solve for x instead of scanning the row.
+    int s = (int)isqrt((unsigned)m);
+    int lo = (g->w - 1 - s + 1) >> 1, hi = (g->w - 1 + s) >> 1;  // ceil and floor of (w - 1 -+ s) / 2
+    if (lo < 0) lo = 0;
+    if (hi > g->w - 1) hi = g->w - 1;
+    if (lo > hi) return false;
     *x0 = lo;
     *x1 = hi;
     return true;

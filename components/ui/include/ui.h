@@ -216,9 +216,9 @@ const char *ui_menu_region_at(int i);
 const char *ui_menu_city_at(const char *region, int i);
 
 // Marquees: page titles wider than their strip, and the current TZ row when its name is cut, slide back and
-// forth with t_ms. While ui_menu_needs_tick is true, re-render on a timer and send the panel only the rows of
-// ui_menu_tick_band: the title band, grown to cover the current row when that row slides too (then most of
-// the list is resent). The band is inclusive, rows *y0..*y1; board_display_flush_rows takes [y0, y1 + 1).
+// forth with t_ms. While ui_menu_needs_tick is true, re-render on a timer (ui_send_changed then sends only the
+// rows that moved). ui_menu_tick_band says where they are: the title band, grown to cover the current row when
+// that row slides too; inclusive, rows *y0..*y1.
 bool ui_menu_needs_tick(const ui_menu_view_t *v);
 void ui_menu_tick_band(const ui_menu_view_t *v, int *y0, int *y1);
 
@@ -237,3 +237,14 @@ void ui_nav_init(ui_nav_t *n);
 ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const st_settings_t *cur,
                      st_settings_t *out, bool *display_changed);
 void ui_nav_to_pet(ui_nav_t *n);   // screen off/timeout and picker close land here
+
+// ---- Sending frames: only the rows that changed ----
+// Remembers a hash of each row the panel shows. Every frame for the panel must go through ui_send_changed, or
+// ui_sent_forget must be called after it, or later frames may skip rows that differ.
+typedef void (*ui_send_fn)(void *ctx, const uint16_t *fb, int y0, int y1);  // rows [y0, y1)
+typedef struct { uint64_t hash[UI_H]; bool valid; } ui_sent_t;
+void ui_sent_init(ui_sent_t *s);                     // starts invalid: the first frame is sent whole
+void ui_sent_forget(ui_sent_t *s);                   // the panel was drawn some other way: send the next frame whole
+// Calls send for each run of changed rows, top to bottom (runs closer than a few rows are merged), then
+// remembers fb as shown.
+void ui_send_changed(ui_sent_t *s, const uint16_t *fb, ui_send_fn send, void *ctx);

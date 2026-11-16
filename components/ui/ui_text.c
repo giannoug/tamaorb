@@ -17,19 +17,18 @@ static colors_t colors(const ui_palette_t *p)
                        ui_rgb565(ui_mix(p->bg, p->ink, 80)) };
 }
 
-static void clear(uint16_t *fb, uint16_t bg)
-{
-    for (int y = 0; y < UI_H; y++)
-        for (int x = 0; x < UI_W; x++) fb[y * UI_W + x] = ui_in_circle(x, y) ? bg : 0x0000;
-}
+static void clear(uint16_t *fb, uint16_t bg) { ui_clear_rows(fb, 0, UI_H - 1, bg); }
 
 static void rect(uint16_t *fb, int x, int y, int w, int h, uint16_t c) { ui_fill_rect(fb, x, y, w, h, c); }
 
 void ui_fill_rect(uint16_t *fb, int x, int y, int w, int h, uint16_t c)
 {
-    for (int j = y; j < y + h; j++)
-        for (int i = x; i < x + w; i++)
-            if (i >= 0 && i < UI_W && j >= 0 && j < UI_H) fb[j * UI_W + i] = c;
+    int i0 = x < 0 ? 0 : x, i1 = x + w > UI_W ? UI_W : x + w;
+    int j0 = y < 0 ? 0 : y, j1 = y + h > UI_H ? UI_H : y + h;
+    for (int j = j0; j < j1; j++) {
+        uint16_t *row = fb + j * UI_W;
+        for (int i = i0; i < i1; i++) row[i] = c;
+    }
 }
 
 void ui_clear_rows(uint16_t *fb, int y0, int y1, uint16_t bg)
@@ -37,7 +36,11 @@ void ui_clear_rows(uint16_t *fb, int y0, int y1, uint16_t bg)
     for (int y = y0 < 0 ? 0 : y0; y <= y1 && y < UI_H; y++) {
         int x0 = 0, x1 = -1;
         ui_geom_span(&UI_GEOM, y, y, &x0, &x1);
-        for (int x = 0; x < UI_W; x++) fb[y * UI_W + x] = (x >= x0 && x <= x1) ? bg : 0x0000;
+        uint16_t *row = fb + y * UI_W;
+        int x = 0;
+        for (; x < x0; x++) row[x] = 0x0000;
+        for (; x <= x1; x++) row[x] = bg;
+        for (; x < UI_W; x++) row[x] = 0x0000;
     }
 }
 
@@ -55,9 +58,12 @@ void ui_fill_rrect(uint16_t *fb, int x, int y, int w, int h, int r, uint16_t c)
 {
     if (2 * r > w) r = w / 2;
     if (2 * r > h) r = h / 2;
-    for (int j = 0; j < h; j++)
-        for (int i = 0; i < w; i++)
-            if (in_rrect(i, j, w, h, r)) ui_fill_rect(fb, x + i, y + j, 1, 1, c);
+    for (int j = 0; j < h; j++) {
+        // Each row is one run, symmetric about the middle: find where it starts.
+        int i = 0;
+        while (i < w && !in_rrect(i, j, w, h, r)) i++;
+        if (i < w) ui_fill_rect(fb, x + i, y + j, w - 2 * i, 1, c);
+    }
 }
 
 void ui_fill_disc(uint16_t *fb, int x, int y, int d, uint16_t c) { ui_fill_rrect(fb, x, y, d, d, d / 2, c); }

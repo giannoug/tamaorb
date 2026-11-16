@@ -11,13 +11,14 @@ void ui_draw_glyph(uint16_t *fb, int x, int y, char c, uint8_t scale, uint16_t c
 void ui_draw_glyph_clip(uint16_t *fb, int x, int y, char c, uint8_t scale, uint16_t color, int cx0, int cx1)
 {
     const unsigned char *g = font8x8_basic[(unsigned char)c & 0x7F];
+    if (cx0 < 0) cx0 = 0;
+    if (cx1 > UI_W) cx1 = UI_W;
     for (int row = 0; row < 8; row++)
         for (int col = 0; col < 8; col++) {
             if (!(g[row] & (1u << col))) continue;
-            for (int dy = 0; dy < scale; dy++)
-                for (int dx = 0; dx < scale; dx++) {
-                    int px = x + col * scale + dx, py = y + row * scale + dy;
-                    if (px >= 0 && px < UI_W && px >= cx0 && px < cx1 && py >= 0 && py < UI_H) fb[py * UI_W + px] = color;
-                }
+            int px0 = x + col * scale, px1 = px0 + scale;  // [px0, px1) clipped to [cx0, cx1)
+            if (px0 < cx0) px0 = cx0;
+            if (px1 > cx1) px1 = cx1;
+            if (px0 < px1) ui_fill_rect(fb, px0, y + row * scale, px1 - px0, scale, color);
         }
 }

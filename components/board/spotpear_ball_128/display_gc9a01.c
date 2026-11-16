@@ -16,7 +16,7 @@
 #define W 240
 #define H 240
 #define BAND_ROWS 20
-#define SPI_HZ (40 * 1000 * 1000)
+#define SPI_HZ (80 * 1000 * 1000)
 
 static esp_lcd_panel_handle_t s_panel;
 static esp_lcd_panel_io_handle_t s_io;
@@ -76,7 +76,13 @@ void board_display_flush_rows(const uint16_t *fb, int y0, int y1)
         xSemaphoreTake(s_band_free, portMAX_DELAY);
         const uint16_t *src = fb + y * W;
         uint16_t *dst = s_band[b];
-        for (int i = 0; i < W * rows; i++) dst[i] = (uint16_t)((src[i] >> 8) | (src[i] << 8));  // panel wants big-endian
+        // The panel wants big-endian: swap two pixels per 32-bit word (rows are whole words: W is even).
+        const uint32_t *s32 = (const uint32_t *)src;
+        uint32_t *d32 = (uint32_t *)dst;
+        for (int i = 0; i < W * rows / 2; i++) {
+            uint32_t v = s32[i];
+            d32[i] = ((v & 0xFF00FF00u) >> 8) | ((v & 0x00FF00FFu) << 8);
+        }
         esp_lcd_panel_draw_bitmap(s_panel, 0, y, W, y + rows, dst);
     }
     // Wait for both bands to come back so the caller may reuse fb immediately.

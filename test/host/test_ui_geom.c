@@ -19,6 +19,30 @@ static void test_span_round_narrower_at_top(void)
     TEST_ASSERT_EQUAL(239, b0 + b1);
 }
 
+// The span is solved, not scanned: it must match a pixel-by-pixel scan of the circle test on any shape.
+static void test_span_matches_scan(void)
+{
+    static const ui_geom_t shapes[] = { { 240, 240, true }, { 241, 241, true }, { 240, 320, true },
+                                        { 320, 240, true }, { 7, 7, true }, { 1, 1, true }, { 466, 466, true } };
+    for (size_t k = 0; k < sizeof shapes / sizeof shapes[0]; k++) {
+        const ui_geom_t *g = &shapes[k];
+        int d = g->w < g->h ? g->w : g->h;
+        for (int y = -1; y <= g->h; y++) {
+            int lo = -1, hi = -1;
+            for (int x = 0; y >= 0 && y < g->h && x < g->w; x++) {
+                int dx = 2 * x + 1 - g->w, dy = 2 * y + 1 - g->h;
+                if (dx * dx + dy * dy <= d * d) { if (lo < 0) lo = x; hi = x; }
+            }
+            int x0 = -7, x1 = -7;
+            int n = ui_geom_span(g, y, y, &x0, &x1);
+            if (lo < 0) { TEST_ASSERT_EQUAL(0, n); continue; }
+            TEST_ASSERT_EQUAL(hi - lo + 1, n);
+            TEST_ASSERT_EQUAL(lo, x0);
+            TEST_ASSERT_EQUAL(hi, x1);
+        }
+    }
+}
+
 static void test_span_rect_is_full_width(void)
 {
     ui_geom_t r = { 320, 240, false };
@@ -123,6 +147,7 @@ int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_span_round_narrower_at_top);
+    RUN_TEST(test_span_matches_scan);
     RUN_TEST(test_span_rect_is_full_width);
     RUN_TEST(test_safe_square);
     RUN_TEST(test_text_fit);

@@ -39,10 +39,17 @@ void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model,
     const uint16_t ghost = ui_rgb565(ui_mix(p->bg, p->ink, p->ghost_pct));
     const uint16_t tint = ui_rgb565(ui_mix(p->bg, p->ink, 10));
 
-    for (int y = 0; y < UI_H; y++)
-        for (int x = 0; x < UI_W; x++)
-            fb[y * UI_W + x] = !ui_in_circle(x, y) ? 0x0000
-                             : (held_mask & TC_BTN_MASK(zone_of(x))) ? tint : bg;
+    ui_clear_rows(fb, 0, UI_H - 1, bg);
+    for (int z = 0; z < 3; z++) {  // zones A, B, C are x 0-79, 80-159, 160-239
+        if (!(held_mask & TC_BTN_MASK(zone_of(80 * z)))) continue;
+        for (int y = 0; y < UI_H; y++) {
+            int x0, x1;
+            if (!ui_span(y, y, &x0, &x1)) continue;
+            if (x0 < 80 * z) x0 = 80 * z;
+            if (x1 > 80 * z + 79) x1 = 80 * z + 79;
+            if (x0 <= x1) fill(fb, x0, y, x1 - x0 + 1, 1, tint);
+        }
+    }
 
     if (hints) draw_hints(fb, ui_rgb565(ui_mix(p->bg, p->ink, 42)));
 

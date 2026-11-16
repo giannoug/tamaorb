@@ -22,15 +22,20 @@
 #include "rom_switch.h"
 
 #define LOOP_MS        30
+#define FRAME_MS       16   // while a finger is on the glance or settings: ~60 frames a second
 
 static const char *TAG = "ui";
 static tc_model_t s_model;
 static uint16_t *s_fb;
+static ui_sent_t s_sent;  // row hashes of what the panel shows (internal RAM, 1.9 KB), so a frame sends only the rows that changed
 static volatile bool s_low_battery;
 
 void ui_task_show_low_battery(void) { s_low_battery = true; }
 
 static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
+
+static void send_rows(void *ctx, const uint16_t *fb, int y0, int y1) { board_display_flush_rows(fb, y0, y1); }
+static void show(void) { ui_send_changed(&s_sent, s_fb, send_rows, NULL); }  // every frame goes through here
 
 static void picker_from_play(void);
 static uint8_t read_touch_buttons(ui_touch_tracker_t *tr);
@@ -59,13 +64,13 @@ static void ui_task(void *arg)
         const ui_palette_t *pal = ui_palette_by_id(cfg.palette);
         if (s_low_battery) {
             ui_render_low_battery(s_fb, pal);
-            board_display_flush(s_fb);
+            show();
             board_backlight_set(cfg.brightness);
             vTaskSuspend(NULL);  // the power task puts the device to sleep
         }
         if (emu_phase() == EMU_BOOT && !boot_drawn) {
             ui_render_message(s_fb, "TamaOrb", "Starting...", pal);
-            board_display_flush(s_fb);
+            show();
             board_backlight_set(cfg.brightness);
             boot_drawn = true;
         } else if (emu_phase() == EMU_CATCHUP && now_ms() - last_progress_draw >= 1000) {
@@ -73,7 +78,7 @@ static void ui_task(void *arg)
             uint32_t eta;
             emu_catchup_progress(&done, &total, &eta);
             ui_render_catchup(s_fb, done, total, eta, pal);
-            board_display_flush(s_fb);
+            show();
             ESP_LOGI(TAG, "catch-up screen %llu/%llu s", (unsigned long long)done, (unsigned long long)total);
             board_backlight_set(cfg.brightness);
             last_progress_draw = now_ms();
@@ -100,6 +105,7 @@ static void ui_task(void *arg)
     uint32_t glance_ms = 0;
     int8_t batt_pct = -1;
     for (;;) {
+        uint32_t loop_t0 = now_ms();
         // cfg is updated in place: nav.view.cfg points at it between ui_nav_step calls.
         settings_get(&cfg);
         if (settings_display_seq() != disp_seq) {
@@ -173,7 +179,7 @@ static void ui_task(void *arg)
 
         if (s_low_battery) {
             ui_render_low_battery(s_fb, pal);
-            board_display_flush(s_fb);
+            show();
             board_backlight_set(cfg.brightness);
             power_screen_on(true);
             vTaskSuspend(NULL);  // the power task puts the device to sleep
@@ -201,7 +207,7 @@ static void ui_task(void *arg)
                 tc_frame_t f;
                 tc_get_frame(&f);
                 ui_render_pet(s_fb, &f, s_model, out.buttons, true, pal);
-                board_display_flush(s_fb);
+                show();
                 shown_held = out.buttons;
                 drawn = true;
             }
@@ -214,7 +220,7 @@ static void ui_task(void *arg)
                     glance_ms = now_ms();
                 }
                 render_glance(pal, batt_pct);
-                board_display_flush(s_fb);
+                show();
                 drawn = true;
             }
         } else {
@@ -228,18 +234,19 @@ static void ui_task(void *arg)
             nav.view.panel_name = panel_name;
             if (dirty || cfg_changed || (url_changed && nav.view.page == UI_PAGE_PANEL)) {
                 ui_render_menu(s_fb, &nav.view, pal);
-                board_display_flush(s_fb);
+                show();
                 drawn = true;
             } else if (ui_menu_needs_tick(&nav.view)) {
-                int y0, y1;
                 ui_render_menu(s_fb, &nav.view, pal);
-                ui_menu_tick_band(&nav.view, &y0, &y1);
-                board_display_flush_rows(s_fb, y0, y1 + 1);  // the band is inclusive, flush_rows half-open
+                show();  // only the sliding text's rows changed
             }
         }
         if (drawn && redraw) board_backlight_set(level);  // light up only after a fresh frame
         if (backlight) shown_level = level;
-        vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
+        // A finger on the glance or settings: aim for a frame every FRAME_MS, counting the time spent drawing.
+        uint32_t period = (t.count && nav.screen != UI_SCREEN_PET) ? FRAME_MS : LOOP_MS;
+        uint32_t spent = now_ms() - loop_t0;
+        vTaskDelay(pdMS_TO_TICKS(spent < period ? period - spent : 1));
     }
 }
 
@@ -278,7 +285,9 @@ esp_err_t ui_init(void)
     // PSRAM: internal RAM can't spare 115 KB once Wi-Fi runs (measured). The display driver
     // copies each frame into small internal DMA bands, so the framebuffer itself needn't be internal.
     s_fb = heap_caps_malloc(UI_W * UI_H * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    return s_fb ? ESP_OK : ESP_ERR_NO_MEM;
+    if (!s_fb) return ESP_ERR_NO_MEM;
+    ui_sent_init(&s_sent);
+    return ESP_OK;
 }
 
 void ui_message(const char *title, const char *body)
@@ -287,7 +296,7 @@ void ui_message(const char *title, const char *body)
     st_settings_t cfg;
     settings_get(&cfg);
     ui_render_message(s_fb, title, body, ui_palette_by_id(cfg.palette));
-    board_display_flush(s_fb);
+    show();
     board_backlight_set(cfg.brightness);
 }
 
@@ -326,7 +335,7 @@ int ui_pick_rom(const tc_rom_entry_t *roms, int n, int current, bool allow_cance
             st_settings_t cfg;
             settings_get(&cfg);
             ui_render_picker(s_fb, names, sp, shown, sel - first, ui_palette_by_id(cfg.palette));
-            board_display_flush(s_fb);
+            show();
             board_backlight_set(cfg.brightness);
             dirty = false;
         }
