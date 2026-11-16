@@ -87,7 +87,7 @@ Once the ball is on Wi-Fi it serves a settings and status page at **`http://tama
 
 The same operations, plus reading the screen (`GET /api/look`) and pressing buttons (`POST /api/press`), are a JSON API under `/api/`.
 
-**If `tamaorb.local` doesn't resolve,** use the ball's IP address instead (`http://<ip>/`). Some routers stop forwarding mDNS names about 2 minutes after the ball boots, typically when the PC and the ball are on different subnets. To find the IP, look in your router's DHCP client list, read the boot log over USB (`idf.py -p /dev/ttyACM0 monitor`, the line `esp_netif_handlers: sta ip: …`), or open the panel and read the Wi-Fi tile. Give the ball a DHCP reservation so the address doesn't change.
+**If `tamaorb.local` doesn't resolve,** use the ball's IP address instead (`http://<ip>/`). Some routers stop forwarding mDNS names about 2 minutes after the ball boots, typically when the PC and the ball are on different subnets. To find the IP, look in your router's DHCP client list, read the boot log over USB (`idf.py -p /dev/ttyACM0 monitor`, the line `esp_netif_handlers: sta ip: …`), run `tools/tamaorb-rom.py status` over USB (`ip=…`), or open the panel and read the Wi-Fi tile. Give the ball a DHCP reservation so the address doesn't change.
 
 Without Wi-Fi, the same settings work over the cable with `tamaorb-rom.py get` and `set`.
 

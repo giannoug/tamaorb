@@ -60,8 +60,10 @@ static void op_status(void *ctx, char *out, size_t cap)
 {
     int64_t t;
     bool trusted = net_now(&t);
-    snprintf(out, cap, "rom=%s wifi=%d time=%d batt_mv=%lu usb=%d sd=%d", tc_model_name(s_model), net_connected(),
-             trusted, (unsigned long)board_battery_mv(), board_usb_present(), rom_store_sd_present());
+    char ip[16];
+    if (!net_ip(ip)) snprintf(ip, sizeof ip, "-");  // the panel's address, for when tamaorb.local doesn't resolve
+    snprintf(out, cap, "rom=%s wifi=%d ip=%s time=%d batt_mv=%lu usb=%d sd=%d", tc_model_name(s_model), net_connected(),
+             ip, trusted, (unsigned long)board_battery_mv(), board_usb_present(), rom_store_sd_present());
 }
 
 static void op_get_settings(void *ctx, st_settings_t *out) { settings_get(out); }

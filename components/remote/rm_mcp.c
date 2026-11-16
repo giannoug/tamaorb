@@ -17,7 +17,8 @@ typedef struct {
 
 static const tool_def_t TOOLS[] = {
     {"look",
-     "Returns the LCD as text (# lit, . unlit) plus a PNG, the lit icons by name, the buzzer state and the phase (boot, run or catch-up).",
+     "Returns the LCD as text (# lit, . unlit) plus a PNG, the lit icons by name, the buzzer state, the phase (boot, run or catch-up) "
+     "and a frame counter that only tells you whether the screen changed.",
      "{\"type\":\"object\",\"properties\":{}}"},
     {"press",
      "Presses buttons in sequence, then returns what look returns. At most 32 steps; the whole sequence must take at most 10 s (about 16 steps at the default timing). "
