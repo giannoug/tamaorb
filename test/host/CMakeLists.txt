@@ -23,8 +23,8 @@ set_source_files_properties(${TAMALIB_SRC} PROPERTIES COMPILE_OPTIONS "-Wno-mayb
 set(TAMA_CORE_SRC ${COMP}/tama_core/tc_rom.c ${COMP}/tama_core/tc_sha1.c ${COMP}/tama_core/tama_core.c ${COMP}/tama_core/tc_time.c ${COMP}/tama_core/tc_rom_select.c ${COMP}/tama_core/tc_pet.c ${TAMALIB_SRC})
 set(TAMA_CORE_INC ${COMP}/tama_core/include ${COMP}/tamalib ${COMP}/tamalib/upstream)
 
-set(UI_SRC ${COMP}/ui/ui_palette.c ${COMP}/ui/ui_pet.c ${COMP}/ui/ui_icons.c ${COMP}/ui/ui_font.c ${COMP}/ui/ui_touch.c ${COMP}/ui/ui_screen.c ${COMP}/ui/ui_text.c ${COMP}/ui/ui_geom.c ${COMP}/ui/ui_gesture.c)
-set(UI_INC ${COMP}/ui/include)
+set(UI_SRC ${COMP}/ui/ui_palette.c ${COMP}/ui/ui_pet.c ${COMP}/ui/ui_icons.c ${COMP}/ui/ui_font.c ${COMP}/ui/ui_touch.c ${COMP}/ui/ui_screen.c ${COMP}/ui/ui_text.c ${COMP}/ui/ui_geom.c ${COMP}/ui/ui_gesture.c ${COMP}/ui/ui_qr.c ${COMP}/ui/third_party/qrcodegen/qrcodegen.c)
+set(UI_INC ${COMP}/ui/include ${COMP}/ui/third_party/qrcodegen)
 
 set(PERSIST_SRC ${COMP}/persist/ps_record.c ${COMP}/persist/ps_policy.c)
 set(PERSIST_INC ${COMP}/persist/include)
@@ -68,6 +68,7 @@ tamaorb_test(test_ui_screen ${UI_SRC})
 tamaorb_test(test_ui_text ${UI_SRC})
 tamaorb_test(test_ui_geom ${UI_SRC})
 tamaorb_test(test_ui_gesture ${UI_SRC})
+tamaorb_test(test_ui_qr ${UI_SRC})
 tamaorb_test(test_persist ${PERSIST_SRC})
 tamaorb_test(test_settings ${SETTINGS_SRC})
 tamaorb_test(test_tzdb ${TZDB_SRC})

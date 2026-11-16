@@ -142,3 +142,8 @@ int  ui_draw_text_ellipsis(uint16_t *fb, int x0, int x1, int y, const char *s, u
 int  ui_marquee_offset(int text_w, int box_w, uint32_t t_ms);
 // Draws s starting at x0 - dx, writing only inside [x0,x1). Returns the text width.
 int  ui_draw_text_clipped(uint16_t *fb, int x0, int x1, int y, int dx, const char *s, uint8_t scale, uint16_t color);
+
+// Draws text (byte mode, ECC medium, smallest version, up to version 4) as a QR code centred at (cx, cy),
+// with a 2-module light quiet zone, at the largest integer module size that fits max_px.
+// Returns the drawn side in px; 0 (nothing drawn) if the text is too long or max_px is too small. No heap.
+int  ui_draw_qr(uint16_t *fb, int cx, int cy, int max_px, const char *text, uint16_t dark, uint16_t light);
