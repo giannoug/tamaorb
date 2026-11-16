@@ -1,27 +1,32 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ui.h"
 
-#define BTN_SPREAD 54   // A and C sit this far left and right of B
-#define BTN_RISE    4   // and this much higher
+#define BTN_DX 42   // A and C sit this far left and right of B, on B's arc
 
 static int strip_top(void) { return UI_LCD_Y + 16 * UI_LCD_PITCH + 2; }
 static int strip_bottom(void) { return UI_H - UI_EDGE_BAND - 1; }
 
-void ui_button_centre(int btn, int *x, int *y)
+static int isqrt(int v)  // nearest integer square root, v >= 0
 {
-    const int by = strip_bottom() - UI_BTN_R;
-    switch (btn) {
-    case TC_BTN_A: *x = UI_W / 2 - BTN_SPREAD; *y = by - BTN_RISE; break;
-    case TC_BTN_C: *x = UI_W / 2 + BTN_SPREAD; *y = by - BTN_RISE; break;
-    default:       *x = UI_W / 2;              *y = by;            break;
-    }
+    int r = 0;
+    while ((r + 1) * (r + 1) <= v) r++;
+    return (v - r * r > (r + 1) * (r + 1) - v) ? r + 1 : r;
 }
 
-// Split halfway between the button centres: x < 93 A, 93..146 B, >= 147 C on 240 px.
+// The keys sit on an arc concentric with the screen: B at the bottom of the strip, A and C BTN_DX to either side.
+void ui_button_centre(int btn, int *x, int *y)
+{
+    const int cx = UI_W / 2, cy = UI_H / 2, ra = strip_bottom() - UI_BTN_R - cy;
+    const int dx = btn == TC_BTN_A ? -BTN_DX : btn == TC_BTN_C ? BTN_DX : 0;
+    *x = cx + dx;
+    *y = cy + isqrt(ra * ra - dx * dx);
+}
+
+// Split halfway between the button centres: x < 99 A, 99..140 B, >= 141 C on 240 px.
 static int button_for_x(int x)
 {
-    if (x < UI_W / 2 - BTN_SPREAD / 2) return TC_BTN_A;
-    if (x < UI_W / 2 + BTN_SPREAD / 2) return TC_BTN_B;
+    if (x < UI_W / 2 - BTN_DX / 2) return TC_BTN_A;
+    if (x < UI_W / 2 + BTN_DX / 2) return TC_BTN_B;
     return TC_BTN_C;
 }
 

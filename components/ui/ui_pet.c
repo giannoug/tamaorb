@@ -12,7 +12,7 @@ static void fill(uint16_t *fb, int x, int y, int w, int h, uint16_t c)
         for (int i = x; i < x + w; i++) fb[j * UI_W + i] = c;
 }
 
-// A raised key: shadow 2 px lower, ink outline 2 px, face bg (ink when held), letter at scale 2 in the other colour.
+// A raised key, no letter (like the real P1): shadow 2 px lower, ink outline 2 px, face bg (ink when held).
 static void draw_button(uint16_t *fb, int btn, bool held, uint16_t bg, uint16_t ink, uint16_t shadow)
 {
     int cx, cy;
@@ -21,8 +21,6 @@ static void draw_button(uint16_t *fb, int btn, bool held, uint16_t bg, uint16_t 
     ui_fill_disc(fb, x, y + 2, d, shadow);
     ui_fill_disc(fb, x, y, d, ink);
     ui_fill_disc(fb, x + 2, y + 2, d - 4, held ? ink : bg);
-    const char letter[2] = { (char)('A' + btn - TC_BTN_A), 0 };
-    ui_draw_text(fb, cx - ui_text_width(letter, 2) / 2, cy - 7, letter, 2, held ? bg : ink);
 }
 
 void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model, uint8_t held_mask, const ui_palette_t *p)

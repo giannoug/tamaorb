@@ -43,7 +43,7 @@ These are the MAME `tama` / `tamag2` sets; MAME zips work directly with the tool
 
 | Action | How |
 |---|---|
-| A / B / C | Tap the A, B or C button under the screen (anywhere in its part of the strip below the pet's screen). Touching the pet's screen or the icons above it presses nothing |
+| A / B / C | Tap the left, middle or right button under the pet's screen (anywhere in its part of the strip below it). Touching the pet's screen or the icons above it presses nothing |
 | A + C | Touch A and slide to C, or C to A (the touch chip can't tell two side-by-side fingers apart) |
 | Glance | Swipe down from the top edge. It shows the clock, battery, hunger and happy hearts, a live copy of the pet, what the pet needs, age, weight, discipline and the panel address |
 | Settings | Swipe up from the bottom edge. Tap a row to open it, drag to change a value or scroll the list. Rows: Sound, Brightness, Dimming, Palette, Time zone, ROM, Web panel (a QR code) |

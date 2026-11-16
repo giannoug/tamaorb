@@ -130,10 +130,10 @@ static void test_buttons_drawn(void)
     for (int i = 0; i < 3; i++) {
         int cx, cy;
         ui_button_centre(BTN[i], &cx, &cy);
-        TEST_ASSERT_EQUAL_HEX16(BG, PX(cx, cy + 12));             // inside the key, under the letter
+        TEST_ASSERT_EQUAL_INT(10, UI_BTN_R);                        // 20 px across (owner's pick)
         TEST_ASSERT_EQUAL_HEX16(INK, PX(cx, cy - (UI_BTN_R - 1)));  // outline
         TEST_ASSERT_EQUAL_HEX16(INK, PX(cx - (UI_BTN_R - 1), cy));
-        TEST_ASSERT_GREATER_THAN_MESSAGE(10, ink_near(cx, cy, 9), "letter missing");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, ink_near(cx, cy, UI_BTN_R - 4), "the face has no letter");
         uint16_t shadow = ui_rgb565(ui_mix(UI_PALETTE_CLASSIC.bg, (ui_rgb_t){ 0, 0, 0 }, 22));
         TEST_ASSERT_EQUAL_HEX16(shadow, PX(cx, cy + UI_BTN_R + 1));  // 2 px shadow under the key
     }
@@ -145,20 +145,19 @@ static void test_held_fills(void)
     for (int i = 0; i < 3; i++) {
         int cx, cy;
         ui_button_centre(BTN[i], &cx, &cy);
-        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? INK : BG, PX(cx, cy + 12));
+        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? INK : BG, PX(cx, cy));
     }
     int bx, by;
     ui_button_centre(TC_BTN_B, &bx, &by);
-    int letter_bg = 0;  // the held key's letter turns background colour
-    for (int y = by - 8; y < by + 8; y++)
-        for (int x = bx - 8; x < bx + 8; x++) letter_bg += PX(x, y) == BG;
-    TEST_ASSERT_GREATER_THAN(10, letter_bg);
+    for (int y = by - (UI_BTN_R - 4); y <= by + UI_BTN_R - 4; y++)  // held: the whole face is ink
+        for (int x = bx - (UI_BTN_R - 4); x <= bx + UI_BTN_R - 4; x++)
+            if ((x - bx) * (x - bx) + (y - by) * (y - by) <= (UI_BTN_R - 4) * (UI_BTN_R - 4)) TEST_ASSERT_EQUAL_HEX16(INK, PX(x, y));
 
     render(TC_BTN_MASK(TC_BTN_A) | TC_BTN_MASK(TC_BTN_C));
     for (int i = 0; i < 3; i++) {
         int cx, cy;
         ui_button_centre(BTN[i], &cx, &cy);
-        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? BG : INK, PX(cx, cy + 12));
+        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? BG : INK, PX(cx, cy));
     }
 }
 

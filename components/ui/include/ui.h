@@ -31,10 +31,11 @@ void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model,
 #define UI_LCD_Y     54
 #define UI_LCD_PITCH 6
 #define UI_LCD_DOT   5
-#define UI_BTN_R     17   // pet button radius: 34 px across
+#define UI_BTN_R     10   // pet button radius: 20 px across, no letter (like the real P1)
 
-// Pet-screen buttons. The strip is y from the LCD's bottom + 2 to the bottom edge band (152..215 on 240x240);
-// B is centred at (UI_W/2, strip bottom - UI_BTN_R), A and C 54 px either side and 4 px higher.
+// Pet-screen buttons. The strip is y from the LCD's bottom + 2 to the bottom edge band (152..215 on 240x240).
+// The keys sit on an arc concentric with the screen: B at (UI_W/2, strip bottom - UI_BTN_R), A and C 42 px to
+// either side on the same arc ((78,194), (120,205), (162,194) on 240x240).
 void ui_button_centre(int btn, int *x, int *y);   // btn = TC_BTN_A/B/C
 // TC_BTN_A/B/C for a point in the strip (split halfway between the centres, so every circle presses only its
 // own button), -1 elsewhere (the LCD, the icons above it, the bottom edge band).

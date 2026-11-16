@@ -11,10 +11,10 @@ void tearDown(void) {}
 
 static void test_strip_split(void)
 {
-    TEST_ASSERT_EQUAL_INT(TC_BTN_A, ui_button_at(92, 190));
-    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(93, 190));
-    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(146, 190));
-    TEST_ASSERT_EQUAL_INT(TC_BTN_C, ui_button_at(147, 190));
+    TEST_ASSERT_EQUAL_INT(TC_BTN_A, ui_button_at(98, 190));
+    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(99, 190));
+    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(140, 190));
+    TEST_ASSERT_EQUAL_INT(TC_BTN_C, ui_button_at(141, 190));
     TEST_ASSERT_EQUAL_INT(-1, ui_button_at(120, 151));
     TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(120, 152));
     TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(120, 215));
@@ -24,7 +24,8 @@ static void test_strip_split(void)
 
 static void test_button_centres(void)
 {
-    static const int want[3][2] = { { 66, 194 }, { 120, 198 }, { 174, 194 } };
+    // on an arc concentric with the screen (radius 85 from (120,120)): B at the bottom, A and C 42 px out
+    static const int want[3][2] = { { 78, 194 }, { 120, 205 }, { 162, 194 } };
     static const int btn[3] = { TC_BTN_A, TC_BTN_B, TC_BTN_C };
     for (int i = 0; i < 3; i++) {
         int x = -1, y = -1;
@@ -69,7 +70,7 @@ static void test_strip_press_survives_moving_up(void)
     ui_touch_tracker_t tr = { 0 };
     ui_touch_t t = pt(66, 200);
     TEST_ASSERT_EQUAL_HEX8(A, ui_touch_track(&tr, &t));
-    t = pt(66, 100);
+    t = pt(66, 100);  // x 66 is still A's part
     TEST_ASSERT_EQUAL_HEX8(A, ui_touch_track(&tr, &t));
     t = pt(200, 100);
     TEST_ASSERT_EQUAL_HEX8(A | C, ui_touch_track(&tr, &t));
