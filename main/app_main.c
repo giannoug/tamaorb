@@ -60,7 +60,7 @@ static tc_model_t choose_rom(void)
         return m;
     }
     case TC_SEL_PICKER:
-        idx = ui_pick_rom(roms, n, -1, false);
+        idx = ui_pick_rom(roms, n);
         /* fall through */
     case TC_SEL_USE_SD:
         if (idx >= 0 && rom_store_read_sd(roms[idx].name, s_rom) && rom_store_set_active(s_rom) == ESP_OK) {

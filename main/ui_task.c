@@ -38,8 +38,10 @@ static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 static void send_rows(void *ctx, const uint16_t *fb, int y0, int y1) { board_display_flush_rows(fb, y0, y1); }
 static void show(void) { ui_send_changed(&s_sent, s_fb, send_rows, NULL); }  // every frame goes through here
 
-static void picker_from_play(void);
+static void read_touch(ui_touch_t *t);
 static uint8_t read_touch_buttons(ui_touch_tracker_t *tr);
+static void load_rom_rows(ui_menu_view_t *v);
+static void switch_rom(int row);
 static void render_glance(const ui_palette_t *pal, int8_t batt_pct);
 static void resume_on_pet(ui_screen_t *screen, ui_gesture_t *gest, ui_nav_t *nav);
 
@@ -120,10 +122,8 @@ static void ui_task(void *arg)
         bool pal_changed = (int)cfg.palette != pal_id;
         pal_id = cfg.palette;
         uint8_t dim_pct = st_effective_dim(&cfg);
-        board_touch_t bt;
-        board_touch_read(&bt);
-        ui_touch_t t = { .count = bt.count };
-        for (int i = 0; i < bt.count; i++) { t.pt[i].x = bt.pt[i].x; t.pt[i].y = bt.pt[i].y; }
+        ui_touch_t t;
+        read_touch(&t);
         tc_tone_t tone;
         tc_get_tone(&tone);
 
@@ -169,9 +169,20 @@ static void ui_task(void *arg)
             ui_gesture_reset(&gest);
         }
 
-        if (ui_screen_long_press(&screen) || act == UI_ACT_OPEN_ROM_PICKER) {
+        if (ui_screen_long_press(&screen)) {  // from any screen, lit or not: the ROM list
             tc_post_buttons(0);
-            picker_from_play();
+            ui_screen_wake(&screen, now_ms());
+            ui_nav_open_roms(&nav, true);
+            ui_gesture_reset(&gest);  // a touch held now belongs to no row
+            act = UI_ACT_REDRAW;
+        }
+        if (nav.screen == UI_SCREEN_MENU && nav.view.page == UI_PAGE_ROM && !nav.view.roms) {
+            load_rom_rows(&nav.view);  // the SD scan, once per opening
+            act = UI_ACT_REDRAW;
+        }
+        if (act == UI_ACT_ROM_SWITCH) {
+            tc_post_buttons(0);
+            switch_rom(nav.view.rom_pick);  // restarts the ball, or returns after saying why it didn't
             resume_on_pet(&screen, &gest, &nav);
             power_screen_on(false);
             backlight = false;  // force a fresh pet frame
@@ -308,74 +319,106 @@ void ui_message(const char *title, const char *body)
     board_backlight_set(cfg.brightness);
 }
 
-static uint8_t read_touch_buttons(ui_touch_tracker_t *tr)
+static void read_touch(ui_touch_t *t)
 {
     board_touch_t bt;
     board_touch_read(&bt);
-    ui_touch_t t = { .count = bt.count };
-    for (int i = 0; i < bt.count; i++) { t.pt[i].x = bt.pt[i].x; t.pt[i].y = bt.pt[i].y; }
+    memset(t, 0, sizeof *t);
+    t->count = bt.count;
+    for (int i = 0; i < bt.count && i < 2; i++) { t->pt[i].x = bt.pt[i].x; t->pt[i].y = bt.pt[i].y; }
+}
+
+static uint8_t read_touch_buttons(ui_touch_tracker_t *tr)
+{
+    ui_touch_t t;
+    read_touch(&t);
     return ui_touch_track(tr, &t);
 }
 
-int ui_pick_rom(const tc_rom_entry_t *roms, int n, int current, bool allow_cancel)
-{
-    int idx[16], sel = 0;
-    int m = tc_rom_distinct_valid(roms, n, idx, 16);  // one entry per distinct P1/P2 dump
-    for (int k = 0; k < m; k++)
-        if (current >= 0 && !memcmp(roms[idx[k]].sha1, roms[current].sha1, 20)) sel = k;
-    if (!m || !s_fb) return -1;
+// The ROM picker's rows: one per distinct P1/P2 dump (first start, or the list opened during play; never both
+// at once). s_row_entry[k] is row k's index into the scanned entries.
+#define MAX_ROMS 16
+static tc_rom_entry_t s_scan[MAX_ROMS];
+static int s_row_entry[MAX_ROMS];
+static ui_rom_row_t s_rows[MAX_ROMS];
+static char s_row_sub[MAX_ROMS][80];  // "Gen N - <file>"; the list cuts long names with the ellipsis
 
-    static char subs[UI_PICKER_MAX][24];
-    ui_touch_tracker_t tr = { 0 };
-    uint8_t prev = 0xFF;  // ignore whatever is held when the picker opens
-    bool boot_prev = true, dirty = true;
+static int rom_rows(const tc_rom_entry_t *roms, int n)
+{
+    int m = tc_rom_distinct_valid(roms, n, s_row_entry, MAX_ROMS);
+    for (int k = 0; k < m; k++) {
+        const tc_rom_entry_t *r = &roms[s_row_entry[k]];
+        snprintf(s_row_sub[k], sizeof s_row_sub[k], "Gen %d - %s", r->model == TC_MODEL_P1 ? 1 : 2, r->name);
+        s_rows[k] = (ui_rom_row_t){ tc_model_name(r->model), s_row_sub[k] };
+    }
+    return m;
+}
+
+// During play: scan the SD card and mark the running ROM's row (by the cached copy's SHA-1).
+static void load_rom_rows(ui_menu_view_t *v)
+{
+    int n = rom_store_scan(s_scan, MAX_ROMS), m = rom_rows(s_scan, n);
+    v->rom_current = -1;
+    uint8_t active[20];
+    uint8_t *rom = malloc(TC_ROM_BYTES);  // only to learn the active SHA-1
+    if (rom && rom_store_cached(rom, active))
+        for (int k = 0; k < m; k++)
+            if (!memcmp(s_scan[s_row_entry[k]].sha1, active, 20)) v->rom_current = k;
+    free(rom);
+    v->roms = s_rows;
+    v->rom_count = m;
+    ESP_LOGI(TAG, "ROM list: %d pets, current row %d", m, v->rom_current);
+}
+
+int ui_pick_rom(const tc_rom_entry_t *roms, int n)
+{
+    int m = rom_rows(roms, n);
+    if (!m || !s_fb) return -1;
+    ui_nav_t nav;
+    ui_nav_init(&nav);
+    ui_nav_open_roms(&nav, false);
+    nav.view.rom_first = true;
+    nav.view.roms = s_rows;
+    nav.view.rom_count = m;
+    ui_gesture_t gest = { 0 };
+    ui_gesture_reset(&gest);  // a finger already down when this shows is ignored until it lifts
+    st_settings_t cfg;
+    bool dirty = true;
     for (;;) {
+        settings_get(&cfg);
         if (dirty) {
-            int first = sel - 1 < 0 ? 0 : (sel - 1 > m - UI_PICKER_MAX ? (m > UI_PICKER_MAX ? m - UI_PICKER_MAX : 0) : sel - 1);
-            const char *names[UI_PICKER_MAX], *sp[UI_PICKER_MAX];
-            int shown = m - first < UI_PICKER_MAX ? m - first : UI_PICKER_MAX;
-            for (int k = 0; k < shown; k++) {
-                const tc_rom_entry_t *r = &roms[idx[first + k]];
-                names[k] = tc_model_name(r->model);
-                snprintf(subs[k], sizeof subs[k], "Gen %d - %.12s", r->model == TC_MODEL_P1 ? 1 : 2, r->name);
-                sp[k] = subs[k];
-            }
-            st_settings_t cfg;
-            settings_get(&cfg);
-            ui_render_picker(s_fb, names, sp, shown, sel - first, ui_palette_by_id(cfg.palette));
+            nav.view.cfg = &cfg;
+            nav.view.t_ms = now_ms();
+            ui_render_menu(s_fb, &nav.view, ui_palette_by_id(cfg.palette));
             show();
             board_backlight_set(cfg.brightness);
             dirty = false;
         }
-        uint8_t b = read_touch_buttons(&tr);
-        uint8_t pressed = prev == 0xFF ? 0 : (uint8_t)(b & ~prev);
-        prev = b;
-        if (pressed & TC_BTN_MASK(TC_BTN_A)) { sel = (sel + m - 1) % m; dirty = true; }
-        if (pressed & TC_BTN_MASK(TC_BTN_C)) { sel = (sel + 1) % m; dirty = true; }
-        if (pressed & TC_BTN_MASK(TC_BTN_B)) return idx[sel];
-        bool boot = board_boot_down();
-        if (allow_cancel && boot && !boot_prev) return -1;
-        boot_prev = boot;
-        vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
+        ui_touch_t t;
+        read_touch(&t);
+        ui_gevent_t ev;
+        ui_gesture_feed(&gest, UI_GMODE_MENU, &t, now_ms(), &ev);
+        st_settings_t edited;
+        bool display_changed;
+        ui_act_t a = ui_nav_step(&nav, &ev, false, &cfg, &edited, &display_changed);
+        if (a == UI_ACT_ROM_SWITCH && nav.view.rom_pick >= 0 && nav.view.rom_pick < m) {
+            ESP_LOGI(TAG, "first start: picked %s", roms[s_row_entry[nav.view.rom_pick]].name);
+            return s_row_entry[nav.view.rom_pick];
+        }
+        dirty = a == UI_ACT_REDRAW;  // a drag scrolled the list
+        vTaskDelay(pdMS_TO_TICKS(t.count ? FRAME_MS : LOOP_MS));
     }
 }
 
-// BOOT long press during play: pick a ROM; a different one is saved-then-rebooted into.
-// The switch itself is shared with the remote API (rom_switch_to); the messages stay here.
-static void picker_from_play(void)
+// Switch confirmed on the ROM list (row of s_rows): save the pet, store the new ROM and restart. The switch
+// itself is shared with the remote API (rom_switch_to); the messages stay here.
+static void switch_rom(int row)
 {
-    static tc_rom_entry_t roms[16];
-    uint8_t active[20];
-    int n = rom_store_scan(roms, 16), current = -1;
-    uint8_t *rom = malloc(TC_ROM_BYTES);  // only to learn the active SHA-1
-    if (rom && rom_store_cached(rom, active))
-        for (int i = 0; i < n; i++)
-            if (!memcmp(roms[i].sha1, active, 20)) current = i;
-    free(rom);
-    int pick = ui_pick_rom(roms, n, current, true);
-    if (pick < 0 || pick == current) return;
+    if (row < 0 || row >= MAX_ROMS || !s_rows[row].name) return;
+    const char *name = s_scan[s_row_entry[row]].name;
+    ESP_LOGI(TAG, "switching to %s", name);
     ui_message("Switching", "Saving your pet...");
-    esp_err_t err = rom_switch_to(roms[pick].name);
+    esp_err_t err = rom_switch_to(name);
     if (err == ESP_OK) {
         for (;;) vTaskDelay(pdMS_TO_TICKS(1000));  // keep this message up until the restart
     }
