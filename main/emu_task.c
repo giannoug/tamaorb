@@ -50,7 +50,8 @@ static volatile float s_catchup_speed;  // x real time of this boot's catch-up; 
 
 emu_phase_t emu_phase(void) { return s_phase; }
 
-float emu_catchup_speed(void) { return s_catchup_speed > 0 ? s_catchup_speed : 24.0f; }
+// Until this boot has caught up, report the speed measured on the ball with tamalib 223ba64 (2026-11-17).
+float emu_catchup_speed(void) { return s_catchup_speed > 0 ? s_catchup_speed : 75.0f; }
 
 void emu_catchup_progress(uint64_t *done_s, uint64_t *total_s, uint32_t *eta_s)
 {

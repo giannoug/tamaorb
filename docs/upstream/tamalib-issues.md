@@ -1,6 +1,6 @@
 # Notes for tamalib upstream (jcrona/tamalib @ ce304d5)
 
-Drafts, ready to file. None of these are patched in TamaOrb; we work around them in `components/tama_core`.
+**Status (2026-11-17):** all of these are fixed in the fork [giannoug/tamalib `perf-and-fixes`](https://github.com/giannoug/tamalib/tree/perf-and-fixes) (pinned at `223ba64`), which TamaOrb now builds from, with the PR texts drafted there for jcrona/tamalib. With its opcode lookup table, catch-up on the ESP32-S3 went from 31.6x to 75.7x (300 emulated s of P1, three runs), and P1/P2 emulation stayed bit-identical to `ce304d5`. Saves now carry the timing fields (save format 2). The notes below are kept as filed.
 
 ## 1. `cpu_step()` reads an uninitialised local while the CPU is halted
 

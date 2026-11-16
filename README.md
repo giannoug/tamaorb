@@ -153,7 +153,7 @@ Start with [docs/architecture.md](docs/architecture.md): the tasks, which core e
 ## Credits and license
 
 TamaOrb is GPL-3.0-or-later (`LICENSE`). It builds on:
-- [tamalib](https://github.com/jcrona/tamalib) by Jean-Christophe Rona, GPL-2.0-or-later;
+- [tamalib](https://github.com/jcrona/tamalib) by Jean-Christophe Rona, GPL-2.0-or-later, built from [a fork](https://github.com/giannoug/tamalib/tree/perf-and-fixes) whose fixes and speed-ups are proposed upstream;
 - [font8x8](https://github.com/dhepper/font8x8) by Daniel Hepper, public domain;
 - [espressif/qrcode](https://components.espressif.com/components/espressif/qrcode) (Apache-2.0, based on Nayuki's QR Code generator), from Espressif's component registry;
 - [posix_tz_db](https://github.com/nayarsystems/posix_tz_db) by Nayar Systems, MIT, the source of the time zone table (`tools/gen_tzdb.py` regenerates it);
