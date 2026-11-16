@@ -199,8 +199,14 @@ class Link:
             raise
 
     def status(self):
-        self._send("@TO STATUS")
-        return self._reply()[11:]
+        """Asks twice: right after a boot the first request can go unanswered (seen once on the ball)."""
+        for attempt in range(2):
+            self._send("@TO STATUS")
+            try:
+                return self._reply()[11:]
+            except ToolError as e:
+                if attempt or not str(e).startswith("no reply"):
+                    raise
 
 
 def open_port(name):

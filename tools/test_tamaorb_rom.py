@@ -262,3 +262,17 @@ def test_partial_line_at_deadline_is_no_reply():
     port.pending = [b"@TO O"]
     with pytest.raises(tool.ToolError, match="no reply"):
         tool.Link(port, timeout=0.05)._reply()
+
+
+def test_status_asks_again_after_no_reply():
+    replies = [[], ["@TO STATUS rom=P1 wifi=1 ip=10.0.0.2"]]
+    port = FragmentPort(lambda req: replies.pop(0))
+    assert tool.Link(port, timeout=0.2).status() == "rom=P1 wifi=1 ip=10.0.0.2"
+    assert port.written == ["@TO STATUS", "@TO STATUS"]
+
+
+def test_status_gives_up_after_two_silences():
+    port = FragmentPort(lambda req: [])
+    with pytest.raises(tool.ToolError, match="no reply"):
+        tool.Link(port, timeout=0.1).status()
+    assert port.written == ["@TO STATUS", "@TO STATUS"]
