@@ -6,8 +6,8 @@ Use this guide when the ball is running P2 (`status` reports `model: P2`). It is
 ## What stays the same
 
 - The tools: `look` shows the LCD as text (`#` lit, `.` unlit), lit icons by name, the buzzer and the phase. `press` takes A, B, C or AC.
-- A cycles the icon, B selects, C cancels. Stay one step at a time and look in between.
-- The same eight icon names appear in the same order: food, light, game, medicine, bathroom, meter, discipline, attention. The attention icon lights by itself and is not selectable.
+- A cycles the icon, B selects, C cancels. Sequences are fine at the default press timing (the ROM reads about one press per 500 ms, so don't shorten `hold_ms` + `gap_ms` below 500); check `icons:` in the reply before going on.
+- The same icon names appear in the same order: food, light, game, medicine, bathroom, meter, discipline; one more A clears the selection. The attention icon lights by itself and is not selectable. With nothing selected, B may show the clock; B again goes back.
 - The care basics are the same: feed when hunger hearts are low, clean droppings, medicine when sick, light off while asleep, discipline only when attention lights without any other need, play when happy hearts are low.
 - The hearts on the meter screens look the same: solid is full, outline is empty.
 
