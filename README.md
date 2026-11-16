@@ -121,6 +121,8 @@ build-fuzz/fuzz_parsers 1000000          # replay a find with: fuzz_parsers --re
 
 ## Project layout and docs
 
+Start with [docs/architecture.md](docs/architecture.md): the tasks, which core each runs on, and how frames, buttons, saves and settings move between them.
+
 - `components/tama_core`, `ui`, `persist`, `hostlink`, `settings`, `remote`: portable code, host-tested.
 - `components/web`: the HTTP server, the embedded panel page and mDNS.
 - `components/board/spotpear_ball_128`: the only hardware-specific code. Hardware notes are in `docs/hardware/`.

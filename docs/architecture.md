@@ -1,0 +1,82 @@
+# How TamaOrb fits together
+
+TamaOrb is one ESP-IDF app. The rule that shapes it: **core 1 belongs to the emulator.** Everything else (screen, touch, sound, saves to flash, USB, Wi-Fi, the web server) runs on core 0, and talks to the emulator only through small locked hand-offs. Most of the logic lives in portable components that build and test on a PC.
+
+## Tasks
+
+| Task | Core | Priority | Stack | Job |
+|---|---|---|---|---|
+| `emu` (`main/emu_task.c`) | 1 | 10 | 8 KB | Runs tamalib in real time, catches up after time away, saves |
+| `audio` (board) | 0 | 8 | 3 KB | Plays the ROM's buzzer as a square wave on the ES8311 |
+| `press` (`main/press_task.c`) | 0 | 6 | 3 KB | Plays an agent's button sequence with the press tool's timing |
+| `ui` (`main/ui_task.c`) | 0 | 5 | 6 KB | Draws frames and screens, reads touch and BOOT, dims and wakes the screen |
+| `hostlink` (`main/hostlink_task.c`) | 0 | 4 | 4 KB | USB line protocol: ROM push, Wi-Fi, status, settings |
+| `settings` (`main/settings_store.c`) | 0 | 3 | 4 KB | Writes changed settings to NVS after a 2 s pause |
+| `power` (`components/power`) | 0 | 3 | 3 KB | Battery gauge, low-battery deep sleep |
+| httpd (`components/web`) | 0 | default | 8 KB | Web panel, REST API and MCP server |
+| Wi-Fi, lwIP, mDNS | 0 | IDF | IDF | Pinned to core 0 in `sdkconfig.defaults` |
+
+## Data flow
+
+```mermaid
+flowchart LR
+  subgraph core1[Core 1]
+    EMU[emu task<br/>tamalib + tama_core]
+  end
+  subgraph core0[Core 0]
+    UI[ui task<br/>render, touch, BOOT]
+    AUD[audio task]
+    PRESS[press task]
+    HTTP[httpd<br/>panel, REST, MCP]
+    HL[hostlink<br/>USB]
+    SET[settings store]
+  end
+  NVS[(NVS: saves<br/>and settings)]
+  SD[(microSD: ROMs)]
+  EMU -- frames, tone --> UI
+  EMU -- tone --> AUD
+  UI -- touch buttons --> EMU
+  PRESS -- agent buttons --> EMU
+  HTTP -- press --> PRESS
+  HTTP -- look --> EMU
+  HTTP <--> SET
+  HL <--> SET
+  SET --> NVS
+  EMU -- saver --> NVS
+  HL --> SD
+  HTTP -- save restore --> NVS
+```
+
+- **Frames and buttons.** The emulator publishes a 32x16 frame plus 8 icon bits about 30 times per emulated second (`tc_get_frame`, `tc_frame_changed`). Touch and agent buttons are two masks ORed together (`tc_post_buttons`, `tc_post_remote_buttons`) and applied between instruction batches. The ROM takes about one press per 500 ms, which is why the press tool defaults to 200 ms hold + 400 ms gap.
+- **Saves.** `saver_poll` runs on the emulator task: 3 s after a button release and every 5 minutes, it snapshots tamalib's state into a CRC'd record and writes the older of two NVS slots (`components/persist` has the format). A web restore freezes saving, writes the record, and restarts.
+- **Catch-up.** After a power-off, the emulator replays the missed time (NTP time minus the save's time) in fast mode at about 30x, saving progress as it goes, then switches back to real time. Input is ignored during catch-up.
+- **Settings.** One table in `components/settings` validates every key. The web panel, MCP and USB all go through `settings_put`, which applies display and sound changes live and writes NVS after a pause.
+
+## Portable components (host-tested)
+
+| Component | What it is |
+|---|---|
+| `tama_core` | tamalib wrapper: frames, tones, buttons, save states, catch-up, ROM identification and selection |
+| `ui` | Pet screen and text screens rendered into a 240x240 RGB565 framebuffer; touch zones; screen timeout |
+| `persist` | Save record format and save timing policy |
+| `settings` | Settings table, validation, debounced writes |
+| `hostlink` | USB line protocol parser |
+| `remote` | Screen as text and PNG, press sequencer, save checks, JSON helpers, MCP dispatcher, REST router, Origin check |
+
+These have no ESP-IDF headers. `test/host/run.sh` builds them with Unity on Linux, and `fuzz_parsers` fuzzes the ones that read untrusted input.
+
+## Device-only code
+
+- `components/board/spotpear_ball_128`: display (GC9A01 over SPI with DMA bands), touch (CST816D), audio (ES8311), battery and USB detection. The only hardware-specific component.
+- `components/net`: Wi-Fi station, SNTP, and "known time" that survives resets.
+- `components/web`: esp_http_server glue, mDNS, the gzipped panel page.
+- `main/`: the tasks above, the ROM store (SD and NVS cache), the ROM switch, and `remote_ops.c`, which implements `remote`'s operations table on the device.
+
+## Tools
+
+- `tools/tamaorb-rom.py`: ROMs, Wi-Fi, status and settings over USB.
+- `tools/tamaorb-load.py`: web load test.
+- `test/host/save_replay`: replays a save from the ball on the PC with a button script.
+- `test/host/render_preview`: writes one screen as a PPM image.
+
+Decisions and their reasons are in `docs/adr/`.
