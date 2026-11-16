@@ -428,6 +428,19 @@ static void test_body_parsed_by_length(void)
     TEST_ASSERT_EQUAL(3, fake.settings.volume);
 }
 
+static void test_body_trailing_data_rejected(void)
+{
+    static const char raw[] = "{\"volume\":3}garbage";
+    rfree();
+    rm_req_t rq = {0};
+    rq.method = RM_PATCH; rq.path = "/api/settings"; rq.self_name = "tamaorb";
+    rq.body = (const uint8_t *)raw; rq.body_len = sizeof raw - 1;
+    memset(&resp, 0, sizeof resp);
+    rm_http_handle(&fake_ops, &rq, &resp);
+    TEST_ASSERT_EQUAL(400, resp.status);
+    TEST_ASSERT_EQUAL(0, fake.put_calls);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -455,5 +468,6 @@ int main(void)
     RUN_TEST(test_look_and_press);
     RUN_TEST(test_big_buffers_come_from_rm_alloc);
     RUN_TEST(test_body_parsed_by_length);
+    RUN_TEST(test_body_trailing_data_rejected);
     return UNITY_END();
 }

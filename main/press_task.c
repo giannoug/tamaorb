@@ -18,7 +18,10 @@ static const char *TAG = "press";
 volatile bool g_agent_mute;
 static volatile bool s_window;
 static atomic_bool s_busy;             // claimed by press_run, released by the task when the sequence ends
-static atomic_bool s_abandon;          // the caller gave up waiting
+// Each run gets a generation number; a caller that gives up names its own run, so a late abandon can't
+// cut a later run short.
+static atomic_uint s_run_gen;          // set by press_run under s_busy, read by the task
+static atomic_uint s_abandon_gen;      // the run whose caller gave up waiting (0: none)
 static rm_press_req_t s_req;           // handed over under s_busy
 static TaskHandle_t s_task;
 static SemaphoreHandle_t s_done;
@@ -30,7 +33,7 @@ static void press_task(void *arg)
     rm_press_t p = { 0 };
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);  // idle: no ticking, light sleep stays possible
-        atomic_store(&s_abandon, false);
+        unsigned gen = atomic_load(&s_run_gen);
         st_settings_t cfg;
         settings_get(&cfg);
         uint32_t seen = settings_seq();
@@ -43,7 +46,7 @@ static void press_task(void *arg)
                 seen = settings_seq();
                 settings_get(&cfg);
             }
-            bool over = rm_press_done(&p, now) || atomic_load(&s_abandon);
+            bool over = rm_press_done(&p, now) || atomic_load(&s_abandon_gen) == gen;
             uint8_t mask = over ? 0 : rm_press_mask(&p, now);
             // Window and mute go up before a press reaches the emulator (core 1), so not even the first click of
             // a silent sequence can sound; they come down only after the release is posted.
@@ -84,10 +87,13 @@ rm_err_t press_run(const rm_press_req_t *req)
     if (emu_phase() != EMU_RUN) return RM_ERR_CATCHUP;
     if (atomic_exchange(&s_busy, true)) return RM_ERR_BUSY;
     s_req = *req;
+    unsigned gen = atomic_load(&s_run_gen) + 1;
+    if (gen == 0) gen = 1;  // 0 means "no run abandoned"
+    atomic_store(&s_run_gen, gen);
     xSemaphoreTake(s_done, 0);  // drop the give of an abandoned run
     xTaskNotifyGive(s_task);
     if (xSemaphoreTake(s_done, pdMS_TO_TICKS(WAIT_MS)) == pdTRUE) return RM_OK;
-    atomic_store(&s_abandon, true);  // the task releases the buttons and s_busy
+    atomic_store(&s_abandon_gen, gen);  // the task releases the buttons and s_busy; a later run ignores this
     ESP_LOGW(TAG, "sequence overran; abandoned");
     return RM_ERR_IO;
 }

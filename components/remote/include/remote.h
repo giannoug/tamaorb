@@ -26,6 +26,8 @@ size_t rm_look_text(const rm_look_t *l, char *out, size_t cap);
 #define RM_PNG_H 96
 // 1-bit greyscale PNG (1 = white background, 0 = ink). Returns the length, 0 if cap is too small.
 size_t rm_look_png(const rm_look_t *l, uint8_t *out, size_t cap);
+// Text and base64 PNG of l, both from rm_alloc (free() them). False, with both NULL, if memory runs out.
+bool rm_look_encode(const rm_look_t *l, char **text, char **png_b64);
 
 typedef enum { RM_STEP_A = 1, RM_STEP_B = 2, RM_STEP_C = 4, RM_STEP_AC = 5 } rm_step_t;  // = button masks
 #define RM_PRESS_MAX_STEPS 32
@@ -125,8 +127,11 @@ size_t rm_base64_encode(const uint8_t *in, size_t len, char *out);
 // False if any {/[ nesting (outside strings, honouring backslash escapes) exceeds max_depth.
 // Run before cJSON_Parse: cJSON recurses per level, which would overflow a small task stack.
 bool rm_json_depth_ok(const char *body, size_t len, int max_depth);
+// Depth check, then parse exactly len bytes: NULL if too deep, not JSON, or followed by anything but whitespace.
+cJSON *rm_json_parse(const char *body, size_t len);
 
-// Returns the HTTP status (200 or 202). *out is a malloc'd JSON body, NULL for 202.
+// Returns the HTTP status: 200 with *out a malloc'd JSON body, 202 (notification, *out NULL),
+// or 500 with *out NULL when memory runs out.
 int rm_mcp_handle(const rm_ops_t *ops, const char *body, size_t len, char **out);
 
 // ---- REST router and Origin check (spec §7) ----

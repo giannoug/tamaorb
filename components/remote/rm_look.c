@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "remote.h"
 
@@ -35,4 +36,28 @@ size_t rm_look_text(const rm_look_t *l, char *out, size_t cap)
     n += (size_t)t;
     out[n] = 0;
     return n;
+}
+
+#define LOOK_TEXT_CAP 1024
+#define LOOK_PNG_CAP 4096
+
+bool rm_look_encode(const rm_look_t *l, char **text, char **png_b64)
+{
+    // Off the stack: callers run deep in the httpd task.
+    char *t = rm_alloc(LOOK_TEXT_CAP);
+    uint8_t *png = rm_alloc(LOOK_PNG_CAP);
+    char *b64 = rm_alloc(4 * ((LOOK_PNG_CAP + 2) / 3) + 1);
+    size_t tn = t ? rm_look_text(l, t, LOOK_TEXT_CAP) : 0;
+    size_t pn = png ? rm_look_png(l, png, LOOK_PNG_CAP) : 0;
+    bool ok = b64 && tn && pn;
+    if (ok) rm_base64_encode(png, pn, b64);
+    free(png);
+    if (!ok) {
+        free(t);
+        free(b64);
+        t = b64 = NULL;
+    }
+    *text = t;
+    *png_b64 = b64;
+    return ok;
 }

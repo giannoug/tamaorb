@@ -189,3 +189,17 @@ bool rm_json_depth_ok(const char *body, size_t len, int max_depth)
     }
     return true;
 }
+
+cJSON *rm_json_parse(const char *body, size_t len)
+{
+    if (!body || !len || !rm_json_depth_ok(body, len, RM_JSON_MAX_DEPTH)) return NULL;
+    const char *end = NULL;
+    cJSON *j = cJSON_ParseWithLengthOpts(body, len, &end, false);
+    if (!j) return NULL;
+    while (end < body + len && (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n')) end++;
+    if (end != body + len) {
+        cJSON_Delete(j);
+        return NULL;
+    }
+    return j;
+}

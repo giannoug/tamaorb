@@ -80,6 +80,16 @@ static void test_parse_error(void)
     r = call("", &st);
     TEST_ASSERT_EQUAL(-32700, err_code(r));
     cJSON_Delete(r);
+    // Anything but whitespace after the request is a parse error, not ignored.
+    r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}x", &st);
+    TEST_ASSERT_EQUAL(-32700, err_code(r));
+    cJSON_Delete(r);
+    r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}{}", &st);
+    TEST_ASSERT_EQUAL(-32700, err_code(r));
+    cJSON_Delete(r);
+    r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"} \r\n", &st);
+    TEST_ASSERT_NULL(cJSON_GetObjectItem(r, "error"));
+    cJSON_Delete(r);
 }
 
 static void test_batch_rejected(void)

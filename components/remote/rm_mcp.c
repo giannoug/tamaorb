@@ -117,22 +117,13 @@ static cJSON *tool_json(cJSON *j)  // takes ownership
     return r;
 }
 
-#define PNG_CAP 4096
-#define TEXT_CAP 1024
-
 static cJSON *look_result(const rm_ops_t *ops)
 {
     rm_look_t l;
     ops->look(ops->ctx, &l);
-    // Off the stack: this runs deep in the httpd task.
-    char *text = rm_alloc(TEXT_CAP);
-    uint8_t *png = rm_alloc(PNG_CAP);
-    char *b64 = rm_alloc(4 * ((PNG_CAP + 2) / 3) + 1);
+    char *text, *b64;
     cJSON *r = NULL;
-    size_t tn = text ? rm_look_text(&l, text, TEXT_CAP) : 0;
-    size_t pn = png ? rm_look_png(&l, png, PNG_CAP) : 0;
-    if (!b64 || !tn || !pn) goto done;
-    rm_base64_encode(png, pn, b64);
+    if (!rm_look_encode(&l, &text, &b64)) goto done;
     r = tool_result(text, false);
     cJSON *img = cJSON_CreateObject();
     if (!r || !img) { cJSON_Delete(img); cJSON_Delete(r); r = NULL; goto done; }
@@ -142,7 +133,6 @@ static cJSON *look_result(const rm_ops_t *ops)
     cJSON_AddItemToArray(cJSON_GetObjectItem(r, "content"), img);
 done:
     free(text);
-    free(png);
     free(b64);
     return r ? r : tool_result("could not render the screen", true);
 }
@@ -315,7 +305,7 @@ int rm_mcp_handle(const rm_ops_t *ops, const char *body, size_t len, char **out)
     *out = NULL;
     if (!body || len == 0) return finish(error_resp(NULL, -32700, "parse error"), out);
     if (!rm_json_depth_ok(body, len, RM_JSON_MAX_DEPTH)) return finish(error_resp(NULL, -32600, "invalid request: nested too deeply"), out);
-    cJSON *req = cJSON_ParseWithLength(body, len);
+    cJSON *req = rm_json_parse(body, len);
     if (!req) return finish(error_resp(NULL, -32700, "parse error"), out);
     int status;
     const cJSON *idj = cJSON_IsObject(req) ? cJSON_GetObjectItemCaseSensitive(req, "id") : NULL;

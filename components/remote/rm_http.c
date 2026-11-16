@@ -91,8 +91,7 @@ bool rm_origin_allowed(const char *origin, const char *self_name, const char *se
 static cJSON *parse_body(const rm_req_t *q)  // NULL if absent, too deep or not JSON
 {
     if (!q->body || !q->body_len) return NULL;
-    const char *s = (const char *)q->body;  // parsed in place, by length: no copy of up to 16 KB
-    return rm_json_depth_ok(s, q->body_len, RM_JSON_MAX_DEPTH) ? cJSON_ParseWithLength(s, q->body_len) : NULL;
+    return rm_json_parse((const char *)q->body, q->body_len);  // in place, by length: no copy of up to 16 KB
 }
 
 static bool query_get(const char *query, const char *key, char *out, size_t cap)
@@ -222,29 +221,17 @@ static void h_switch(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
     set_ok(r, true, true);
 }
 
-#define PNG_CAP 4096
-#define TEXT_CAP 1024
-
 static void look_reply(const rm_ops_t *ops, rm_resp_t *r)
 {
     rm_look_t l;
     ops->look(ops->ctx, &l);
-    char *text = rm_alloc(TEXT_CAP);  // off the httpd stack
-    uint8_t *png = rm_alloc(PNG_CAP);
-    char *b64 = rm_alloc(4 * ((PNG_CAP + 2) / 3) + 1);
+    char *text, *b64;
     cJSON *j = NULL;
-    size_t tn = text ? rm_look_text(&l, text, TEXT_CAP) : 0;
-    size_t pn = png ? rm_look_png(&l, png, PNG_CAP) : 0;
-    if (b64 && tn && pn) {
-        rm_base64_encode(png, pn, b64);
-        j = cJSON_CreateObject();
-        if (j) {
-            cJSON_AddStringToObject(j, "text", text);
-            cJSON_AddStringToObject(j, "png", b64);
-        }
+    if (rm_look_encode(&l, &text, &b64) && (j = cJSON_CreateObject())) {
+        cJSON_AddStringToObject(j, "text", text);
+        cJSON_AddStringToObject(j, "png", b64);
     }
     free(text);
-    free(png);
     free(b64);
     set_json(r, j ? 200 : 500, j);
 }
