@@ -54,6 +54,15 @@ set(REMOTE_SRC ${COMP}/remote/rm_look.c ${COMP}/remote/rm_png.c ${COMP}/remote/r
 set(REMOTE_INC ${COMP}/remote/include ${cjson_SOURCE_DIR})
 set(REMOTE_TEST_SRC ${REMOTE_SRC} ${SETTINGS_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/fake_ops.c)
 
+# The homebrew test ROM (tools/gen_testrom.py): lets CI run the ROM tests without Bandai's ROMs.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(TESTROM ${CMAKE_BINARY_DIR}/roms/testclock.bin)
+add_custom_command(OUTPUT ${TESTROM}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/roms
+    COMMAND ${Python3_EXECUTABLE} ${ROOT}/tools/gen_testrom.py ${TESTROM}
+    DEPENDS ${ROOT}/tools/gen_testrom.py VERBATIM)
+add_custom_target(testrom ALL DEPENDS ${TESTROM})
+
 enable_testing()
 function(tamaorb_test name)
     add_executable(${name} ${CMAKE_CURRENT_SOURCE_DIR}/${name}.c ${CMAKE_CURRENT_SOURCE_DIR}/test_support.c ${ARGN})
@@ -64,12 +73,18 @@ endfunction()
 
 tamaorb_test(test_rom ${TAMA_CORE_SRC})
 tamaorb_test(test_core ${TAMA_CORE_SRC})
+# The same tests on the homebrew ROM, never skipped (no saves: TAMAORB_ROOT points nowhere).
+set(TESTROM_ENV "TAMAORB_TEST_ROM=testclock.bin;TAMAORB_ROM_DIR=${CMAKE_BINARY_DIR}/roms;TAMAORB_ROOT=/nonexistent")
+add_test(NAME test_core_testrom COMMAND test_core)
+set_tests_properties(test_core_testrom PROPERTIES ENVIRONMENT "${TESTROM_ENV}")
 tamaorb_test(test_time ${TAMA_CORE_SRC})
 tamaorb_test(test_pet ${TAMA_CORE_SRC} ${PERSIST_SRC})
 tamaorb_test(test_clock ${TAMA_CORE_SRC} ${PERSIST_SRC})
 # As CI runs it: no ROMs or saves, so tc_init never runs and the ROM tests skip.
 add_test(NAME test_clock_no_roms COMMAND test_clock)
 set_tests_properties(test_clock_no_roms PROPERTIES ENVIRONMENT "TAMAORB_ROM_DIR=/nonexistent;TAMAORB_ROOT=/nonexistent")
+add_test(NAME test_clock_testrom COMMAND test_clock)
+set_tests_properties(test_clock_testrom PROPERTIES ENVIRONMENT "${TESTROM_ENV}")
 tamaorb_test(test_ui_render ${UI_SRC} ${SETTINGS_SRC})
 tamaorb_test(test_ui_touch ${UI_SRC})
 tamaorb_test(test_ui_screen ${UI_SRC})

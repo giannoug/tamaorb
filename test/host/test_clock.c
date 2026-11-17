@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Setting the pet's clock (tc_clock_request / tc_clock_poll) on the real P1 ROM, from the owner's p1.sav.
+// Setting the pet's clock (tc_clock_request_ms / tc_clock_poll) on the real P1 ROM, from the owner's p1.sav, or on
+// the homebrew test ROM from boot (CTest's test_clock_testrom; tools/gen_testrom.py), which keeps the P1's clock.
 // The ROM writes 0x10 at each second and carries into 0x11..0x15 within ~150 ticks; a request must land only
 // at the quiet point after that (docs/superpowers/specs/2026-11-17-pet-clock-sync-design.md, finding 1).
 #include <stdio.h>
@@ -18,7 +19,7 @@
 static uint64_t now_us(void) { return 0; }
 static void sleep_until_us(uint64_t ts) { (void)ts; }
 
-static bool have;
+static bool have, homebrew;
 static uint8_t rec[4096];
 static const uint8_t *payload;
 static size_t payload_len;
@@ -26,7 +27,8 @@ static size_t payload_len;
 void setUp(void)
 {
     if (!have) return;
-    TEST_ASSERT_TRUE(tc_state_load(payload, payload_len));
+    if (homebrew) tc_reset_to_boot();
+    else TEST_ASSERT_TRUE(tc_state_load(payload, payload_len));
     tc_set_realtime(false);
     tc_post_buttons(0);
 }
@@ -189,10 +191,16 @@ static void press(uint8_t mask, uint32_t hold_ms, uint32_t gap_ms)
 static void test_busy_when_rom_clock_menu_open(void)
 {
     NEED_ROM();
-    press(TC_BTN_MASK(TC_BTN_B), 200, 1500);  // the clock screen
-    press(TC_BTN_MASK(TC_BTN_A) | TC_BTN_MASK(TC_BTN_C), 3000, 800);  // hold A+C: set mode, the clock stops
+    if (homebrew) {  // the test ROM's stand-in for the clock menu: the clock stands still while A is held
+        run_ms(1500);
+        tc_post_buttons(TC_BTN_MASK(TC_BTN_A));
+        run_ms(500);
+    } else {
+        press(TC_BTN_MASK(TC_BTN_B), 200, 1500);  // the clock screen
+        press(TC_BTN_MASK(TC_BTN_A) | TC_BTN_MASK(TC_BTN_C), 3000, 800);  // hold A+C: set mode, the clock stops
+    }
     uint32_t stopped = clock_now();
-    TEST_ASSERT_EQUAL_UINT32(0, stopped % 60);  // set mode zeroes the seconds
+    if (!homebrew) TEST_ASSERT_EQUAL_UINT32(0, stopped % 60);  // the P1's set mode zeroes the seconds
     uint32_t id = tc_clock_request_ms(HMS(7, 0, 0) * 1000u);
     run_ms(2500);
     TEST_ASSERT_EQUAL(TC_CLOCK_BUSY, tc_clock_poll(id, NULL));
@@ -217,8 +225,10 @@ int main(void)
     if (f) fclose(f);
     ps_meta_t meta;
     static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us };
-    have = test_load_file("tama.bin", rom, sizeof rom) && tc_rom_decode(rom, sizeof rom, program) && rec_len &&
-           ps_record_decode(rec, rec_len, &meta, &payload, &payload_len);
+    homebrew = test_homebrew_rom();
+    have = test_load_file(test_rom_name("tama.bin"), rom, sizeof rom) && tc_rom_decode(rom, sizeof rom, program) &&
+           (homebrew || (rec_len && ps_record_decode(rec, rec_len, &meta, &payload, &payload_len)));
+    test_require_rom(have);
     if (have) have = tc_init(program, &plat);
 
     UNITY_BEGIN();

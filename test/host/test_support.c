@@ -16,6 +16,27 @@ bool test_load_file(const char *name, uint8_t *buf, size_t size)
     return n == size && extra == EOF;
 }
 
+const char *test_rom_name(const char *real)
+{
+    const char *t = getenv("TAMAORB_TEST_ROM");
+    return t && *t ? t : real;
+}
+
+bool test_homebrew_rom(void)
+{
+    const char *t = getenv("TAMAORB_TEST_ROM");
+    return t && *t;
+}
+
+bool test_require_rom(bool loaded)
+{
+    if (!loaded && test_homebrew_rom()) {
+        fprintf(stderr, "TAMAORB_TEST_ROM=%s set but not loaded\n", getenv("TAMAORB_TEST_ROM"));
+        exit(1);
+    }
+    return loaded;
+}
+
 void test_hex20(const char *hex, uint8_t out[20])
 {
     for (int i = 0; i < 20; i++) {

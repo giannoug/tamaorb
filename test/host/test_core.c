@@ -138,7 +138,7 @@ static void test_tone_changes_reach_platform(void)
 {
     if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
     tone_on_events = 0;
-    run_seconds(3);  // the P1 plays a sound right after boot
+    run_seconds(3);  // the P1 plays a sound right after boot (the test ROM beeps for its first second)
     TEST_ASSERT_GREATER_THAN(0, tone_on_events);
 }
 
@@ -281,7 +281,7 @@ static void test_ram_snapshot_follows_publish(void)
 int main(void)
 {
     static uint8_t rom[TC_ROM_BYTES];
-    have_rom = test_load_file("tama.bin", rom, sizeof rom);
+    have_rom = test_require_rom(test_load_file(test_rom_name("tama.bin"), rom, sizeof rom));
     if (have_rom) tc_rom_decode(rom, sizeof rom, program);  // otherwise an all-zero program still runs
 
     UNITY_BEGIN();
