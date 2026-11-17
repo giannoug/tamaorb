@@ -50,7 +50,7 @@ These are the MAME `tama` / `tamag2` sets; MAME zips work directly with the tool
 | Back to the pet | Swipe the other way (up from the bottom on the glance, down from the top in settings), or short-press BOOT |
 | Wake the screen | Tap anywhere. The first tap only wakes it, it never presses a button |
 | Screen on/off | Short press BOOT |
-| Switch pet / ROM | Hold BOOT for 2 s (works from any screen), or Settings → ROM: tap a pet, then Switch. Tapping the running pet, back, a swipe down or a short BOOT press closes the list; on the Switch page they return to the list. At first start with several dumps, tap the pet to start |
+| Switch pet / ROM | Hold BOOT for 2 s (works from any screen), or Settings → ROM: tap a pet, then Switch. Tapping the running pet, a swipe down or a short BOOT press closes the list; back returns to where you opened it (the pet, or the settings list). On the Switch page, Cancel, a swipe down or a short BOOT press returns to the list. At first start with several dumps, tap the pet to start |
 
 A touch that starts in the outer 24 px of any edge (top, bottom, left or right) never presses a pet button, even if it lifts without swiping, and a sideways swipe does nothing. A press that starts on a button keeps it while the finger moves, even up onto the pet's screen. The pet's hunger, happy, age and the other stats are read from the emulator's RAM; if a stat can't be found reliably for a ROM it is left off, and an unknown ROM shows no stats (addresses in `docs/pet-ram.md`).
 

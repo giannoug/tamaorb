@@ -9,6 +9,7 @@ if ! command -v cmake >/dev/null; then
     [ -n "$cm" ] && export PATH="$cm:$PATH"
 fi
 cmake -S "$here" -B "$root/build-host" -DCMAKE_BUILD_TYPE=Debug >/dev/null
-cmake --build "$root/build-host" -j"$(nproc)" >/dev/null
+jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)  # nproc: Linux only
+cmake --build "$root/build-host" -j"$jobs" >/dev/null
 "$here/roms.sh" "$root/build-host/roms" >/dev/null 2>&1 || true
 ctest --test-dir "$root/build-host" --output-on-failure "$@"
