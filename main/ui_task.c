@@ -36,6 +36,17 @@ void ui_task_show_low_battery(void) { s_low_battery = true; }
 
 static uint32_t now_ms(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 
+// The screen lit or dark, and with it: light sleep held off (the backlight PWM needs the clock), the emulator's
+// sleep stretch (2 ms lit; 20 ms dark, so the ball can light-sleep: it needs >= 8 ms idle) and the speaker
+// (dark: off between sounds). One place, so the three never disagree.
+#define DARK_STRETCH_US 20000
+static void screen_lit(bool lit)
+{
+    power_screen_on(lit);
+    tc_set_sleep_stretch_us(lit ? TC_SLEEP_STRETCH_US_DEFAULT : DARK_STRETCH_US);
+    board_audio_idle_off(!lit);
+}
+
 static void send_rows(void *ctx, const uint16_t *fb, int y0, int y1) { board_display_flush_rows(fb, y0, y1); }
 static void show(void) { ui_send_changed(&s_sent, s_fb, send_rows, NULL); }  // every frame goes through here
 
@@ -101,7 +112,7 @@ static void ui_task(void *arg)
     bool boot_drawn = false;
     st_settings_t cfg;
     settings_get(&cfg);
-    power_screen_on(true);  // these screens are lit: no light sleep (it would stop the backlight PWM)
+    screen_lit(true);  // these screens are lit: no light sleep (it would stop the backlight PWM)
     while (emu_phase() != EMU_RUN) {
         settings_get(&cfg);
         const ui_palette_t *pal = ui_palette_by_id(cfg.palette);
@@ -132,7 +143,7 @@ static void ui_task(void *arg)
     ui_nav_t nav;
     ui_nav_init(&nav);
     resume_on_pet(&screen, &gest, &nav);
-    power_screen_on(false);
+    screen_lit(false);
     backlight = false;  // force a fresh pet frame and backlight on
     ESP_LOGI(TAG, "showing the pet");
 
@@ -236,7 +247,7 @@ static void ui_task(void *arg)
             tc_post_buttons(0);
             switch_rom(nav.view.rom_pick, nav.view.rom_count);  // restarts the ball, or returns after saying why it didn't
             resume_on_pet(&screen, &gest, &nav);
-            power_screen_on(false);
+            screen_lit(false);
             backlight = false;  // force a fresh pet frame
             continue;
         }
@@ -245,7 +256,7 @@ static void ui_task(void *arg)
             ui_render_low_battery(s_fb, pal);
             show();
             board_backlight_set(cfg.brightness);
-            power_screen_on(true);
+            screen_lit(true);
             vTaskSuspend(NULL);  // the power task puts the device to sleep
         }
 
@@ -253,7 +264,7 @@ static void ui_task(void *arg)
         if (out.backlight != backlight) {
             backlight = out.backlight;
             redraw = backlight;
-            power_screen_on(backlight);  // no light sleep while the backlight PWM must run
+            screen_lit(backlight);  // no light sleep while the backlight PWM must run
             if (!backlight) board_backlight_set(0);
         }
         uint32_t dim_s = usb ? cfg.dim_usb_s : cfg.dim_battery_s;

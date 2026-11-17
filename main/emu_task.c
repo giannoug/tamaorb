@@ -35,7 +35,7 @@ static void unlock(void) { taskEXIT_CRITICAL(&s_mux); }
 static void tone(uint32_t freq_dhz, bool on) { board_tone(freq_dhz / 10, on && !g_agent_mute); }
 
 static const tc_platform_t s_plat = { .now_us = now_us, .sleep_until_us = sleep_until_us, .tone = tone,
-                                      .lock = lock, .unlock = unlock };
+                                      .lock = lock, .unlock = unlock, .tone_prepare = board_audio_prepare };
 
 #define PROGRESS_SAVE_US (120 * 1000000LL)
 
