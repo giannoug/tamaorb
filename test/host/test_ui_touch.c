@@ -215,9 +215,29 @@ static void test_track_lift_a_of_a_c_is_not_chord(void)
     TEST_ASSERT_EQUAL_HEX8(C, ui_touch_track(&tr, &t));
 }
 
+// Review finding: a touch that started on the LCD is inert for its whole length, a second finger notwithstanding.
+// Before, the two-finger frame forgot it, and once that finger lifted the first one pressed where it then was.
+static void test_track_inert_touch_stays_inert_through_two_fingers(void)
+{
+    ui_touch_tracker_t tr = { 0 };
+    ui_touch_t t = pt(120, 100);                              // starts on the LCD: inert
+    TEST_ASSERT_EQUAL_HEX8(0, ui_touch_track(&tr, &t));
+    t = pt(120, 200);                                         // slides down into the strip: still inert
+    TEST_ASSERT_EQUAL_HEX8(0, ui_touch_track(&tr, &t));
+    t = (ui_touch_t){ 2, { { 120, 200 }, { 210, 200 } } };    // a second finger lands on C
+    TEST_ASSERT_EQUAL_HEX8(0, ui_touch_track(&tr, &t));
+    t = pt(120, 200);                                         // and lifts: the first finger is still inert
+    TEST_ASSERT_EQUAL_HEX8(0, ui_touch_track(&tr, &t));
+    t = (ui_touch_t){ 0 };                                    // all lifted: the next touch is a fresh one
+    ui_touch_track(&tr, &t);
+    t = pt(120, 200);
+    TEST_ASSERT_EQUAL_HEX8(B, ui_touch_track(&tr, &t));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_track_inert_touch_stays_inert_through_two_fingers);
     RUN_TEST(test_strip_split);
     RUN_TEST(test_button_centres);
     RUN_TEST(test_whole_circles_press_own_button);

@@ -54,6 +54,7 @@ uint8_t ui_touch_track(ui_touch_tracker_t *tr, const ui_touch_t *t)
         return 0;
     }
     if (t->count >= 2) {
+        if (tr->down && tr->start_mask == 0) return 0;  // a touch that started above the strip stays inert till lift
         tr->down = false;  // when one finger lifts, the remaining one starts a fresh press
         return ui_touch_buttons(t);  // the chip separated two fingers
     }
