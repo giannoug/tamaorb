@@ -112,7 +112,7 @@ static bool set_clock(const char *t)
     }
     int h = v[0] * 10 + v[1], m = v[2] * 10 + v[3], sec = v[4] * 10 + v[5];
     if (h > 23 || m > 59 || sec > 59) return false;
-    uint32_t id = tc_clock_request((uint32_t)(h * 3600 + m * 60 + sec)), w = 0;
+    uint32_t id = tc_clock_request_ms((uint32_t)(h * 3600 + m * 60 + sec) * 1000u), w = 0;
     tc_clock_state_t st;
     while ((st = tc_clock_poll(id, &w)) == TC_CLOCK_PENDING) run_ms(10);
     if (st == TC_CLOCK_APPLIED) printf("=== set %02u:%02u:%02u applied at %.0f ms\n", w / 3600, w / 60 % 60, w % 60, g_ms);

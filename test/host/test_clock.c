@@ -77,14 +77,19 @@ static void test_request_applies_at_quiet_point(void)
     g_last_sec = nib(0x10);
     g_last_change = tc_tick_counter();
     tc_debug_set_step_hook(watch_seconds);
-    uint32_t id = tc_clock_request(HMS(14, 32, 5)), written = 0;
+    // 14:32:05.900: with whole seconds the pet would end up most of a second behind
+    const uint32_t target_ms = HMS(14, 32, 5) * 1000u + 900u, t_req = tc_tick_counter();
+    uint32_t id = tc_clock_request_ms(target_ms), written = 0;
     TEST_ASSERT_NOT_EQUAL(0, id);
     TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, step_until(id, &written));
     uint32_t since = tc_ticks_since(g_last_change, tc_tick_counter());
     TEST_ASSERT_GREATER_OR_EQUAL_UINT32(TC_CLOCK_QUIET_TICKS, since);
     TEST_ASSERT_LESS_THAN_UINT32(TC_TICK_HZ, since);
     TEST_ASSERT_EQUAL_UINT32(written, clock_now());
-    TEST_ASSERT_TRUE(written == HMS(14, 32, 5) || written == HMS(14, 32, 6));
+    // The pet's second began at its tick: the written second is the real one at that moment, to the nearest.
+    uint64_t real_ms = target_ms + (uint64_t)tc_ticks_since(t_req, g_last_change) * 1000u / TC_TICK_HZ;
+    int64_t err = (int64_t)written * 1000 - (int64_t)real_ms;
+    TEST_ASSERT_TRUE_MESSAGE(err >= -501 && err <= 501, "written second more than half a second off");
 }
 
 static void test_rollovers_carry_from_written_value(void)
@@ -94,7 +99,7 @@ static void test_rollovers_carry_from_written_value(void)
     for (int i = 0; i < 3; i++) {
         setUp();
         uint32_t written = 0;
-        TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, step_until(tc_clock_request(target[i]), &written));
+        TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, step_until(tc_clock_request_ms(target[i] * 1000u), &written));
         run_ms(3000);
         TEST_ASSERT_EQUAL_UINT32((written + 3) % 86400, clock_now());
     }
@@ -104,7 +109,7 @@ static void test_write_changes_only_clock_nibbles(void)
 {
     NEED_ROM();
     uint32_t start = tc_tick_counter();
-    TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, step_until(tc_clock_request(HMS(3, 3, 3)), NULL));
+    TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, step_until(tc_clock_request_ms(HMS(3, 3, 3) * 1000u), NULL));
     uint32_t ticks = tc_ticks_since(start, tc_tick_counter());
     static uint8_t a[MEM_RAM_SIZE], b[MEM_RAM_SIZE];
     for (int i = 0; i < MEM_RAM_SIZE; i++) a[i] = (uint8_t)nib(i);
@@ -124,7 +129,7 @@ static void test_write_changes_only_clock_nibbles(void)
 static void test_newer_request_replaces_older(void)
 {
     NEED_ROM();
-    uint32_t id1 = tc_clock_request(HMS(8, 0, 0)), id2 = tc_clock_request(HMS(12, 0, 0)), written = 0;
+    uint32_t id1 = tc_clock_request_ms(HMS(8, 0, 0) * 1000u), id2 = tc_clock_request_ms(HMS(12, 0, 0) * 1000u), written = 0;
     TEST_ASSERT_NOT_EQUAL(id1, id2);
     TEST_ASSERT_EQUAL(TC_CLOCK_BUSY, tc_clock_poll(id1, NULL));
     TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, step_until(id2, &written));
@@ -147,7 +152,7 @@ static void test_busy_when_rom_clock_menu_open(void)
     press(TC_BTN_MASK(TC_BTN_A) | TC_BTN_MASK(TC_BTN_C), 3000, 800);  // hold A+C: set mode, the clock stops
     uint32_t stopped = clock_now();
     TEST_ASSERT_EQUAL_UINT32(0, stopped % 60);  // set mode zeroes the seconds
-    uint32_t id = tc_clock_request(HMS(7, 0, 0));
+    uint32_t id = tc_clock_request_ms(HMS(7, 0, 0) * 1000u);
     run_ms(2500);
     TEST_ASSERT_EQUAL(TC_CLOCK_BUSY, tc_clock_poll(id, NULL));
     TEST_ASSERT_EQUAL_UINT32(stopped, clock_now());

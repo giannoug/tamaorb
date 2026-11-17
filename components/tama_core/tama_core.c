@@ -171,7 +171,7 @@ static uint32_t ticks_now(void) { return tc_tick_counter(); }
 // a single aligned word, so the emulator task can compare it without the lock on every instruction.
 static volatile uint32_t g_clk_id;
 static volatile bool g_clk_pending;
-static uint32_t g_clk_next, g_clk_target, g_clk_written;
+static uint32_t g_clk_next, g_clk_target, g_clk_written;  // target: ms of the day at acceptance
 static tc_clock_state_t g_clk_state;
 // Emulator task only: the request being worked on.
 static uint32_t g_clk_work, g_clk_t0, g_clk_change;
@@ -179,12 +179,12 @@ static uint32_t g_clk_work_target;
 static int g_clk_sec;
 static bool g_clk_seen;
 
-uint32_t tc_clock_request(uint32_t sec_of_day)
+uint32_t tc_clock_request_ms(uint32_t ms_of_day)
 {
     lock();
     if (++g_clk_next == 0) g_clk_next = 1;
     uint32_t id = g_clk_next;
-    g_clk_target = sec_of_day % 86400u;
+    g_clk_target = ms_of_day % 86400000u;
     g_clk_state = TC_CLOCK_PENDING;
     g_clk_id = id;
     g_clk_pending = true;
@@ -244,7 +244,10 @@ static void clock_step(void)
         g_clk_change = now;
         g_clk_seen = true;
     } else if (g_clk_seen && tc_ticks_since(g_clk_change, now) >= TC_CLOCK_QUIET_TICKS) {
-        uint32_t s = (g_clk_work_target + tc_ticks_since(g_clk_t0, now) / TC_TICK_HZ) % 86400u;
+        // The pet's current second began at its tick (g_clk_change): write the real second at that moment, to the
+        // nearest, so the pet's seconds run within half a second of the ball's.
+        uint64_t ms = g_clk_work_target + (uint64_t)tc_ticks_since(g_clk_t0, g_clk_change) * 1000u / TC_TICK_HZ;
+        uint32_t s = (uint32_t)((ms + 500u) / 1000u % 86400u);
         clock_write(s);
         publish();  // readers of tc_get_ram see the new clock at once
         clock_finish(TC_CLOCK_APPLIED, s);

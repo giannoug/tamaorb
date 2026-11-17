@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pet_clock.h"
+#include <sys/time.h>
 #include <time.h>
 #include "emu_task.h"
 #include "esp_log.h"
@@ -48,11 +49,17 @@ pet_clock_status_t pet_clock_start(uint32_t *id)
 {
     pet_clock_status_t a = pet_clock_available();
     if (a != PET_CLOCK_OK) return a;
-    int32_t ball = pet_clock_ball_s();
-    if (ball < 0) return PET_CLOCK_NO_TIME;
-    *id = tc_clock_request((uint32_t)ball);
-    ESP_LOGI(TAG, "request %lu: %02ld:%02ld:%02ld", (unsigned long)*id, (long)(ball / 3600), (long)(ball / 60 % 60),
-             (long)(ball % 60));
+    int64_t unix_s;
+    if (!net_now(&unix_s)) return PET_CLOCK_NO_TIME;
+    struct timeval tv;  // to the millisecond: the core rounds the pet's second to the nearest real one
+    gettimeofday(&tv, NULL);
+    time_t tt = tv.tv_sec;
+    struct tm tm;
+    localtime_r(&tt, &tm);
+    uint32_t ms = (uint32_t)(tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec) * 1000u + (uint32_t)(tv.tv_usec / 1000);
+    *id = tc_clock_request_ms(ms);
+    ESP_LOGI(TAG, "request %lu: %02lu:%02lu:%02lu.%03lu", (unsigned long)*id, (unsigned long)(ms / 3600000),
+             (unsigned long)(ms / 60000 % 60), (unsigned long)(ms / 1000 % 60), (unsigned long)(ms % 1000));
     return PET_CLOCK_OK;
 }
 
