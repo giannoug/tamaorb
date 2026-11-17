@@ -27,6 +27,8 @@ static void sleep_until_us(uint64_t ts)
 typedef struct { uint64_t at; uint32_t tick; bool on; } tone_ev_t;
 static tone_ev_t tones[MAX_EV];
 static int n_tones;
+static int n_inaudible;  // tone calls that change nothing audible (same on/off, and same pitch while on)
+static struct { bool have, on; uint32_t freq; } last_tone;
 static int stretch_sleeps(void);
 static void tone(uint32_t freq_dhz, bool on)
 {
@@ -35,6 +37,8 @@ static void tone(uint32_t freq_dhz, bool on)
         sleeps[n_sleeps - 1].tone = true;
     if (n_tones < MAX_EV) tones[n_tones] = (tone_ev_t){ fake_now, tc_tick_counter(), on };
     n_tones++;
+    if (last_tone.have && last_tone.on == on && (!on || last_tone.freq == freq_dhz)) n_inaudible++;
+    last_tone.have = true, last_tone.on = on, last_tone.freq = freq_dhz;
 }
 static uint64_t prepares[MAX_EV];
 static int n_prepares;
@@ -70,7 +74,8 @@ void setUp(void)
     tc_set_realtime(true);  // re-syncs tamalib's reference to now: emulated and real time start together
     base_now = fake_now;
     base_tick = tc_tick_counter();
-    n_sleeps = n_tones = n_prepares = 0;
+    n_sleeps = n_tones = n_prepares = n_inaudible = 0;
+    last_tone.have = false;
     max_ahead = 0;
 }
 void tearDown(void) { tc_debug_set_step_hook(NULL); }
@@ -178,6 +183,36 @@ static void test_tone_prepare_before_wait(void)
     }
 }
 
+// The ROM rewrites the port holding the buzzer bit for other reasons, and sets the pitch while silent: neither
+// reaches the platform, so neither splits a stretch with a wait (nor wakes the speaker's task).
+static void test_inaudible_buzzer_writes_are_dropped(void)
+{
+    NEED();
+    tc_set_sleep_stretch_us(20000);
+    run_real_us(3000000);
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, n_tones, "no buzzer change in the run");
+    TEST_ASSERT_EQUAL_INT(0, n_inaudible);
+}
+
+// Loading a state saved later in emulated time (the tick counter jumps ahead) re-sends the buzzer state: that
+// must not wait against the old timeline (it would sleep for the jump, up to hours).
+static void test_state_load_in_realtime_never_sleeps_long(void)
+{
+    NEED();
+    size_t cap = tc_state_size();
+    uint8_t *later = malloc(cap);
+    TEST_ASSERT_NOT_NULL(later);
+    run_real_us(1000000);
+    size_t len = tc_state_save(later, cap);
+    TEST_ASSERT_GREATER_THAN(0, len);
+    tc_reset_to_boot();
+    run_real_us(100000);  // real-time on the boot timeline again: the emulator knows where it is
+    int first = n_sleeps;
+    TEST_ASSERT_TRUE(tc_state_load(later, len));
+    for (int i = first; i < n_sleeps && i < MAX_EV; i++) TEST_ASSERT_LESS_OR_EQUAL_UINT64(20500, sleeps[i].ahead);
+    free(later);
+}
+
 static void test_fast_mode_never_waits_for_tones(void)
 {
     NEED();
@@ -202,5 +237,7 @@ int main(void)
     RUN_TEST(test_tone_on_time_default);
     RUN_TEST(test_tone_on_time_in_stretch);
     RUN_TEST(test_tone_prepare_before_wait);
+    RUN_TEST(test_inaudible_buzzer_writes_are_dropped);
+    RUN_TEST(test_state_load_in_realtime_never_sleeps_long);
     return UNITY_END();
 }

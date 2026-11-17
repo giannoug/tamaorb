@@ -85,10 +85,16 @@ static void hal_set_lcd_icon(u8_t icon, bool_t val)
 }
 
 static bool g_quiet;  // catch-up is silent; the final buzzer state is reported when it ends
+static tc_tone_t g_sent;  // what the platform last heard
+static bool g_sent_valid;
 
-static void tone_changed(void)
+// force: report even when nothing audible changed (the end of a catch-up reports the state once, as it is).
+static void tone_changed(bool force)
 {
     if (!g_plat->tone || g_quiet) return;
+    // The ROM rewrites the port holding the buzzer bit for other reasons and sets the pitch while silent: such
+    // writes change nothing audible, so they neither wait (which would split a sleep stretch) nor reach the platform.
+    if (!force && g_sent_valid && g_sent.on == g_tone.on && (!g_tone.on || g_sent.freq_dhz == g_tone.freq_dhz)) return;
     // Running ahead of real time (up to one sleep stretch): let real time reach this change's moment first, so a
     // beep starts and stops when it would on the toy. The speaker may start early (tone_prepare) for a tone-on.
     if (g_realtime && g_ts_offset_known) {
@@ -99,6 +105,8 @@ static void tone_changed(void)
             g_plat->sleep_until_us(now + ticks_to_us_ceil((uint32_t)ahead));
         }
     }
+    g_sent = g_tone;
+    g_sent_valid = true;
     g_plat->tone(g_tone.freq_dhz, g_tone.on);
 }
 
@@ -107,7 +115,7 @@ static void hal_set_frequency(u32_t freq)
     lock();
     g_tone.freq_dhz = freq;
     unlock();
-    tone_changed();
+    tone_changed(false);
 }
 
 static void hal_play_frequency(bool_t en)
@@ -115,7 +123,7 @@ static void hal_play_frequency(bool_t en)
     lock();
     g_tone.on = en;
     unlock();
-    tone_changed();
+    tone_changed(false);
 }
 
 static int hal_handler(void) { return 0; }
@@ -337,7 +345,7 @@ uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_eve
         }
     }
     g_quiet = false;
-    tone_changed();
+    tone_changed(true);
     tc_set_realtime(true);
     return done;
 }
@@ -504,6 +512,7 @@ bool tc_state_load(const uint8_t *buf, size_t len)
         *s->scaled_cycle_accumulator = 0;
         *s->cpu_frequency = 32768;
     }
+    g_ts_offset_known = false;            // the tick counter jumped: the old "where in real time" no longer holds
     tamalib_refresh_hw();                 // redraw the LCD and buzzer from the restored memory
     tamalib_set_exec_mode(EXEC_MODE_RUN); // re-sync timing
     publish();
