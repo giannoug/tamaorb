@@ -32,7 +32,9 @@ void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model, uint8_t 
 {
     const uint16_t bg = ui_rgb565(p->bg), ink = ui_rgb565(p->ink);
     const uint16_t ghost = ui_rgb565(ui_mix(p->bg, p->ink, p->ghost_pct));
-    const uint16_t shadow = ui_rgb565(ui_mix(p->bg, (ui_rgb_t){ 0, 0, 0 }, 22));
+    // the keys' top lip: 22 % black on a light palette, 40 % on a dark one (Night), where 22 % doesn't show
+    const bool dark = p->bg.r + p->bg.g + p->bg.b < p->ink.r + p->ink.g + p->ink.b;
+    const uint16_t shadow = ui_rgb565(ui_mix(p->bg, (ui_rgb_t){ 0, 0, 0 }, dark ? 40 : 22));
 
     ui_clear_rows(fb, 0, UI_H - 1, bg);
 

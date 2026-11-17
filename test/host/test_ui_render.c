@@ -147,6 +147,18 @@ static void test_buttons_drawn(void)
     }
 }
 
+static void test_night_well_lip_darker(void)
+{
+    // on a dark palette 22 % black is invisible; the canvas uses 40 % (#0E140F on #18201A)
+    ui_render_pet(fb, &frame, TC_MODEL_P1, 0, &UI_PALETTE_NIGHT);
+    const uint16_t lip = ui_rgb565(ui_mix(UI_PALETTE_NIGHT.bg, (ui_rgb_t){ 0, 0, 0 }, 40));
+    for (int i = 0; i < 3; i++) {
+        int cx, cy;
+        ui_button_centre(BTN[i], &cx, &cy);
+        TEST_ASSERT_EQUAL_HEX16(lip, PX(cx, cy - UI_BTN_R));
+    }
+}
+
 static void test_held_fills(void)
 {
     render(TC_BTN_MASK(TC_BTN_B));
@@ -796,6 +808,7 @@ int main(void)
     RUN_TEST(test_p2_medicine_differs);
     RUN_TEST(test_pet_layout);
     RUN_TEST(test_buttons_drawn);
+    RUN_TEST(test_night_well_lip_darker);
     RUN_TEST(test_held_fills);
     RUN_TEST(test_no_old_hints);
     RUN_TEST(test_palette_lookup);
