@@ -10,6 +10,11 @@
 // after); ram prints every RAM nibble that changed since the previous ram (the first ram prints them all).
 // Example: "w1000 A A A A A A B A A" opens the meter and pages to hunger.
 // Example: "w1000 ram A B B w8000 ram" shows which nibbles a meal changes (see docs/pet-ram.md).
+// clock prints the pet's clock and state ("=== clock at <ms> ms: HH:MM:SS state=<0x5E> char=<0x5D> age=<years>").
+// setHHMMSS sets the clock the way the ball's Pet clock action does (tc_clock_request: written at the quiet point
+// after the next seconds tick), then prints when it applied, or "busy" (the ROM's own clock menu stops the clock).
+// hN sets the hold time of the presses that follow (the P1 clock menu wants A+C held ~3 s: "h3000 AC h200").
+// Example: "ff120 clock set210000 clock ff600 clock" moves an awake P1 into the night; ten minutes later it sleeps.
 // "@file" in place of the script reads it from that file (for scripts too long for one argument).
 // Emulation runs as fast as possible; times in the output are emulated milliseconds.
 #include <stdio.h>
@@ -17,6 +22,7 @@
 #include <string.h>
 #include "persist.h"
 #include "tama_core.h"
+#include "tc_pet.h"
 #include "tc_rom.h"
 
 static uint64_t now_us(void) { return 0; }  // fast mode never reads the clock
@@ -82,6 +88,38 @@ static void show_ram(void)
     g_have_ram = true;
 }
 
+static tc_model_t g_model;
+
+static void show_clock(void)
+{
+    uint8_t ram[TC_PET_RAM_NIBBLES];
+    size_t n = tc_get_ram(ram, sizeof ram);
+    uint32_t s;
+    printf("=== clock at %.0f ms: ", g_ms);
+    if (tc_pet_clock(g_model, ram, n, &s)) printf("%02u:%02u:%02u", s / 3600, s / 60 % 60, s % 60);
+    else printf("unknown");
+    if (n == sizeof ram) printf(" state=%u char=%u age=%u", ram[0x5E], ram[0x5D], ram[0x55] * 10u + ram[0x54]);
+    printf("\n");
+}
+
+static bool set_clock(const char *t)
+{
+    if (strlen(t) != 6) return false;
+    int v[6];
+    for (int i = 0; i < 6; i++) {
+        if (t[i] < '0' || t[i] > '9') return false;
+        v[i] = t[i] - '0';
+    }
+    int h = v[0] * 10 + v[1], m = v[2] * 10 + v[3], sec = v[4] * 10 + v[5];
+    if (h > 23 || m > 59 || sec > 59) return false;
+    uint32_t id = tc_clock_request((uint32_t)(h * 3600 + m * 60 + sec)), w = 0;
+    tc_clock_state_t st;
+    while ((st = tc_clock_poll(id, &w)) == TC_CLOCK_PENDING) run_ms(10);
+    if (st == TC_CLOCK_APPLIED) printf("=== set %02u:%02u:%02u applied at %.0f ms\n", w / 3600, w / 60 % 60, w % 60, g_ms);
+    else printf("=== set busy at %.0f ms\n", g_ms);
+    return true;
+}
+
 static bool read_file(const char *path, uint8_t *buf, size_t cap, size_t *len)
 {
     FILE *f = fopen(path, "rb");
@@ -96,7 +134,8 @@ int main(int argc, char **argv)
     if (argc < 4) {
         fprintf(stderr, "usage: %s <rom.bin> <save.sav> \"<script>\"|@script.txt [hold_ms gap_ms]\n"
                         "script tokens: A B C AC (press), wN (wait N ms), ffN (fast-forward N s quietly),\n"
-                        "  ram (RAM nibbles changed since the last ram; the first prints all)\n", argv[0]);
+                        "  ram (RAM nibbles changed since the last ram; the first prints all),\n"
+                        "  clock (the pet's clock), setHHMMSS (set it), hN (hold time of later presses)\n", argv[0]);
         return 2;
     }
     double hold = argc > 5 ? atof(argv[4]) : 200, gap = argc > 5 ? atof(argv[5]) : 400;  // the press tool's defaults
@@ -108,6 +147,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s: not a P1/P2 ROM dump\n", argv[1]);
         return 1;
     }
+    g_model = tc_rom_identify(rom, rom_len, NULL);
     static const tc_platform_t plat = { now_us, sleep_until, NULL, NULL, NULL };
     if (!tc_init(program, &plat)) return 1;
     ps_meta_t meta;
@@ -141,6 +181,9 @@ int main(int argc, char **argv)
             continue;
         }
         if (!strcmp(t, "ram")) { show_ram(); continue; }
+        if (!strcmp(t, "clock")) { show_clock(); continue; }
+        if (!strncmp(t, "set", 3) && set_clock(t + 3)) continue;
+        if (t[0] == 'h' && t[1] >= '0' && t[1] <= '9') { hold = atof(t + 1); continue; }
         uint8_t mask = !strcmp(t, "A") ? 1 : !strcmp(t, "B") ? 2 : !strcmp(t, "C") ? 4 : !strcmp(t, "AC") ? 5 : 0;
         if (!mask) { fprintf(stderr, "unknown token: %s\n", t); return 2; }
         printf("=== press %s at %.0f ms\n", t, g_ms);

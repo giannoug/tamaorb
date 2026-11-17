@@ -22,7 +22,7 @@ The two ROMs keep everything the glance needs at the same addresses. "v" is the 
 | Light | `0x4B` | 15 on, 0 off | Both: light menu → off sets 0 (screen dark); P1 also while asleep, which clears the call |
 | Character | `0x5D` | 0 = egg or dead; any other value = a living pet (the stage number) | P1: 2 in the saves, 4 and 8 after evolutions, 0 after death. P2: 0 for the egg in `p2.sav`, 1 at hatching, 2 and 4 after evolutions |
 | Call icon | `0x2D` bit 3 | 8 while the attention icon is lit | Both: matched the `attention` icon throughout the long runs. Not needed by the glance |
-| Clock | `0x10` s ones, `0x11` s tens, `0x12` min ones, `0x13` min tens (BCD); `0x14` hour low, `0x15` hour high (hour = 16 × `0x15` + `0x14`, 0-23) | the pet's own clock | P1: the clock screen read 9:58 with 09:58:00 in RAM; ten emulated minutes later 10:08:00, an hour later 10:58:00; hours 15→16 set `0x14` F→0 and `0x15` 0→1; 23→0 cleared both. P2: clock screen 6:09 PM with 18:09:44 in RAM; +1 h gave 19:09:44 |
+| Clock | `0x10` s ones, `0x11` s tens, `0x12` min ones, `0x13` min tens (BCD); `0x14` hour low, `0x15` hour high (hour = 16 × `0x15` + `0x14`, 0-23) | the pet's own clock | P1: the clock screen read 9:58 with 09:58:00 in RAM; ten emulated minutes later 10:08:00, an hour later 10:58:00; hours 15→16 set `0x14` F→0 and `0x15` 0→1; 23→0 cleared both. P2: clock screen 6:09 PM with 18:09:44 in RAM; +1 h gave 19:09:44. Written by the ball's Pet clock action at the quiet point after a seconds tick ("Setting the clock" below) |
 
 Also seen, not used by the glance: care mistakes `0x42` (counts up when a call is ignored, as carebot says), `0x49` (set to 1 when the pet gets sick, cleared at the next evolution, as carebot says).
 
@@ -69,3 +69,22 @@ Building blocks used below:
 | `SICK2` | p2 | `w100 ram ff360` + `CARE+MED` ×2 + `CARE` up to its `ram`, then medicine ×3 (`A w1200`×4 `B w9000 ram C w1000 C w1000`) | `0x48` 0→15, `0x5E` 1→9, skull; 15→11, then 11→7 and `0x5E` 9→1 |
 | P2 night | p2 | `w100 ram ff7200 ram ff46000 ram ff900 ram` | sick pet falls asleep: `0x5E` 9→3 with `0x48` still 15; at 09:00 `0x5E` 3→9 and `0x54` 1→2 |
 | `P2METER` | p2 | `w100 ram ff360` + `CARE+MED` ×82, then `M A A A` (file script) | meter: age 2, 86 g, discipline 3/4 (`0x43` = 12), 4 and 4 hearts (`0x40` = `0x41` = 15) |
+
+## Setting the clock
+
+The ball's Pet clock action (`tc_clock_request`) writes `0x10`-`0x15` directly. These runs, on the PC with `save_replay`'s `clock` and `setHHMMSS` tokens, are why that is safe and what it does to the pet. They were made for the clock-sync design (2026-11-17).
+
+**When to write.** At each second the ROM writes `0x10`, then carries into `0x11`-`0x15` within ~25 instructions (~150 ticks of 32 768 Hz, ~5 ms); nothing else touches the clock until the next second. The ball writes 1 638 ticks (~50 ms) after it sees `0x10` change, between two instructions, so it never lands in the middle of a carry. If no tick comes within 2 s (the ROM's own clock menu stops the clock), it gives up.
+
+**What a jump does.** The ROM compares the clock with the pet's night window (20:00-09:00 for the stages tried: P1 stage 2, P2 stages 1-2), not with the exact moment. Hunger, happiness, sickness and death followed elapsed time in every run, not the clock.
+
+| What | Save | Script | Result |
+|---|---|---|---|
+| carry | p1 | `ff119 w100 ram w980 ram` | at 10:00:00 the second's carry rewrites `0x10`-`0x14` together; `test_clock` checks the write lands ≥ 1 638 ticks after the tick |
+| awake into the night | p1 | `ff120 clock set210000 clock ff600 clock` | 21:00:00, still awake (`state=1`); ten minutes later asleep (`state=3`) |
+| asleep into the day | p1 | `ff43200 clock set100000 ff60 clock` | asleep at 21:58; set to 10:00 it wakes at once and age goes 2→3 (waking is the birthday) |
+| awake, back over 09:00 | p1 | `ff1920 clock set083000 ff600 clock ff1800 clock` | at 08:40 asleep again; at 09:00 it wakes with age 2→3, a second birthday the same day |
+| through the ROM's own menu | p1 | `ff39720 clock B w1500 h3000 AC h200` + `A w300` ×22 + `clock C w1000 clock` | asleep at 21:00, set to 19:00 in the menu: on leaving it, age 2→3, as with a direct write |
+
+**The ROM's own clock menu.** P1 and P2 alike: B on the main screen shows the clock; holding A+C about 3 s enters set mode, which sets the seconds to 00 and stops the clock (`0x28`-`0x2B` and `0x2E` are cleared too; no pet stat changes); A steps the hour, B the minute, C leaves and the clock runs again. A set request while the menu is open reports busy, e.g. P2: `ff360 w100 C w1000 B w1500 h3000 AC h200 w2000 set070000 clock` (`=== set busy`, clock still 18:15:00). The one difference from a direct write found: after the menu, an awake pet set into the night stays awake until morning.
+
