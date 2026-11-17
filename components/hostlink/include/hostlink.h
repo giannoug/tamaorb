@@ -12,6 +12,8 @@
 //   @TO STATUS                        -> @TO STATUS <key=value ...>
 //   @TO GET                           -> @TO SET <key>=<value> per setting, then @TO OK
 //   @TO SET k=v [k=v ...]             -> @TO OK | @TO ERR <first bad key> | @TO ERR data (all or nothing)
+//   @TO CLOCK                         -> @TO OK <HH:MM:SS> (the pet's clock set to the ball's local time)
+//                                        | @TO ERR unsupported|notime|catchup|busy
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -25,6 +27,8 @@ typedef void (*hl_emit_fn)(void *ectx, const char *line);
 
 typedef enum { HL_STORE_FAIL = 0, HL_STORE_OK, HL_STORE_OK_REBOOT } hl_store_result_t;
 
+typedef enum { HL_CLOCK_OK, HL_CLOCK_UNSUPPORTED, HL_CLOCK_NO_TIME, HL_CLOCK_CATCHUP, HL_CLOCK_BUSY } hl_clock_t;
+
 typedef struct {
     hl_store_result_t (*store)(void *ctx, const char *name, const uint8_t *data, size_t len);  // verified P1/P2 ROM
     void (*list)(void *ctx, hl_emit_fn emit, void *ectx);   // emit "<name> <model> <sha1hex>" per ROM
@@ -33,6 +37,7 @@ typedef struct {
     void (*status)(void *ctx, char *out, size_t cap);        // "rom=P1 wifi=1 ..."
     void (*get_settings)(void *ctx, st_settings_t *out);
     void (*put_settings)(void *ctx, const st_settings_t *s, bool display_changed);
+    hl_clock_t (*clock)(void *ctx, int32_t *written_s);   // may block a few seconds; NULL: @TO ERR cmd
     void *ctx;
 } hl_ops_t;
 

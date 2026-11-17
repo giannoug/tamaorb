@@ -199,6 +199,25 @@ class Link:
                 raise ToolError(f"rejected: {msg[14:]}") from None
             raise
 
+    CLOCK_ERRORS = {
+        "unsupported": "the pet's clock is only known for P1 and P2",
+        "notime": "the ball has no internet time yet",
+        "catchup": "the pet is catching up; try again when it finishes",
+        "busy": "the pet's clock is stopped (its own clock menu is open); close it and try again",
+    }
+
+    def clock(self):
+        """Sets the pet's clock to the ball's local time; returns the time written (HH:MM:SS)."""
+        self._send("@TO CLOCK")
+        try:
+            got = self._reply()
+        except ToolError as e:
+            reason = str(e).removeprefix("device error: ")
+            raise ToolError(self.CLOCK_ERRORS.get(reason, str(e))) from None
+        if not got.startswith("@TO OK "):
+            raise ToolError(f"unexpected reply: {got!r}")
+        return got[7:]
+
     def status(self):
         """Asks twice: right after a boot the first request can go unanswered (seen once on the ball)."""
         for attempt in range(2):
@@ -236,6 +255,7 @@ def main(argv=None):
     w.add_argument("--password")
     sub.add_parser("status", help="show device status")
     sub.add_parser("get", help="print the settings as key=value")
+    sub.add_parser("clock", help="set the pet's clock to the ball's time (the pet may wake up, fall asleep, or age)")
     st = sub.add_parser("set", help="change settings, e.g. brightness=30 (all or nothing)")
     st.add_argument("pairs", nargs="+", metavar="key=value")
     args = ap.parse_args(argv)
@@ -272,6 +292,8 @@ def main(argv=None):
         elif args.cmd == "set":
             link.set(args.pairs)
             print("ok")
+        elif args.cmd == "clock":
+            print(f"Pet clock set to {link.clock()}")
     except (ToolError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

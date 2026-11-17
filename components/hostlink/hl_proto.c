@@ -184,5 +184,17 @@ void hl_feed_line(hl_session_t *s, const char *line, hl_emit_fn reply, void *rct
         s->ops->status(s->ops->ctx, st, sizeof st);
         snprintf(out, sizeof out, "@TO STATUS %s", st);
         reply(rctx, out);
+    } else if (!strcmp(buf, "CLOCK") && s->ops->clock) {
+        static const char *const ERR[] = { [HL_CLOCK_UNSUPPORTED] = "@TO ERR unsupported", [HL_CLOCK_NO_TIME] = "@TO ERR notime",
+                                           [HL_CLOCK_CATCHUP] = "@TO ERR catchup", [HL_CLOCK_BUSY] = "@TO ERR busy" };
+        int32_t w = -1;
+        hl_clock_t r = s->ops->clock(s->ops->ctx, &w);
+        if (r == HL_CLOCK_OK && w >= 0 && w < 86400) {
+            char out[24];
+            snprintf(out, sizeof out, "@TO OK %02d:%02d:%02d", (int)(w / 3600), (int)(w / 60 % 60), (int)(w % 60));
+            reply(rctx, out);
+        } else {
+            reply(rctx, r > HL_CLOCK_OK && r <= HL_CLOCK_BUSY ? ERR[r] : "@TO ERR busy");
+        }
     } else reply(rctx, "@TO ERR cmd");
 }

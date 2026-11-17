@@ -12,6 +12,7 @@
 #include "freertos/task.h"
 #include "hostlink.h"
 #include "net.h"
+#include "pet_clock.h"
 #include "rom_store.h"
 #include "saver.h"
 #include "settings_store.h"
@@ -62,14 +63,30 @@ static void op_status(void *ctx, char *out, size_t cap)
     bool trusted = net_now(&t);
     char ip[16];
     if (!net_ip(ip)) snprintf(ip, sizeof ip, "-");  // the panel's address, for when tamaorb.local doesn't resolve
-    snprintf(out, cap, "rom=%s wifi=%d ip=%s time=%d batt_mv=%lu usb=%d sd=%d", tc_model_name(s_model), net_connected(),
-             ip, trusted, (unsigned long)board_battery_mv(), board_usb_present(), rom_store_sd_present());
+    char pet[24] = "-";
+    int32_t p = pet_clock_pet_s();
+    if (p >= 0) snprintf(pet, sizeof pet, "%02d:%02d:%02d", (int)(p / 3600), (int)(p / 60 % 60), (int)(p % 60));
+    snprintf(out, cap, "rom=%s wifi=%d ip=%s time=%d batt_mv=%lu usb=%d sd=%d pet_clock=%s", tc_model_name(s_model),
+             net_connected(), ip, trusted, (unsigned long)board_battery_mv(), board_usb_present(), rom_store_sd_present(), pet);
 }
 
 static void op_get_settings(void *ctx, st_settings_t *out) { settings_get(out); }
 static void op_put_settings(void *ctx, const st_settings_t *s, bool display) { settings_put(s, display); }
 
-static const hl_ops_t s_ops = { op_store, op_list, op_remove, op_wifi, op_status, op_get_settings, op_put_settings, NULL };
+static hl_clock_t op_clock(void *ctx, int32_t *written_s)
+{
+    switch (pet_clock_sync(written_s)) {
+    case PET_CLOCK_OK: return HL_CLOCK_OK;
+    case PET_CLOCK_UNSUPPORTED: return HL_CLOCK_UNSUPPORTED;
+    case PET_CLOCK_NO_TIME: return HL_CLOCK_NO_TIME;
+    case PET_CLOCK_CATCHUP: return HL_CLOCK_CATCHUP;
+    default: return HL_CLOCK_BUSY;
+    }
+}
+
+static const hl_ops_t s_ops = { .store = op_store, .list = op_list, .remove = op_remove, .wifi = op_wifi,
+                                .status = op_status, .get_settings = op_get_settings, .put_settings = op_put_settings,
+                                .clock = op_clock, .ctx = NULL };
 
 static void reply(void *ctx, const char *line)
 {

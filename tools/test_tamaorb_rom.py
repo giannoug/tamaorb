@@ -291,3 +291,25 @@ def test_status_gives_up_after_two_silences():
     with pytest.raises(tool.ToolError, match="no reply"):
         tool.Link(port, timeout=0.1).status()
     assert port.written == ["@TO STATUS", "@TO STATUS"]
+
+
+def test_clock_prints_time(monkeypatch, capsys):
+    port = multi_port(["@TO OK 14:32:05"])
+    monkeypatch.setattr(tool, "open_port", lambda name: port)
+    assert tool.main(["clock"]) == 0
+    assert port.written == ["@TO CLOCK"]
+    assert capsys.readouterr().out == "Pet clock set to 14:32:05\n"
+
+
+def test_clock_busy_explains_and_fails(monkeypatch, capsys):
+    port = multi_port(["@TO ERR busy"])
+    monkeypatch.setattr(tool, "open_port", lambda name: port)
+    assert tool.main(["clock"]) == 1
+    assert "clock menu" in capsys.readouterr().err
+
+
+def test_clock_notime_explains(monkeypatch, capsys):
+    port = multi_port(["@TO ERR notime"])
+    monkeypatch.setattr(tool, "open_port", lambda name: port)
+    assert tool.main(["clock"]) == 1
+    assert "no internet time yet" in capsys.readouterr().err

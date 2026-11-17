@@ -26,7 +26,17 @@ static int put_calls;
 static bool put_display;
 static void get_settings(void *ctx, st_settings_t *out) { st_defaults(out, 50); }
 static void put_settings(void *ctx, const st_settings_t *s_, bool display) { put_val = *s_; put_calls++; put_display = display; }
-static const hl_ops_t ops = { store, list, rm, wifi, status, get_settings, put_settings, NULL };
+static hl_clock_t clock_result;
+static int32_t clock_written;
+static int clock_calls;
+static hl_clock_t clock_op(void *ctx, int32_t *written_s)
+{
+    clock_calls++;
+    if (clock_result == HL_CLOCK_OK) *written_s = clock_written;
+    return clock_result;
+}
+static const hl_ops_t ops = { .store = store, .list = list, .remove = rm, .wifi = wifi, .status = status,
+                              .get_settings = get_settings, .put_settings = put_settings, .clock = clock_op, .ctx = NULL };
 
 static void feed(const char *line) { hl_feed_line(s, line, reply, NULL); }
 
@@ -40,6 +50,8 @@ void setUp(void)
     store_result = HL_STORE_OK;
     put_calls = 0;
     put_display = false;
+    clock_result = HL_CLOCK_OK;
+    clock_calls = 0;
 }
 void tearDown(void) { free(s); }
 
@@ -230,6 +242,37 @@ static void test_set_no_equals(void)
     TEST_ASSERT_EQUAL(0, put_calls);
 }
 
+static void test_clock_ok_replies_time(void)
+{
+    clock_written = 14 * 3600 + 32 * 60 + 5;
+    feed("@TO CLOCK");
+    TEST_ASSERT_EQUAL_STRING("@TO OK 14:32:05", last);
+    TEST_ASSERT_EQUAL(1, clock_calls);
+}
+
+static void test_clock_refusals(void)
+{
+    static const struct { hl_clock_t r; const char *want; } cases[] = {
+        {HL_CLOCK_UNSUPPORTED, "@TO ERR unsupported"}, {HL_CLOCK_NO_TIME, "@TO ERR notime"},
+        {HL_CLOCK_CATCHUP, "@TO ERR catchup"}, {HL_CLOCK_BUSY, "@TO ERR busy"},
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        clock_result = cases[i].r;
+        feed("@TO CLOCK");
+        TEST_ASSERT_EQUAL_STRING(cases[i].want, last);
+    }
+}
+
+static void test_clock_without_op_is_cmd_error(void)
+{
+    static const hl_ops_t none = { .store = store, .list = list, .remove = rm, .wifi = wifi, .status = status,
+                                   .get_settings = get_settings, .put_settings = put_settings, .clock = NULL };
+    hl_init(s, &none);
+    feed("@TO CLOCK");
+    TEST_ASSERT_EQUAL_STRING("@TO ERR cmd", last);
+    TEST_ASSERT_EQUAL(0, clock_calls);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -252,5 +295,8 @@ int main(void)
     RUN_TEST(test_set_non_display_change);
     RUN_TEST(test_set_bad_value);
     RUN_TEST(test_set_no_equals);
+    RUN_TEST(test_clock_ok_replies_time);
+    RUN_TEST(test_clock_refusals);
+    RUN_TEST(test_clock_without_op_is_cmd_error);
     return UNITY_END();
 }
