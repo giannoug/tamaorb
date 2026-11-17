@@ -265,6 +265,7 @@ typedef struct {
     int active_ctl;        // private: the control under the current drag's start point, -1 none
     bool rom_from_pet;     // "< back" on the ROM list returns to the pet (else to the settings list)
     uint32_t confirm_ms;   // private: view.t_ms when the confirm page opened
+    int rom_scroll;        // private: the ROM list's scroll when its Switch page opened (restored on the way back)
 } ui_nav_t;
 // The confirm page's pills ignore taps for this long after it opens (by view.t_ms), so the second half of a
 // double tap on a list row that lies where a pill appears can't switch pets.

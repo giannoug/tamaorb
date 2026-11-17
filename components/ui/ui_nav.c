@@ -73,6 +73,13 @@ static ui_act_t edit_ctl(const st_settings_t *cur, st_settings_t *out, bool *dis
     return edit(cur, out, display_changed, CTL_KEY[ctl], buf);
 }
 
+// From the Switch page back to the ROM list, scrolled where it was.
+static void rom_list_again(ui_nav_t *n)
+{
+    menu_open(n, UI_PAGE_ROM);
+    n->view.scroll = n->rom_scroll;
+}
+
 static bool is_list(ui_page_t p)
 {
     return p == UI_PAGE_LIST || p == UI_PAGE_TZ_REGION || p == UI_PAGE_TZ_CITY || p == UI_PAGE_ROM;
@@ -101,6 +108,7 @@ static ui_act_t tap_row(ui_nav_t *n, int row, const st_settings_t *cur, st_setti
     if (v->page == UI_PAGE_ROM) {
         if (v->rom_first) { v->rom_pick = row; return UI_ACT_ROM_SWITCH; }
         if (row == v->rom_current) { ui_nav_to_pet(n); return UI_ACT_REDRAW; }  // the running pet: nothing changes
+        n->rom_scroll = v->scroll;
         menu_open(n, UI_PAGE_ROM_CONFIRM);
         v->rom_pick = row;
         n->confirm_ms = v->t_ms;
@@ -138,7 +146,7 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
 
     if (boot_short || ev->kind == UI_G_SWIPE_DOWN) {
         if (v->page == UI_PAGE_ROM && v->rom_first) return UI_ACT_NONE;             // nothing to go back to
-        if (v->page == UI_PAGE_ROM_CONFIRM) { menu_open(n, UI_PAGE_ROM); return UI_ACT_REDRAW; }  // cancel
+        if (v->page == UI_PAGE_ROM_CONFIRM) { rom_list_again(n); return UI_ACT_REDRAW; }  // cancel
         if (v->page == UI_PAGE_CLOCK_CONFIRM) { menu_open(n, UI_PAGE_CLOCK); return UI_ACT_REDRAW; }
         ui_nav_to_pet(n);
         return UI_ACT_REDRAW;
@@ -167,7 +175,7 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
         bool pill = ctl == UI_CTL_ROM_CANCEL || ctl == UI_CTL_ROM_SWITCH || ctl == UI_CTL_CLOCK_CANCEL || ctl == UI_CTL_CLOCK_OK;
         if (pill && v->t_ms - n->confirm_ms < UI_CONFIRM_GUARD_MS)
             return UI_ACT_NONE;  // too soon: the rest of a double tap on what opened this page
-        if (ctl == UI_CTL_ROM_CANCEL) { menu_open(n, UI_PAGE_ROM); return UI_ACT_REDRAW; }
+        if (ctl == UI_CTL_ROM_CANCEL) { rom_list_again(n); return UI_ACT_REDRAW; }
         if (ctl == UI_CTL_ROM_SWITCH) return UI_ACT_ROM_SWITCH;
         if (ctl == UI_CTL_CLOCK_SET) {
             menu_open(n, UI_PAGE_CLOCK_CONFIRM);

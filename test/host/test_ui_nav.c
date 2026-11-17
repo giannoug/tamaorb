@@ -608,9 +608,42 @@ static void test_clock_screen_off_lands_on_pet(void)
     TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
 }
 
+// Review finding: leaving the Switch page (Cancel, BOOT, swipe down) returns to the list where it was scrolled.
+static void test_rom_confirm_cancel_keeps_scroll(void)
+{
+    static const ui_rom_row_t MANY[8] = { { "P1", "Gen 1 - a.bin" }, { "P2", "Gen 2 - b.bin" }, { "P1", "Gen 1 - c.bin" },
+                                          { "P2", "Gen 2 - d.bin" }, { "P1", "Gen 1 - e.bin" }, { "P2", "Gen 2 - f.bin" },
+                                          { "P1", "Gen 1 - g.bin" }, { "P2", "Gen 2 - h.bin" } };
+    for (int how = 0; how < 3; how++) {
+        ui_nav_init(&nav);
+        ui_nav_open_roms(&nav, true);
+        nav.view.roms = MANY;
+        nav.view.rom_count = 8;
+        nav.view.rom_current = 0;
+        int y = row_y(7);  // scrolls the list down to the last row
+        TEST_ASSERT_TRUE(y >= 0);
+        const int scrolled = nav.view.scroll;
+        TEST_ASSERT_GREATER_THAN(0, scrolled);
+        tap(120, y);
+        TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
+        if (how == 0) {
+            int x, py;
+            TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_ROM_CANCEL, &x, &py));
+            tap(x, py);
+        } else if (how == 1) {
+            step(UI_G_NONE, 0, 0, 0, 0, true);                // BOOT short press
+        } else {
+            step(UI_G_SWIPE_DOWN, 120, 10, 0, 80, false);
+        }
+        TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(scrolled, nav.view.scroll, how == 0 ? "Cancel" : how == 1 ? "BOOT" : "swipe");
+    }
+}
+
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_rom_confirm_cancel_keeps_scroll);
     RUN_TEST(test_clock_row_opens_page);
     RUN_TEST(test_clock_back_returns_to_list);
     RUN_TEST(test_clock_set_opens_confirm_with_ball_time);
