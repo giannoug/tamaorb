@@ -78,6 +78,7 @@ set(TESTROM_ENV "TAMAORB_TEST_ROM=testclock.bin;TAMAORB_ROM_DIR=${CMAKE_BINARY_D
 add_test(NAME test_core_testrom COMMAND test_core)
 set_tests_properties(test_core_testrom PROPERTIES ENVIRONMENT "${TESTROM_ENV}")
 tamaorb_test(test_time ${TAMA_CORE_SRC})
+tamaorb_test(test_sleep ${TAMA_CORE_SRC})
 tamaorb_test(test_pet ${TAMA_CORE_SRC} ${PERSIST_SRC})
 tamaorb_test(test_clock ${TAMA_CORE_SRC} ${PERSIST_SRC})
 # As CI runs it: no ROMs or saves, so tc_init never runs and the ROM tests skip.

@@ -7,7 +7,6 @@
 #define STATE_VERSION     2   // 2: + previous_cycles, scaled_cycle_accumulator, cpu_frequency (tamalib 223ba64)
 #define STATE_V2_EXTRA    9   // bytes version 2 adds at the end; version 1 saves are this much shorter
 #define PUBLISH_TICKS     (32768u / 30u)   // publish a frame every 1/30 s of emulated time
-#define SLEEP_BATCH_US    2000             // only really sleep once this far ahead
 
 static const tc_platform_t *g_plat;
 static bool g_realtime;
@@ -48,13 +47,25 @@ static uint32_t us_to_ts(uint64_t us) { return (uint32_t)(us * TC_TICK_HZ / 1000
 // read there saves one platform call per emulated instruction.
 static timestamp_t hal_get_timestamp(void) { return g_realtime ? us_to_ts(g_plat->now_us()) : 0; }
 
+static volatile uint32_t g_stretch_us = TC_SLEEP_STRETCH_US_DEFAULT;  // sleep once this far ahead of real time
+// Where emulated time stands in real time: tamalib's sleep target (in ticks of the real clock) minus the tick
+// counter when it asked. Constant while in real time; buzzer changes use it to wait for their moment.
+static uint32_t g_ts_offset;
+static bool g_ts_offset_known;
+
+void tc_set_sleep_stretch_us(uint32_t us) { g_stretch_us = us ? us : TC_SLEEP_STRETCH_US_DEFAULT; }
+
+static uint64_t ticks_to_us_ceil(uint32_t ticks) { return ((uint64_t)ticks * 1000000u + TC_TICK_HZ - 1) / TC_TICK_HZ; }
+
 static void hal_sleep_until(timestamp_t ts)
 {
+    g_ts_offset = ts - tc_tick_counter();
+    g_ts_offset_known = true;
     uint64_t now = g_plat->now_us();
     int32_t ahead_ticks = (int32_t)(ts - us_to_ts(now));
     if (ahead_ticks <= 0) return;
-    uint64_t ahead_us = ((uint64_t)ahead_ticks * 1000000u + TC_TICK_HZ - 1) / TC_TICK_HZ;
-    if (ahead_us >= SLEEP_BATCH_US) g_plat->sleep_until_us(now + ahead_us);
+    uint64_t ahead_us = ticks_to_us_ceil((uint32_t)ahead_ticks);
+    if (ahead_us >= g_stretch_us) g_plat->sleep_until_us(now + ahead_us);
 }
 
 static void hal_update_screen(void) {}
@@ -77,7 +88,18 @@ static bool g_quiet;  // catch-up is silent; the final buzzer state is reported 
 
 static void tone_changed(void)
 {
-    if (g_plat->tone && !g_quiet) g_plat->tone(g_tone.freq_dhz, g_tone.on);
+    if (!g_plat->tone || g_quiet) return;
+    // Running ahead of real time (up to one sleep stretch): let real time reach this change's moment first, so a
+    // beep starts and stops when it would on the toy. The speaker may start early (tone_prepare) for a tone-on.
+    if (g_realtime && g_ts_offset_known) {
+        uint64_t now = g_plat->now_us();
+        int32_t ahead = (int32_t)(tc_tick_counter() + g_ts_offset - us_to_ts(now));
+        if (ahead > 0) {
+            if (g_tone.on && g_plat->tone_prepare) g_plat->tone_prepare();
+            g_plat->sleep_until_us(now + ticks_to_us_ceil((uint32_t)ahead));
+        }
+    }
+    g_plat->tone(g_tone.freq_dhz, g_tone.on);
 }
 
 static void hal_set_frequency(u32_t freq)
@@ -174,6 +196,7 @@ void tc_reset_to_boot(void)
 void tc_set_realtime(bool realtime)
 {
     g_realtime = realtime;
+    g_ts_offset_known = false;  // tamalib re-syncs its reference below; learnt again at its next sleep request
     tamalib_set_speed(realtime ? 1 : 0);
     tamalib_set_exec_mode(EXEC_MODE_RUN);  // re-syncs tamalib's reference timestamp
 }

@@ -19,11 +19,19 @@ typedef struct {
     void     (*tone)(uint32_t freq_dhz, bool on);  // buzzer changes, called on the emulator task; may be NULL
     void     (*lock)(void);                   // may be NULL (single-threaded hosts)
     void     (*unlock)(void);
+    // May be NULL. Emulator task: the buzzer is about to turn on while the emulator runs ahead of real time; it
+    // waits for the beep's moment next. Lets a platform start its speaker early.
+    void     (*tone_prepare)(void);
 } tc_platform_t;
 
 bool     tc_init(const uint16_t *program, const tc_platform_t *plat);  // once per process; captures the boot snapshot
 void     tc_reset_to_boot(void);
 void     tc_set_realtime(bool realtime);
+// Any task. How far ahead of real time the emulator may run before it sleeps (real-time mode). The UI sets 20 ms with
+// the screen off so the ball can light-sleep (it needs >= 8 ms idle), the default with it on. Takes effect at the next
+// wait. Buzzer changes still happen at their moment: the emulator waits for real time to reach them.
+#define TC_SLEEP_STRETCH_US_DEFAULT 2000u
+void     tc_set_sleep_stretch_us(uint32_t us);
 void     tc_step(uint32_t n);
 void     tc_post_buttons(uint8_t mask);
 void     tc_post_remote_buttons(uint8_t mask);  // any task; applied mask = touch mask | remote mask
