@@ -15,6 +15,7 @@ static bool g_realtime;
 static tc_frame_t g_back, g_front;
 static uint8_t g_front_ram[MEM_RAM_SIZE / 2];  // packed like state->memory, copied with the frame
 static uint32_t g_front_seq;
+static tc_cpu_t g_front_cpu;  // the CPU at that publish, copied with the frame and RAM
 static uint32_t g_last_publish_tick;
 static bool g_published_once;
 
@@ -108,12 +109,34 @@ static hal_t g_hal_impl = {
 
 /* ---- frames and buttons ---- */
 
+static void cpu_copy(tc_cpu_t *c)
+{
+    const state_t *st = tamalib_get_state();
+    c->tick = *st->tick_counter;
+    c->pc = *st->pc & 0x1FFF;
+    c->x = *st->x & 0xFFF;
+    c->y = *st->y & 0xFFF;
+    c->a = *st->a & 0xF;
+    c->b = *st->b & 0xF;
+    c->np = *st->np & 0x1F;
+    c->sp = *st->sp;
+    c->flags = *st->flags & 0xF;
+    c->halted = *st->cpu_halted;
+    c->call_depth = *st->call_depth;
+    for (int i = 0; i < 6; i++) c->irq[i] = (tc_irq_t){ st->interrupts[i].factor_flag_reg & 0xF, st->interrupts[i].mask_reg & 0xF };
+    c->buttons = g_applied;
+}
+
 static void publish(void)
 {
+    tc_cpu_t cpu;
+    cpu_copy(&cpu);  // outside the lock: only the copy below is taken under it
     lock();
     g_front = g_back;
     memcpy(g_front_ram, tamalib_get_state()->memory, sizeof g_front_ram);
     g_front_seq++;
+    cpu.seq = g_front_seq;
+    g_front_cpu = cpu;
     unlock();
     g_last_publish_tick = tc_tick_counter();
     g_published_once = true;
@@ -323,6 +346,26 @@ size_t tc_get_ram(uint8_t *out, size_t n)
     unlock();
     for (size_t a = 0; a < n; a++) out[a] = GET_RAM_MEMORY(packed, a);
     return n;
+}
+
+size_t tc_get_snapshot(tc_cpu_t *cpu, tc_frame_t *frame, uint8_t *ram, size_t n)
+{
+    if (!g_plat) return 0;
+    if (!ram) n = 0;
+    if (n > MEM_RAM_SIZE) n = MEM_RAM_SIZE;
+    uint8_t packed[sizeof g_front_ram];
+    size_t bytes = (n + 1) / 2;
+    lock();
+    bool any = g_front_seq != 0;
+    if (any) {
+        if (cpu) *cpu = g_front_cpu;
+        if (frame) *frame = g_front;
+        memcpy(packed, g_front_ram, bytes);
+    }
+    unlock();
+    if (!any) return 0;
+    for (size_t a = 0; a < n; a++) ram[a] = GET_RAM_MEMORY(packed, a);
+    return n ? n : (size_t)MEM_RAM_SIZE;  // with no RAM asked for, still say a snapshot exists
 }
 
 void tc_get_frame(tc_frame_t *out)

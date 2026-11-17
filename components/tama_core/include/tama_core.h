@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // tamalib wrapper. Portable: no ESP-IDF headers.
-// Threading: tc_post_buttons, tc_post_remote_buttons, tc_get_frame, tc_get_ram, tc_frame_changed, tc_get_tone,
+// Threading: tc_post_buttons, tc_post_remote_buttons, tc_get_frame, tc_get_ram, tc_get_snapshot, tc_frame_changed, tc_get_tone,
 // tc_clock_request, tc_clock_poll and tc_state_compatible may be called from any task. Everything else must run on the emulator task.
 #pragma once
 #include <stdbool.h>
@@ -33,6 +33,23 @@ void     tc_get_frame(tc_frame_t *out);
 // published snapshot; returns the count (0 before the first publish, at most the build's RAM size).
 size_t   tc_get_ram(uint8_t *out, size_t n);
 bool     tc_frame_changed(uint32_t *seq);
+
+// The CPU at the last publish, which also copies the frame and RAM (30 times per emulated second).
+typedef struct { uint8_t factor, mask; } tc_irq_t;
+typedef struct {
+    uint32_t seq;          // publish count, as tc_frame_changed counts
+    uint32_t tick;         // tick counter at the publish
+    uint16_t pc;           // 13 bits: bank (bit 12), page (11-8), step (7-0)
+    uint16_t x, y;         // 12 bits each: P (11-8), H (7-4), L (3-0)
+    uint8_t a, b, np, sp, flags;  // flags: bit 0 C, 1 Z, 2 D, 3 I
+    bool halted;
+    uint32_t call_depth;
+    tc_irq_t irq[6];       // tamalib's slot order: prog timer, serial, K10-K13, K00-K03, stopwatch, clock timer
+    uint8_t buttons;       // the mask applied to tamalib (touch | remote)
+} tc_cpu_t;
+// Any task. One instant: the CPU, frame and up to n RAM nibbles from the same publish. Returns the nibbles
+// copied (0 before the first publish; cpu and frame untouched then). cpu, frame or ram may be NULL.
+size_t   tc_get_snapshot(tc_cpu_t *cpu, tc_frame_t *frame, uint8_t *ram, size_t n);
 void     tc_get_tone(tc_tone_t *out);
 uint32_t tc_tick_counter(void);
 size_t   tc_state_size(void);

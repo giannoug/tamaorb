@@ -278,6 +278,79 @@ static void test_ram_snapshot_follows_publish(void)
     TEST_ASSERT_EQUAL_HEX8(0xEE, ram[0x011]);
 }
 
+// ---- The debug snapshot: CPU, frame and RAM from one publish ----
+typedef struct { uint32_t tick; uint16_t pc; uint8_t a; uint8_t n10; } step_rec_t;
+static step_rec_t g_recs[1 << 16];
+static size_t g_nrec;
+static void record_step(void)
+{
+    state_t *st = tamalib_get_state();
+    if (g_nrec < sizeof g_recs / sizeof g_recs[0])
+        g_recs[g_nrec++] = (step_rec_t){ *st->tick_counter, *st->pc, *st->a, (uint8_t)GET_RAM_MEMORY(st->memory, 0x10) };
+}
+
+static void test_snapshot_is_one_instant(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    for (int k = 0; k < 5; k++) {
+        g_nrec = 0;
+        tc_debug_set_step_hook(record_step);
+        run_seconds(1);
+        tc_debug_set_step_hook(NULL);
+        tc_cpu_t cpu;
+        uint8_t ram[TC_RAM_NIBBLES];
+        TEST_ASSERT_GREATER_THAN(0, tc_get_snapshot(&cpu, NULL, ram, sizeof ram));
+        const step_rec_t *hit = NULL;
+        for (size_t i = 0; i < g_nrec; i++)
+            if (g_recs[i].tick == cpu.tick) hit = &g_recs[i];  // the last instruction at that tick: the publish
+        TEST_ASSERT_NOT_NULL_MESSAGE(hit, "no instruction ended at the snapshot's tick");
+        TEST_ASSERT_EQUAL_HEX16(hit->pc, cpu.pc);
+        TEST_ASSERT_EQUAL_HEX8(hit->a, cpu.a);
+        TEST_ASSERT_EQUAL_HEX8(hit->n10, ram[0x10]);
+    }
+}
+
+static void test_snapshot_matches_frame_and_ram_calls(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    uint32_t seq = 0;
+    run_seconds(1);
+    tc_frame_changed(&seq);
+    tc_cpu_t cpu;
+    tc_frame_t f1, f2;
+    uint8_t r1[TC_RAM_NIBBLES], r2[TC_RAM_NIBBLES];
+    size_t n = tc_get_snapshot(&cpu, &f1, r1, sizeof r1);
+    TEST_ASSERT_EQUAL(tc_get_ram(r2, sizeof r2), n);
+    tc_get_frame(&f2);
+    TEST_ASSERT_EQUAL_MEMORY(&f2, &f1, sizeof f1);
+    TEST_ASSERT_EQUAL_MEMORY(r2, r1, n);
+    TEST_ASSERT_EQUAL_UINT32(seq, cpu.seq);
+    run_seconds(1);
+    TEST_ASSERT_TRUE(tc_frame_changed(&seq));
+    tc_get_snapshot(&cpu, NULL, NULL, 0);
+    TEST_ASSERT_EQUAL_UINT32(seq, cpu.seq);
+}
+
+static void test_snapshot_buttons_and_flags(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    tc_post_buttons(TC_BTN_MASK(TC_BTN_A));
+    run_seconds(1);
+    tc_cpu_t cpu;
+    tc_get_snapshot(&cpu, NULL, NULL, 0);
+    tc_post_buttons(0);
+    TEST_ASSERT_EQUAL_HEX8(TC_BTN_MASK(TC_BTN_A), cpu.buttons);
+    TEST_ASSERT_EQUAL_HEX8(0, cpu.flags & ~0xF);
+    TEST_ASSERT_LESS_THAN(0x2000, cpu.pc);
+    TEST_ASSERT_LESS_THAN(0x1000, cpu.x);
+    TEST_ASSERT_LESS_THAN(0x1000, cpu.y);
+    TEST_ASSERT_LESS_THAN(16, cpu.a);
+    TEST_ASSERT_EQUAL_HEX8(8, cpu.irq[5].mask & 8);  // the clock timer's 1 Hz interrupt is enabled (P1 and the test ROM)
+    run_seconds(1);
+    tc_get_snapshot(&cpu, NULL, NULL, 0);
+    TEST_ASSERT_EQUAL_HEX8(0, cpu.buttons);
+}
+
 int main(void)
 {
     static uint8_t rom[TC_ROM_BYTES];
@@ -288,6 +361,7 @@ int main(void)
     RUN_TEST(test_realtime_equals_fast);
     uint8_t early[4];
     TEST_ASSERT_EQUAL(0, tc_get_ram(early, sizeof early));  // nothing published yet
+    TEST_ASSERT_EQUAL(0, tc_get_snapshot(NULL, NULL, early, sizeof early));
     inited = tc_init(program, &plat);
     TEST_ASSERT_TRUE(inited);
     RUN_TEST(test_post_buttons_mask);
@@ -304,5 +378,8 @@ int main(void)
     RUN_TEST(test_realtime_pace_matches_wall);
     RUN_TEST(test_tone_changes_reach_platform);
     RUN_TEST(test_ram_snapshot_follows_publish);
+    RUN_TEST(test_snapshot_is_one_instant);
+    RUN_TEST(test_snapshot_matches_frame_and_ram_calls);
+    RUN_TEST(test_snapshot_buttons_and_flags);
     return UNITY_END();
 }
