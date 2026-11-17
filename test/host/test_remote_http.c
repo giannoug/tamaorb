@@ -503,6 +503,84 @@ static void test_pet_clock_sync_checks_origin(void)
     TEST_ASSERT_EQUAL(0, fake.sync_calls);
 }
 
+// ---- debugger ----
+static void test_debug_json_fields(void)
+{
+    go(RM_GET, "/api/debug", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    cJSON *j = json();
+    static const char *const keys[] = { "seq", "model", "phase", "tick", "pc", "np", "a", "b", "x", "y", "sp", "flags",
+                                        "halted", "call_depth", "irq", "buttons", "buzzer", "lcd", "icons", "ram" };
+    for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) TEST_ASSERT_NOT_NULL_MESSAGE(cJSON_GetObjectItem(j, keys[i]), keys[i]);
+    TEST_ASSERT_EQUAL_STRING("P1", cJSON_GetObjectItem(j, "model")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("run", cJSON_GetObjectItem(j, "phase")->valuestring);
+    TEST_ASSERT_EQUAL(0x14E, cJSON_GetObjectItem(j, "pc")->valueint);
+    TEST_ASSERT_EQUAL(42, cJSON_GetObjectItem(j, "seq")->valueint);
+    TEST_ASSERT_EQUAL(123456, cJSON_GetObjectItem(j, "tick")->valueint);
+    TEST_ASSERT_EQUAL(4, cJSON_GetObjectItem(j, "flags")->valueint);
+    cJSON *irq = cJSON_GetObjectItem(j, "irq");
+    TEST_ASSERT_EQUAL(6, cJSON_GetArraySize(irq));
+    TEST_ASSERT_EQUAL_STRING("prog_timer", cJSON_GetObjectItem(cJSON_GetArrayItem(irq, 0), "name")->valuestring);
+    cJSON *clk = cJSON_GetArrayItem(irq, 5);
+    TEST_ASSERT_EQUAL_STRING("clock_timer", cJSON_GetObjectItem(clk, "name")->valuestring);
+    TEST_ASSERT_EQUAL(8, cJSON_GetObjectItem(clk, "mask")->valueint);
+    TEST_ASSERT_EQUAL(0, cJSON_GetObjectItem(clk, "factor")->valueint);
+    cJSON *lcd = cJSON_GetObjectItem(j, "lcd");
+    TEST_ASSERT_EQUAL(16, cJSON_GetArraySize(lcd));
+    TEST_ASSERT_EQUAL_STRING("00000001", cJSON_GetArrayItem(lcd, 0)->valuestring);
+    TEST_ASSERT_EQUAL_STRING("00008000", cJSON_GetArrayItem(lcd, 15)->valuestring);
+    TEST_ASSERT_EQUAL(0x80, cJSON_GetObjectItem(j, "icons")->valueint);
+    const char *ram = cJSON_GetObjectItem(j, "ram")->valuestring;
+    TEST_ASSERT_EQUAL(768, strlen(ram));
+    TEST_ASSERT_EQUAL_STRING_LEN("0123456789ABCDEF0123", ram, 20);
+    cJSON_Delete(j);
+    TEST_ASSERT_EQUAL(1, fake.debug_calls);
+}
+
+static void test_debug_nothing_published(void)
+{
+    fake.debug.ram_n = 0;
+    go(RM_GET, "/api/debug", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    cJSON *j = json();
+    TEST_ASSERT_EQUAL_STRING("", cJSON_GetObjectItem(j, "ram")->valuestring);
+    cJSON_Delete(j);
+}
+
+static void test_debug_unknown_model(void)
+{
+    fake.debug.model = TC_MODEL_UNKNOWN;
+    go(RM_GET, "/api/debug", NULL, NULL, NULL);
+    cJSON *j = json();
+    TEST_ASSERT_EQUAL_STRING("unknown", cJSON_GetObjectItem(j, "model")->valuestring);
+    cJSON_Delete(j);
+}
+
+static void test_rom_bytes(void)
+{
+    go(RM_GET, "/api/rom", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL_STRING("application/octet-stream", resp.content_type);
+    TEST_ASSERT_EQUAL(12288, resp.body_len);
+    TEST_ASSERT_EQUAL_MEMORY(fake.rom, resp.body, 12288);
+}
+
+static void test_rom_none_is_404(void)
+{
+    fake.have_rom = false;
+    go(RM_GET, "/api/rom", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(404, resp.status);
+}
+
+static void test_debug_and_rom_get_only(void)
+{
+    go(RM_POST, "/api/debug", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(405, resp.status);
+    go(RM_POST, "/api/rom", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(405, resp.status);
+    TEST_ASSERT_EQUAL(0, fake.debug_calls);
+}
+
 static int s_allocs;
 static void *counting_alloc(size_t n) { s_allocs++; return malloc(n); }
 static void *failing_alloc(size_t n) { (void)n; return NULL; }
@@ -586,6 +664,12 @@ int main(void)
     RUN_TEST(test_pet_clock_sync_refusals);
     RUN_TEST(test_pet_clock_sync_get_is_405);
     RUN_TEST(test_pet_clock_sync_checks_origin);
+    RUN_TEST(test_debug_json_fields);
+    RUN_TEST(test_debug_nothing_published);
+    RUN_TEST(test_debug_unknown_model);
+    RUN_TEST(test_rom_bytes);
+    RUN_TEST(test_rom_none_is_404);
+    RUN_TEST(test_debug_and_rom_get_only);
     RUN_TEST(test_look_and_press);
     RUN_TEST(test_big_buffers_come_from_rm_alloc);
     RUN_TEST(test_body_parsed_by_length);

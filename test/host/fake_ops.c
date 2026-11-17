@@ -85,10 +85,22 @@ static rm_err_t f_sync_clock(void *ctx, int32_t *written_s)
     if (fake.sync_result == RM_OK) *written_s = fake.sync_written;
     return fake.sync_result;
 }
+static void f_debug(void *ctx, rm_debug_t *out)
+{
+    fake.debug_calls++;
+    *out = fake.debug;
+}
+static bool f_rom(void *ctx, const uint8_t **data, size_t *len)
+{
+    if (!fake.have_rom) return false;
+    *data = fake.rom;
+    *len = sizeof fake.rom;
+    return true;
+}
 rm_ops_t fake_ops = {.look = f_look, .press = f_press, .status = f_status, .get_settings = f_get, .put_settings = f_put,
                      .list_pets = f_pets, .switch_pet = f_switch, .export_save = f_export, .import_save = f_import,
                      .set_wifi = f_wifi, .restart = f_restart, .guide = f_guide, .restart_pending = f_restart_pending,
-                     .sync_clock = f_sync_clock, .ctx = NULL};
+                     .sync_clock = f_sync_clock, .debug = f_debug, .rom = f_rom, .ctx = NULL};
 
 void fake_reset(void)
 {
@@ -104,6 +116,18 @@ void fake_reset(void)
     fake.status.catchup_speed = 24.0f;
     fake.status.pet_clock_s = -1;
     fake.status.ball_clock_s = -1;
+    // a debug snapshot: P1, running, RAM nibble a = a & 15, an LCD with one lit pixel per row
+    fake.debug.model = TC_MODEL_P1;
+    fake.debug.phase = RM_PHASE_RUN;
+    fake.debug.cpu = (tc_cpu_t){ .seq = 42, .tick = 123456, .pc = 0x14E, .x = 0x010, .y = 0x05A, .a = 0, .b = 3, .np = 1,
+                                 .sp = 0x7D, .flags = 4, .halted = false, .call_depth = 1, .buttons = 1 };
+    fake.debug.cpu.irq[5] = (tc_irq_t){ .factor = 0, .mask = 8 };
+    for (int y = 0; y < 16; y++) fake.debug.frame.rows[y] = 1u << y;
+    fake.debug.frame.icons = 0x80;
+    for (int a = 0; a < TC_RAM_NIBBLES; a++) fake.debug.ram[a] = (uint8_t)(a & 15);
+    fake.debug.ram_n = TC_RAM_NIBBLES;
+    for (size_t i = 0; i < sizeof fake.rom; i++) fake.rom[i] = (uint8_t)(i * 7);
+    fake.have_rom = true;
     snprintf(fake.pets[0].name, sizeof fake.pets[0].name, "tama.bin");
     fake.pets[0].model = TC_MODEL_P1;
     fake.pets[0].active = true;

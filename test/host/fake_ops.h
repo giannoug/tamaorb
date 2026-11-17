@@ -34,6 +34,11 @@ typedef struct {
     rm_err_t sync_result;
     int32_t sync_written;
     int sync_calls;
+    // debugger
+    rm_debug_t debug;
+    int debug_calls;
+    uint8_t rom[12288];
+    bool have_rom;
 } fake_state_t;
 
 extern fake_state_t fake;

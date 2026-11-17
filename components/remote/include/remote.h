@@ -67,6 +67,17 @@ void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[48]);
 #include "cJSON.h"
 #include "settings.h"
 
+// The debugger's snapshot: the CPU, LCD and RAM from one publish (tc_get_snapshot), with the model and phase.
+typedef struct {
+    tc_model_t model;
+    rm_phase_t phase;
+    bool buzzer;
+    tc_cpu_t cpu;
+    tc_frame_t frame;
+    uint8_t ram[TC_RAM_NIBBLES];
+    size_t ram_n;              // nibbles valid in ram (0: nothing published yet)
+} rm_debug_t;
+
 typedef enum { RM_OK = 0, RM_ERR_BUSY, RM_ERR_CATCHUP, RM_ERR_NOTFOUND, RM_ERR_BAD, RM_ERR_IO, RM_ERR_NOTIME } rm_err_t;
 typedef struct {
     char name[64];
@@ -105,6 +116,8 @@ typedef struct {
     // Sets the pet's clock to the ball's local time; *written_s = the time written (seconds of the day).
     // NOTFOUND: not a P1/P2; NOTIME: no trusted time; CATCHUP; BUSY: the pet's own clock menu stops its clock.
     rm_err_t (*sync_clock)(void *ctx, int32_t *written_s);
+    void (*debug)(void *ctx, rm_debug_t *out);                  // one snapshot (also keeps the ball awake a while)
+    bool (*rom)(void *ctx, const uint8_t **data, size_t *len);  // the running ROM's bytes; false: none
     void *ctx;
 } rm_ops_t;
 
@@ -120,6 +133,10 @@ cJSON *rm_json_settings(const st_settings_t *s);  // numbers as numbers, enums a
 // *display_changed (may be NULL) is true iff a display key's value changed.
 const char *rm_json_patch_settings(const cJSON *patch, st_settings_t *s, bool *display_changed);
 cJSON *rm_json_status(const rm_status_t *st);
+// GET /api/debug and the debugger's WebSocket: seq, model, phase, tick, pc, np, a, b, x, y, sp, flags, halted,
+// call_depth, irq [{name, mask, factor}] x6, buttons, buzzer, lcd (16 x 8 hex digits, bit x = pixel x), icons,
+// ram (ram_n upper-case hex digits).
+cJSON *rm_json_debug(const rm_debug_t *d);
 // key: "HH:MM:SS" for 0-86399 seconds of the day, else null.
 void rm_json_add_clock(cJSON *o, const char *key, int32_t sec_of_day);
 cJSON *rm_json_pets(const rm_pet_t *p, int n);

@@ -120,11 +120,11 @@ static void test_unknown_method(void)
 static void test_tools_list_names(void)
 {
     static const char *const want[] = {"look", "press", "status", "get_settings", "set_settings", "list_pets", "switch_pet",
-                                       "sync_pet_clock"};
+                                       "sync_pet_clock", "read_ram"};
     cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", NULL);
     cJSON *tools = cJSON_GetObjectItem(result(r), "tools");
-    TEST_ASSERT_EQUAL(8, cJSON_GetArraySize(tools));
-    for (int i = 0; i < 8; i++) {
+    TEST_ASSERT_EQUAL(9, cJSON_GetArraySize(tools));
+    for (int i = 0; i < 9; i++) {
         cJSON *t = cJSON_GetArrayItem(tools, i);
         TEST_ASSERT_EQUAL_STRING(want[i], cJSON_GetObjectItem(t, "name")->valuestring);
         TEST_ASSERT_EQUAL_STRING("object", cJSON_GetObjectItem(cJSON_GetObjectItem(t, "inputSchema"), "type")->valuestring);
@@ -404,6 +404,51 @@ static void test_status_description_mentions_pet_clock(void)
     cJSON_Delete(r);
 }
 
+static void test_read_ram_description_says_read_only(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", NULL);
+    cJSON *t = cJSON_GetArrayItem(cJSON_GetObjectItem(result(r), "tools"), 8);
+    TEST_ASSERT_EQUAL_STRING("read_ram", cJSON_GetObjectItem(t, "name")->valuestring);
+    TEST_ASSERT_NOT_NULL(strstr(cJSON_GetObjectItem(t, "description")->valuestring, "Read only"));
+    cJSON_Delete(r);
+}
+
+static void test_read_ram_whole(void)
+{
+    cJSON *r = tool("read_ram", "{}");
+    TEST_ASSERT_FALSE(is_error(r));
+    const char *t = text0(r);
+    TEST_ASSERT_NOT_NULL(strstr(t, "0x000: 0123456789ABCDEF0123456789ABCDEF\n"));
+    TEST_ASSERT_NOT_NULL(strstr(t, "0x2E0: "));
+    TEST_ASSERT_NOT_NULL(strstr(t, "pc=0x14E"));
+    TEST_ASSERT_NOT_NULL(strstr(t, "flags=D"));
+    TEST_ASSERT_NOT_NULL(strstr(t, "model=P1"));
+    cJSON_Delete(r);
+}
+
+static void test_read_ram_range(void)
+{
+    cJSON *r = tool("read_ram", "{\"from\":16,\"count\":6}");
+    TEST_ASSERT_FALSE(is_error(r));
+    const char *t = text0(r);
+    TEST_ASSERT_NOT_NULL(strstr(t, "0x010: 012345\n"));
+    TEST_ASSERT_NULL(strstr(t, "0x000:"));
+    TEST_ASSERT_NULL(strstr(t, "0x020:"));
+    cJSON_Delete(r);
+}
+
+static void test_read_ram_bad_range(void)
+{
+    static const char *const bad[][2] = { { "{\"from\":768}", "from" }, { "{\"count\":0}", "count" },
+                                           { "{\"from\":-1}", "from" }, { "{\"from\":\"x\"}", "from" } };
+    for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
+        cJSON *r = tool("read_ram", bad[i][0]);
+        TEST_ASSERT_TRUE_MESSAGE(is_error(r), bad[i][0]);
+        TEST_ASSERT_NOT_NULL_MESSAGE(strstr(text0(r), bad[i][1]), bad[i][0]);
+        cJSON_Delete(r);
+    }
+}
+
 static void test_resources(void)
 {
     cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}", NULL);
@@ -531,6 +576,10 @@ int main(void)
     RUN_TEST(test_sync_pet_clock_refusals_are_tool_errors);
     RUN_TEST(test_sync_pet_clock_out_of_range_is_busy_like_usb);
     RUN_TEST(test_status_description_mentions_pet_clock);
+    RUN_TEST(test_read_ram_description_says_read_only);
+    RUN_TEST(test_read_ram_whole);
+    RUN_TEST(test_read_ram_range);
+    RUN_TEST(test_read_ram_bad_range);
     RUN_TEST(test_resources);
     RUN_TEST(test_resources_read_guide);
     RUN_TEST(test_hostile_input);

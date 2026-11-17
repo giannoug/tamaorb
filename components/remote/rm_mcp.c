@@ -60,6 +60,13 @@ static const tool_def_t TOOLS[] = {
      "change: tell the owner. Fails for ROMs other than P1/P2, without internet time, while catching up, or while the "
      "pet's own clock menu is open.",
      "{\"type\":\"object\",\"properties\":{}}"},
+    {"read_ram",
+     "Read only: the emulator's RAM (one hex digit per 4-bit nibble, rows of 32 with their address), then the CPU "
+     "registers, flags, interrupts, model and phase, all from one instant. Known pet addresses (hunger 0x40, clock "
+     "0x10-0x15, ...) are in docs/pet-ram.md. Nothing is changed.",
+     "{\"type\":\"object\",\"properties\":{"
+     "\"from\":{\"type\":\"integer\",\"minimum\":0,\"description\":\"First nibble address (default 0).\"},"
+     "\"count\":{\"type\":\"integer\",\"minimum\":1,\"description\":\"Nibbles to read (default: to the end).\"}}}"},
 };
 #define N_TOOLS ((int)(sizeof TOOLS / sizeof TOOLS[0]))
 
@@ -203,6 +210,57 @@ static cJSON *tool_sync_pet_clock(const rm_ops_t *ops)
     }
 }
 
+static bool int_arg(const cJSON *args, const char *key, int dflt, int min, int *out)
+{
+    const cJSON *v = cJSON_GetObjectItemCaseSensitive(args, key);
+    if (!v) { *out = dflt; return true; }
+    if (!cJSON_IsNumber(v) || v->valuedouble != (double)(int)v->valuedouble || (int)v->valuedouble < min) return false;
+    *out = (int)v->valuedouble;
+    return true;
+}
+
+static cJSON *tool_read_ram(const rm_ops_t *ops, const cJSON *args)
+{
+    rm_debug_t *d = rm_alloc(sizeof *d);
+    if (!d) return tool_result("out of memory", true);
+    ops->debug(ops->ctx, d);
+    int n = (int)d->ram_n, from, count;
+    cJSON *r = NULL;
+    if (!int_arg(args, "from", 0, 0, &from) || (n && from >= n)) { r = tool_error("invalid value for %s", "from"); goto done; }
+    if (!int_arg(args, "count", n - from, 1, &count)) { r = tool_error("invalid value for %s", "count"); goto done; }
+    if (!n) { r = tool_result("nothing to read yet: the emulator hasn't published a snapshot", true); goto done; }
+    if (count > n - from) count = n - from;
+    const tc_cpu_t *c = &d->cpu;
+    size_t cap = 512 + (size_t)count + (size_t)(count / 32 + 2) * 8;
+    char *t = rm_alloc(cap);
+    if (!t) { r = tool_result("out of memory", true); goto done; }
+    char fl[5] = "", bt[4] = "";
+    for (int i = 0; i < 4; i++) if (c->flags & (1 << i)) strncat(fl, &"CZDI"[i], 1);
+    for (int i = 0; i < 3; i++) if (c->buttons & (1 << i)) strncat(bt, &"ABC"[i], 1);
+    static const char *const MODEL[] = { "unknown", "P1", "P2", "test" };
+    size_t k = (size_t)snprintf(t, cap,
+        "model=%s phase=%s seq=%lu tick=%lu\n"
+        "pc=0x%03X np=0x%02X a=0x%X b=0x%X x=0x%03X y=0x%03X sp=0x%02X flags=%s halted=%d call_depth=%lu buttons=%s\n"
+        "irq (mask/factor): prog_timer %X/%X serial %X/%X k10_k13 %X/%X k00_k03 %X/%X stopwatch %X/%X clock_timer %X/%X\n",
+        MODEL[d->model <= TC_MODEL_TEST_ROM ? d->model : 0],
+        d->phase == RM_PHASE_RUN ? "run" : d->phase == RM_PHASE_CATCHUP ? "catch-up" : "boot",
+        (unsigned long)c->seq, (unsigned long)c->tick, c->pc, c->np, c->a, c->b, c->x, c->y, c->sp, fl[0] ? fl : "-",
+        c->halted, (unsigned long)c->call_depth, bt[0] ? bt : "-",
+        c->irq[0].mask, c->irq[0].factor, c->irq[1].mask, c->irq[1].factor, c->irq[2].mask, c->irq[2].factor,
+        c->irq[3].mask, c->irq[3].factor, c->irq[4].mask, c->irq[4].factor, c->irq[5].mask, c->irq[5].factor);
+    for (int a = from; a < from + count && k + 48 < cap; a += 32) {
+        k += (size_t)snprintf(t + k, cap - k, "0x%03X: ", a);
+        for (int i = a; i < a + 32 && i < from + count; i++) t[k++] = "0123456789ABCDEF"[d->ram[i] & 15];
+        t[k++] = '\n';
+        t[k] = '\0';
+    }
+    r = tool_result(t, false);
+    free(t);
+done:
+    free(d);
+    return r;
+}
+
 static cJSON *tools_call(const rm_ops_t *ops, const cJSON *params)
 {
     const cJSON *name = cJSON_IsObject(params) ? cJSON_GetObjectItemCaseSensitive(params, "name") : NULL;
@@ -231,6 +289,7 @@ static cJSON *tools_call(const rm_ops_t *ops, const cJSON *params)
         free(pets);
     } else if (!strcmp(t, "switch_pet")) r = tool_switch_pet(ops, args);
     else if (!strcmp(t, "sync_pet_clock")) r = tool_sync_pet_clock(ops);
+    else if (!strcmp(t, "read_ram")) r = tool_read_ram(ops, args);
     else r = tool_error("unknown tool: %s", t);
     cJSON_Delete(own);
     return r;

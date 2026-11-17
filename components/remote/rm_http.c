@@ -322,6 +322,29 @@ static void h_pet_clock_sync(const rm_ops_t *ops, rm_resp_t *r)
     set_json(r, 200, j);
 }
 
+static void h_debug(const rm_ops_t *ops, rm_resp_t *r)
+{
+    rm_debug_t *d = rm_alloc(sizeof *d);  // ~1 KB: off the httpd stack
+    if (!d) { set_json(r, 500, NULL); return; }
+    ops->debug(ops->ctx, d);
+    set_json(r, 200, rm_json_debug(d));
+    free(d);
+}
+
+static void h_rom(const rm_ops_t *ops, rm_resp_t *r)
+{
+    const uint8_t *data;
+    size_t len;
+    if (!ops->rom(ops->ctx, &data, &len)) { set_err(r, 404, "not found", NULL); return; }
+    uint8_t *buf = rm_alloc(len);
+    if (!buf) { set_json(r, 500, NULL); return; }
+    memcpy(buf, data, len);
+    r->status = 200;
+    r->content_type = "application/octet-stream";
+    r->body = buf;
+    r->body_len = len;
+}
+
 // ---- router ----
 void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
 {
@@ -346,6 +369,7 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         {"/api/pets", M(RM_GET)},          {"/api/pets/switch", M(RM_POST)},
         {"/api/look", M(RM_GET)},          {"/api/press", M(RM_POST)},
         {"/api/timezones", M(RM_GET)},     {"/api/pet-clock/sync", M(RM_POST)},
+        {"/api/debug", M(RM_GET)},         {"/api/rom", M(RM_GET)},
     };
     if (match_save_path(path, sha)) {
         if (q->method == RM_GET) h_save_get(ops, sha, r);
@@ -367,6 +391,8 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         case 7: h_press(ops, q, r); break;
         case 8: h_timezones(r); break;
         case 9: h_pet_clock_sync(ops, r); break;
+        case 10: h_debug(ops, r); break;
+        case 11: h_rom(ops, r); break;
         }
         return;
     }

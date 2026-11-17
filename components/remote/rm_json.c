@@ -98,6 +98,56 @@ void rm_json_add_clock(cJSON *o, const char *key, int32_t sec_of_day)
     cJSON_AddStringToObject(o, key, t);
 }
 
+static const char *const IRQ_NAMES[6] = { "prog_timer", "serial", "k10_k13", "k00_k03", "stopwatch", "clock_timer" };
+
+cJSON *rm_json_debug(const rm_debug_t *d)
+{
+    cJSON *o = cJSON_CreateObject();
+    if (!o) return NULL;
+    const tc_cpu_t *c = &d->cpu;
+    static const char *const PHASE[] = { [RM_PHASE_BOOT] = "boot", [RM_PHASE_CATCHUP] = "catch-up", [RM_PHASE_RUN] = "run" };
+    cJSON_AddNumberToObject(o, "seq", c->seq);
+    cJSON_AddStringToObject(o, "model", model_name(d->model));
+    cJSON_AddStringToObject(o, "phase", PHASE[d->phase <= RM_PHASE_RUN ? d->phase : RM_PHASE_RUN]);
+    cJSON_AddNumberToObject(o, "tick", c->tick);
+    cJSON_AddNumberToObject(o, "pc", c->pc);
+    cJSON_AddNumberToObject(o, "np", c->np);
+    cJSON_AddNumberToObject(o, "a", c->a);
+    cJSON_AddNumberToObject(o, "b", c->b);
+    cJSON_AddNumberToObject(o, "x", c->x);
+    cJSON_AddNumberToObject(o, "y", c->y);
+    cJSON_AddNumberToObject(o, "sp", c->sp);
+    cJSON_AddNumberToObject(o, "flags", c->flags);
+    cJSON_AddBoolToObject(o, "halted", c->halted);
+    cJSON_AddNumberToObject(o, "call_depth", c->call_depth);
+    cJSON *irq = cJSON_AddArrayToObject(o, "irq");
+    for (int i = 0; irq && i < 6; i++) {
+        cJSON *e = cJSON_CreateObject();
+        if (!e) break;
+        cJSON_AddStringToObject(e, "name", IRQ_NAMES[i]);
+        cJSON_AddNumberToObject(e, "mask", c->irq[i].mask);
+        cJSON_AddNumberToObject(e, "factor", c->irq[i].factor);
+        cJSON_AddItemToArray(irq, e);
+    }
+    cJSON_AddNumberToObject(o, "buttons", c->buttons);
+    cJSON_AddBoolToObject(o, "buzzer", d->buzzer);
+    cJSON *lcd = cJSON_AddArrayToObject(o, "lcd");
+    for (int y = 0; lcd && y < 16; y++) {
+        char row[9];
+        snprintf(row, sizeof row, "%08lX", (unsigned long)d->frame.rows[y]);
+        cJSON_AddItemToArray(lcd, cJSON_CreateString(row));
+    }
+    cJSON_AddNumberToObject(o, "icons", d->frame.icons);
+    size_t n = d->ram_n <= TC_RAM_NIBBLES ? d->ram_n : TC_RAM_NIBBLES;
+    char *hex = rm_alloc(n + 1);
+    if (!hex) { cJSON_Delete(o); return NULL; }
+    for (size_t a = 0; a < n; a++) hex[a] = "0123456789ABCDEF"[d->ram[a] & 15];
+    hex[n] = '\0';
+    cJSON_AddStringToObject(o, "ram", hex);
+    free(hex);
+    return o;
+}
+
 cJSON *rm_json_status(const rm_status_t *st)
 {
     cJSON *o = cJSON_CreateObject();
