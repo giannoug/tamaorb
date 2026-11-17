@@ -25,5 +25,9 @@ void tc_pet_decode(tc_model_t model, const uint8_t *ram, size_t n, tc_pet_t *out
 tc_need_t tc_pet_need(const tc_pet_t *p);  // TC_NEED_NONE when !known
 // "All good", "Hungry", "Unhappy", "Sick", "Droppings", "Asleep"; NULL for TC_NEED_NONE.
 const char *tc_need_word(tc_need_t n);
+// The pet's clock as seconds of the day, from RAM nibbles (tc_get_ram): 0x10 s ones, 0x11 s tens, 0x12 min ones,
+// 0x13 min tens (BCD), hour = 16 * 0x15 + 0x14. False for models other than P1/P2, fewer than 0x16 nibbles, or a
+// digit out of range (tens > 5, ones > 9, hour > 23: the ROM's own carry shows such values for a few instructions).
+bool tc_pet_clock(tc_model_t model, const uint8_t *ram, size_t n, uint32_t *sec_of_day);
 // "lb" for P1, "g" for P2, NULL otherwise.
 const char *tc_weight_unit(tc_model_t m);

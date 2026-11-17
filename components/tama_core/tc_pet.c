@@ -29,6 +29,17 @@ const char *tc_weight_unit(tc_model_t m)
     return r ? r->weight_unit : NULL;
 }
 
+bool tc_pet_clock(tc_model_t model, const uint8_t *ram, size_t n, uint32_t *sec_of_day)
+{
+    enum { A_CLOCK = 0x10 };  // s ones, s tens, min ones, min tens, hour low, hour high
+    if (!row_of(model) || !ram || n < A_CLOCK + 6) return false;
+    const uint8_t *c = ram + A_CLOCK;
+    unsigned hour = 16u * (c[5] & 15) + (c[4] & 15);
+    if (c[0] > 9 || c[1] > 5 || c[2] > 9 || c[3] > 5 || hour > 23) return false;
+    *sec_of_day = hour * 3600u + (c[3] * 10u + c[2]) * 60u + c[1] * 10u + c[0];
+    return true;
+}
+
 static int8_t hearts(uint8_t v) { return (int8_t)((v + 1) / 4); }  // 0-2 -> 0, 3-6 -> 1, ... 15 -> 4
 
 void tc_pet_decode(tc_model_t model, const uint8_t *ram, size_t n, tc_pet_t *out)

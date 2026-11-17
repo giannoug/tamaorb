@@ -164,6 +164,68 @@ static void test_unverified_fields_minus_one(void)
     assert_all_hidden(&p);
 }
 
+// ---- The pet's clock (0x10-0x15) ----
+static void set_clock(uint8_t *r, int s0, int s1, int m0, int m1, int h0, int h1)
+{
+    r[0x10] = s0; r[0x11] = s1; r[0x12] = m0; r[0x13] = m1; r[0x14] = h0; r[0x15] = h1;
+}
+
+static void test_clock_decodes_bcd(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    base_ram(ram);
+    set_clock(ram, 0, 0, 8, 5, 9, 0);  // 09:58:00
+    uint32_t s = 1;
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_P1, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(9 * 3600 + 58 * 60, s);
+    set_clock(ram, 4, 4, 9, 0, 2, 1);  // 18:09:44 (P2's save)
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_P2, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(18 * 3600 + 9 * 60 + 44, s);
+}
+
+static void test_clock_hour_high_nibble(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    base_ram(ram);
+    set_clock(ram, 9, 5, 9, 5, 4, 1);  // hour 16 * 1 + 4 = 20: 20:59:59
+    uint32_t s = 0;
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_P1, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(20 * 3600 + 59 * 60 + 59, s);
+    set_clock(ram, 9, 5, 9, 5, 7, 1);  // 23:59:59, the last valid second
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_P1, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(86399, s);
+}
+
+static void test_clock_rejects_bad_digits(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    uint32_t s = 0;
+    static const int bad[][6] = {
+        {0, 6, 0, 0, 0, 0},   // seconds tens 6 (the ROM's carry passes through it for a few instructions)
+        {10, 0, 0, 0, 0, 0},  // seconds ones 10
+        {0, 0, 10, 0, 0, 0},  // minutes ones 10
+        {0, 0, 0, 6, 0, 0},   // minutes tens 6
+        {0, 0, 0, 0, 8, 1},   // hour 24
+    };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        base_ram(ram);
+        set_clock(ram, bad[i][0], bad[i][1], bad[i][2], bad[i][3], bad[i][4], bad[i][5]);
+        TEST_ASSERT_FALSE_MESSAGE(tc_pet_clock(TC_MODEL_P1, ram, sizeof ram, &s), "bad digit accepted");
+    }
+}
+
+static void test_clock_unknown_model_and_short_ram(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    base_ram(ram);
+    set_clock(ram, 0, 0, 8, 5, 9, 0);
+    uint32_t s = 0;
+    TEST_ASSERT_FALSE(tc_pet_clock(TC_MODEL_UNKNOWN, ram, sizeof ram, &s));
+    TEST_ASSERT_FALSE(tc_pet_clock(TC_MODEL_P1, ram, 0x15, &s));  // 0x15 missing
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_P1, ram, 0x16, &s));
+    TEST_ASSERT_FALSE(tc_pet_clock(TC_MODEL_P1, NULL, 0, &s));
+}
+
 // Replays a save in a child process (tc_init is once per process) and returns its RAM; false if the files are absent.
 static bool ram_from_save(const char *rom_name, const char *save_path, uint8_t *ram)
 {
@@ -234,6 +296,15 @@ static void check_p1(const char *save, int hunger, int weight)
 static void test_p1_save_matches_meter(void) { check_p1("p1.sav", 3, 22); }
 static void test_p1_now_save_matches_meter(void) { check_p1("now.sav", 4, 23); }
 
+static void test_p1_save_clock(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    if (!ram_from_save("tama.bin", roms_saves("p1.sav"), ram)) TEST_IGNORE_MESSAGE("ROM or save not present");
+    uint32_t s = 0;
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_P1, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(9 * 3600 + 58 * 60, s);  // the clock screen read 9:58 (docs/pet-ram.md)
+}
+
 static void test_p2_save_matches_meter(void)
 {
     // p2.sav is an egg (character 0): nothing to report until it hatches.
@@ -273,5 +344,10 @@ int main(void)
     RUN_TEST(test_p1_save_matches_meter);
     RUN_TEST(test_p1_now_save_matches_meter);
     RUN_TEST(test_p2_save_matches_meter);
+    RUN_TEST(test_clock_decodes_bcd);
+    RUN_TEST(test_clock_hour_high_nibble);
+    RUN_TEST(test_clock_rejects_bad_digits);
+    RUN_TEST(test_clock_unknown_model_and_short_ram);
+    RUN_TEST(test_p1_save_clock);
     return UNITY_END();
 }

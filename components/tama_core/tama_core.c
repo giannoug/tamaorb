@@ -164,12 +164,101 @@ static uint32_t ticks_now(void) { return g_tick_source ? g_tick_source() : tc_ti
 static uint32_t ticks_now(void) { return tc_tick_counter(); }
 #endif
 
+/* ---- setting the pet's clock ---- */
+
+// Shared with other tasks (under the lock): the newest request and its result. g_clk_id is written last and is
+// a single aligned word, so the emulator task can compare it without the lock on every instruction.
+static volatile uint32_t g_clk_id;
+static volatile bool g_clk_pending;
+static uint32_t g_clk_next, g_clk_target, g_clk_written;
+static tc_clock_state_t g_clk_state;
+// Emulator task only: the request being worked on.
+static uint32_t g_clk_work, g_clk_t0, g_clk_change;
+static uint32_t g_clk_work_target;
+static int g_clk_sec;
+static bool g_clk_seen;
+
+uint32_t tc_clock_request(uint32_t sec_of_day)
+{
+    lock();
+    if (++g_clk_next == 0) g_clk_next = 1;
+    uint32_t id = g_clk_next;
+    g_clk_target = sec_of_day % 86400u;
+    g_clk_state = TC_CLOCK_PENDING;
+    g_clk_id = id;
+    g_clk_pending = true;
+    unlock();
+    return id;
+}
+
+tc_clock_state_t tc_clock_poll(uint32_t id, uint32_t *written_s)
+{
+    lock();
+    tc_clock_state_t st = id && id == g_clk_id ? g_clk_state : TC_CLOCK_BUSY;
+    uint32_t w = g_clk_written;
+    unlock();
+    if (st == TC_CLOCK_APPLIED && written_s) *written_s = w;
+    return st;
+}
+
+static void clock_finish(tc_clock_state_t st, uint32_t written)
+{
+    lock();
+    if (g_clk_id == g_clk_work) {  // else a newer request came in meanwhile; it is worked on next
+        g_clk_state = st;
+        g_clk_written = written;
+        g_clk_pending = false;
+    }
+    unlock();
+}
+
+static void clock_write(uint32_t s)
+{
+    MEM_BUFFER_TYPE *m = tamalib_get_state()->memory;
+    uint32_t h = s / 3600, mi = s / 60 % 60, se = s % 60;
+    SET_RAM_MEMORY(m, 0x10, se % 10);
+    SET_RAM_MEMORY(m, 0x11, se / 10);
+    SET_RAM_MEMORY(m, 0x12, mi % 10);
+    SET_RAM_MEMORY(m, 0x13, mi / 10);
+    SET_RAM_MEMORY(m, 0x14, h & 15);
+    SET_RAM_MEMORY(m, 0x15, h >> 4);
+}
+
+static void clock_step(void)
+{
+    uint32_t now = tc_tick_counter();
+    int sec = GET_RAM_MEMORY(tamalib_get_state()->memory, 0x10);
+    if (g_clk_id != g_clk_work) {  // a new request: accept it
+        lock();
+        g_clk_work = g_clk_id;
+        g_clk_work_target = g_clk_target;
+        unlock();
+        g_clk_t0 = now;
+        g_clk_sec = sec;
+        g_clk_seen = false;
+        return;
+    }
+    if (sec != g_clk_sec) {
+        g_clk_sec = sec;
+        g_clk_change = now;
+        g_clk_seen = true;
+    } else if (g_clk_seen && tc_ticks_since(g_clk_change, now) >= TC_CLOCK_QUIET_TICKS) {
+        uint32_t s = (g_clk_work_target + tc_ticks_since(g_clk_t0, now) / TC_TICK_HZ) % 86400u;
+        clock_write(s);
+        publish();  // readers of tc_get_ram see the new clock at once
+        clock_finish(TC_CLOCK_APPLIED, s);
+        return;
+    }
+    if (tc_ticks_since(g_clk_t0, now) >= TC_CLOCK_TIMEOUT_TICKS) clock_finish(TC_CLOCK_BUSY, 0);
+}
+
 static void step_once(void)
 {
     tamalib_step();
 #ifdef TC_TESTING
     if (g_step_hook) g_step_hook();
 #endif
+    if (g_clk_pending) clock_step();  // the only cost while idle: one volatile read per instruction
     if (!g_published_once || (uint32_t)(tc_tick_counter() - g_last_publish_tick) >= PUBLISH_TICKS) publish();
 }
 
