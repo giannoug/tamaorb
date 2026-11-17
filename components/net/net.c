@@ -147,3 +147,10 @@ int8_t net_rssi(void)
     if (!s_connected || esp_wifi_sta_get_rssi(&rssi) != ESP_OK) return 0;
     return (int8_t)rssi;
 }
+
+void net_set_low_latency(bool on)
+{
+    if (!s_started) return;
+    esp_err_t err = esp_wifi_set_ps(on ? WIFI_PS_NONE : WIFI_PS_MIN_MODEM);
+    ESP_LOGI(TAG, "Wi-Fi power save %s%s", on ? "off" : "on", err == ESP_OK ? "" : " (failed)");
+}

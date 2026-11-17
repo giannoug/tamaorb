@@ -133,7 +133,8 @@ void app_main(void)
         meta.time_trusted = false;
     }
     press_task_start();
-    web_start(remote_ops_init(model, sha1), st.name);  // the same SHA-1 the saver loaded
+    power_set_awake_hook(net_set_low_latency);  // an open debugger: no light sleep, no Wi-Fi power save
+    web_start(remote_ops_init(model, sha1, s_rom), st.name);  // the same SHA-1 the saver loaded
     emu_start(gap_s, meta.unix_time, meta.time_trusted);
     power_start(save_for_power, ui_task_show_low_battery);
 }

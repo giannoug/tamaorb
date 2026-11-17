@@ -2,4 +2,4 @@
 idf_component_register(
     SRCS "power.c"
     INCLUDE_DIRS "include"
-    PRIV_REQUIRES board esp_pm esp_hw_support esp_wifi log freertos)
+    PRIV_REQUIRES board esp_pm esp_hw_support esp_wifi esp_timer log freertos)

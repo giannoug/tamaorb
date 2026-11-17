@@ -15,3 +15,5 @@ bool      net_connected(void);
 bool      net_configured(void);
 bool      net_ip(char out[16]);                  // false (and "") until an address is assigned
 int8_t    net_rssi(void);                        // 0 if not connected
+// Wi-Fi power save off (true: lowest latency, e.g. while a debugger is open) or back to the default (false).
+void net_set_low_latency(bool on);

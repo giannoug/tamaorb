@@ -4,12 +4,20 @@
 #include "esp_log.h"
 #include "esp_pm.h"
 #include "esp_sleep.h"
+#include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "power";
 static esp_pm_lock_handle_t s_screen_lock;
+static esp_pm_lock_handle_t s_awake_lock;  // power_keep_awake's hold, separate from the screen's
+static esp_timer_handle_t s_awake_timer;
+static SemaphoreHandle_t s_awake_mutex;
+static bool s_awake_held;
+static int64_t s_awake_until;  // µs (esp_timer clock): the hold's end, moved out by every power_keep_awake
+static void (*s_awake_hook)(bool awake);
 static void (*s_save_now)(void);
 static void (*s_show_low)(void);
 
@@ -69,6 +77,39 @@ void power_screen_on(bool on)
     held = on;
 }
 
+static void awake_end(void *arg)
+{
+    xSemaphoreTake(s_awake_mutex, portMAX_DELAY);
+    // A call that came in while this callback waited for the mutex moved the end out and re-armed the timer.
+    bool was = s_awake_held && esp_timer_get_time() >= s_awake_until - 1000;
+    if (was) {
+        esp_pm_lock_release(s_awake_lock);
+        s_awake_held = false;
+    }
+    xSemaphoreGive(s_awake_mutex);
+    if (was && s_awake_hook) s_awake_hook(false);
+    if (was) ESP_LOGI(TAG, "keep-awake ended");
+}
+
+void power_set_awake_hook(void (*hook)(bool awake)) { s_awake_hook = hook; }
+
+void power_keep_awake(uint32_t ms)
+{
+    if (!s_awake_lock || !s_awake_timer) return;  // before power_start
+    xSemaphoreTake(s_awake_mutex, portMAX_DELAY);
+    bool started = !s_awake_held;
+    if (started) {
+        esp_pm_lock_acquire(s_awake_lock);
+        s_awake_held = true;
+    }
+    s_awake_until = esp_timer_get_time() + (int64_t)ms * 1000;
+    esp_timer_stop(s_awake_timer);  // not running is fine
+    esp_timer_start_once(s_awake_timer, (uint64_t)ms * 1000);
+    xSemaphoreGive(s_awake_mutex);
+    if (started && s_awake_hook) s_awake_hook(true);
+    if (started) ESP_LOGI(TAG, "keep-awake started");
+}
+
 void power_start(void (*save_now)(void), void (*show_low)(void))
 {
     s_save_now = save_now;
@@ -76,6 +117,10 @@ void power_start(void (*save_now)(void), void (*show_low)(void))
     esp_pm_config_t pm = { .max_freq_mhz = 240, .min_freq_mhz = 80, .light_sleep_enable = true };
     esp_err_t err = esp_pm_configure(&pm);
     if (err == ESP_OK) err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "screen", &s_screen_lock);
+    s_awake_mutex = xSemaphoreCreateMutex();
+    const esp_timer_create_args_t t = { .callback = awake_end, .name = "awake" };
+    if (err == ESP_OK && s_awake_mutex && esp_timer_create(&t, &s_awake_timer) == ESP_OK)
+        err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "awake", &s_awake_lock);
     if (err != ESP_OK) ESP_LOGW(TAG, "power management unavailable: %s", esp_err_to_name(err));
     xTaskCreatePinnedToCore(monitor, "power", 3072, NULL, 3, NULL, 0);
 }

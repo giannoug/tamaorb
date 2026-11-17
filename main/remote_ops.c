@@ -27,6 +27,7 @@ extern const char s_guide_p2[] asm("_binary_guide_p2_md_start");
 static tc_model_t s_model;
 static uint8_t s_active[20];
 static char s_rom_name[64];
+static const uint8_t *s_rom;
 
 static rm_phase_t phase_now(uint8_t *pct)
 {
@@ -219,17 +220,40 @@ static rm_err_t op_sync_clock(void *ctx, int32_t *written_s)
     }
 }
 
+// The debugger: one snapshot, and the ball stays awake (no light sleep, Wi-Fi power save off) for 5 s more.
+static void op_debug(void *ctx, rm_debug_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->ram_n = tc_get_snapshot(&out->cpu, &out->frame, out->ram, sizeof out->ram);
+    out->model = s_model;
+    uint8_t pct;
+    out->phase = phase_now(&pct);
+    tc_tone_t t;
+    tc_get_tone(&t);
+    out->buzzer = t.on;
+    power_keep_awake(5000);
+}
+
+static bool op_rom(void *ctx, const uint8_t **data, size_t *len)
+{
+    if (!s_rom || s_model == TC_MODEL_UNKNOWN) return false;
+    *data = s_rom;
+    *len = TC_ROM_BYTES;
+    return true;
+}
+
 static rm_ops_t s_ops = {
     .look = op_look, .press = op_press, .status = op_status, .get_settings = op_get_settings,
     .put_settings = op_put_settings, .list_pets = op_list_pets, .switch_pet = op_switch_pet,
     .export_save = op_export_save, .import_save = op_import_save, .set_wifi = op_set_wifi,
     .restart = op_restart, .guide = op_guide, .restart_pending = op_restart_pending,
-    .sync_clock = op_sync_clock, .ctx = NULL,
+    .sync_clock = op_sync_clock, .debug = op_debug, .rom = op_rom, .ctx = NULL,
 };
 
-const rm_ops_t *remote_ops_init(tc_model_t model, const uint8_t active_sha1[20])
+const rm_ops_t *remote_ops_init(tc_model_t model, const uint8_t active_sha1[20], const uint8_t *rom)
 {
     s_model = model;
+    s_rom = rom;
     if (active_sha1) memcpy(s_active, active_sha1, 20);
     tc_rom_entry_t *roms = malloc(sizeof *roms * 16);
     if (roms) {
