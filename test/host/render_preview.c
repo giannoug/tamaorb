@@ -4,7 +4,8 @@
 //        frame.txt (pet only): 16 lines of 32 '#'/'.' then "icons <hex>"; default: a sample face, Attention lit
 //        render_preview out.ppm <screen> [palette 0-2] [scroll px] [t_ms]
 //        screens: glance, glance-asleep, glance-unknown, settings, sound, brightness, dimming, palette,
-//                 tzregion, tzcity, panel, panel-nowifi, rom, rom-confirm, rom-first (sample values from the design canvas)
+//                 tzregion, tzcity, panel, panel-nowifi, rom, rom-confirm, rom-first (sample values from the design canvas),
+//                 clock, clock-busy, clock-notime, clock-confirm (Pet clock: pet 09:58:00, ball 14:32:05)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +36,8 @@ int main(int argc, char **argv)
         { "brightness", UI_PAGE_BRIGHTNESS, 0, -1 }, { "dimming", UI_PAGE_DIMMING, 0, -1 },
         { "palette", UI_PAGE_PALETTE, 0, -1 }, { "tzregion", UI_PAGE_TZ_REGION, 32, -1 },
         { "tzcity", UI_PAGE_TZ_CITY, 0, -1 }, { "panel", UI_PAGE_PANEL, 0, -1 }, { "panel-nowifi", UI_PAGE_PANEL, 0, -1 },
+        { "clock", UI_PAGE_CLOCK, 0, -1 }, { "clock-busy", UI_PAGE_CLOCK, 0, -1 }, { "clock-notime", UI_PAGE_CLOCK, 0, -1 },
+        { "clock-confirm", UI_PAGE_CLOCK_CONFIRM, 0, -1 },
     };
     st_settings_t cfg;
     st_defaults(&cfg, 20);
@@ -61,7 +64,11 @@ int main(int argc, char **argv)
             ui_menu_view_t v = { .page = SCREENS[i].page, .scroll = scroll >= 0 ? scroll : SCREENS[i].scroll,
                                  .pressed = SCREENS[i].pressed, .cfg = &cfg, .region = "Europe", .t_ms = t_ms,
                                  .panel_url = strcmp(mode, "panel-nowifi") ? "http://192.168.1.50/" : NULL,
-                                 .panel_qr = &qr, .panel_name = "tamaorb.local" };
+                                 .panel_qr = &qr, .panel_name = "tamaorb.local",
+                                 .pet_s = 9 * 3600 + 58 * 60, .ball_s = 14 * 3600 + 32 * 60 + 5,
+                                 .confirm_s = 14 * 3600 + 32 * 60 + 5, .clock_busy = !strcmp(mode, "clock-busy"),
+                                 .clock_why = strcmp(mode, "clock-notime") ? UI_CLOCK_OK : UI_CLOCK_NO_TIME };
+            if (!strcmp(mode, "clock-notime")) v.ball_s = -1;
             if (v.page == UI_PAGE_TZ_CITY && scroll < 0)  // bring the current zone into view, as the canvas does
                 for (int k = 0; ui_menu_city_at("Europe", k); k++)
                     if (!strcmp(ui_menu_city_at("Europe", k), cfg.tz)) v.scroll = (k - 2) * 32;

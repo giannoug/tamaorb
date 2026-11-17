@@ -506,9 +506,118 @@ static void test_scroll_clamped(void)
     TEST_ASSERT_EQUAL(20, nav.view.scroll);
 }
 
+// ---- Pet clock ----
+static void open_clock(void)
+{
+    ui_nav_init(&nav);  // from the pet, whatever the previous step left open
+    open_page(UI_ROW_CLOCK);
+    nav.view.clock_why = UI_CLOCK_OK;
+    nav.view.pet_s = 9 * 3600 + 58 * 60;
+    nav.view.ball_s = 14 * 3600 + 32 * 60 + 5;
+}
+
+static void test_clock_row_opens_page(void)
+{
+    open_page(UI_ROW_CLOCK);
+    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
+    TEST_ASSERT_EQUAL(UI_PAGE_CLOCK, nav.view.page);
+    TEST_ASSERT_EQUAL(UI_ROW_TZ + 1, UI_ROW_CLOCK);  // right after Time zone
+}
+
+static void test_clock_back_returns_to_list(void)
+{
+    open_clock();
+    TEST_ASSERT_TRUE(ui_menu_back_at(&nav.view, 120, 5));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));
+    TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
+}
+
+static void test_clock_set_opens_confirm_with_ball_time(void)
+{
+    open_clock();
+    int x, y;
+    TEST_ASSERT_TRUE(find_ctl(UI_CTL_CLOCK_SET, &x, &y, 0));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(x, y));
+    TEST_ASSERT_EQUAL(UI_PAGE_CLOCK_CONFIRM, nav.view.page);
+    TEST_ASSERT_EQUAL_INT32(14 * 3600 + 32 * 60 + 5, nav.view.confirm_s);
+    nav.view.ball_s += 7;  // the clock moves on; the question stays what was asked
+    TEST_ASSERT_EQUAL_INT32(14 * 3600 + 32 * 60 + 5, nav.view.confirm_s);
+    TEST_ASSERT_FALSE(ui_menu_back_at(&nav.view, 120, 5));
+}
+
+static void test_clock_set_ignored_when_unavailable(void)
+{
+    open_clock();
+    int x, y;
+    TEST_ASSERT_TRUE(find_ctl(UI_CTL_CLOCK_SET, &x, &y, 0));
+    static const ui_clock_why_t whys[] = { UI_CLOCK_UNSUPPORTED, UI_CLOCK_NO_TIME, UI_CLOCK_CATCHUP, UI_CLOCK_PENDING };
+    for (size_t i = 0; i < sizeof whys / sizeof *whys; i++) {
+        nav.view.clock_why = whys[i];
+        int xx, yy;
+        TEST_ASSERT_FALSE(find_ctl(UI_CTL_CLOCK_SET, &xx, &yy, 0));
+        TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(x, y));
+        TEST_ASSERT_EQUAL(UI_PAGE_CLOCK, nav.view.page);
+    }
+}
+
+// Opens the confirm at t0 and returns where its pill `ctl` is.
+static void clock_confirm_at(uint32_t t0, int ctl, int *px, int *py)
+{
+    open_clock();
+    int x, y;
+    TEST_ASSERT_TRUE(find_ctl(UI_CTL_CLOCK_SET, &x, &y, 0));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap_at_ms(x, y, t0));
+    TEST_ASSERT_EQUAL(UI_PAGE_CLOCK_CONFIRM, nav.view.page);
+    TEST_ASSERT_TRUE(find_ctl(ctl, px, py, 0));
+}
+
+static void test_clock_confirm_guard(void)
+{
+    const uint32_t t0 = 70000;
+    int x, y;
+    clock_confirm_at(t0, UI_CTL_CLOCK_OK, &x, &y);
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, tap_at_ms(x, y, t0 + UI_CONFIRM_GUARD_MS - 1));
+    TEST_ASSERT_EQUAL(UI_PAGE_CLOCK_CONFIRM, nav.view.page);
+    TEST_ASSERT_EQUAL(UI_ACT_CLOCK_SYNC, tap_at_ms(x, y, t0 + UI_CONFIRM_GUARD_MS));
+    TEST_ASSERT_EQUAL(UI_PAGE_CLOCK, nav.view.page);
+}
+
+static void test_clock_confirm_cancel_and_boot(void)
+{
+    const uint32_t t0 = 80000;
+    int x, y;
+    clock_confirm_at(t0, UI_CTL_CLOCK_CANCEL, &x, &y);
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, tap_at_ms(x, y, t0 + 100));  // guarded too
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap_at_ms(x, y, t0 + UI_CONFIRM_GUARD_MS));
+    TEST_ASSERT_EQUAL(UI_PAGE_CLOCK, nav.view.page);
+    clock_confirm_at(t0, UI_CTL_CLOCK_CANCEL, &x, &y);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, step(UI_G_NONE, 0, 0, 0, 0, true));  // BOOT short press
+    TEST_ASSERT_EQUAL(UI_PAGE_CLOCK, nav.view.page);
+    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
+    clock_confirm_at(t0, UI_CTL_CLOCK_CANCEL, &x, &y);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, step(UI_G_SWIPE_DOWN, 120, 10, 0, 80, false));
+    TEST_ASSERT_EQUAL(UI_PAGE_CLOCK, nav.view.page);
+}
+
+static void test_clock_screen_off_lands_on_pet(void)
+{
+    int x, y;
+    clock_confirm_at(90000, UI_CTL_CLOCK_OK, &x, &y);
+    ui_nav_to_pet(&nav);
+    TEST_ASSERT_EQUAL(UI_SCREEN_PET, nav.screen);
+    TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_clock_row_opens_page);
+    RUN_TEST(test_clock_back_returns_to_list);
+    RUN_TEST(test_clock_set_opens_confirm_with_ball_time);
+    RUN_TEST(test_clock_set_ignored_when_unavailable);
+    RUN_TEST(test_clock_confirm_guard);
+    RUN_TEST(test_clock_confirm_cancel_and_boot);
+    RUN_TEST(test_clock_screen_off_lands_on_pet);
     RUN_TEST(test_transitions);
     RUN_TEST(test_pages_and_back);
     RUN_TEST(test_settings_rom_row_opens_page);

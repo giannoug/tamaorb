@@ -184,9 +184,10 @@ typedef struct {
 void ui_render_glance(uint16_t *fb, const ui_glance_t *g, const ui_palette_t *p);
 
 typedef enum { UI_PAGE_LIST, UI_PAGE_SOUND, UI_PAGE_BRIGHTNESS, UI_PAGE_DIMMING, UI_PAGE_PALETTE,
-               UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL, UI_PAGE_ROM, UI_PAGE_ROM_CONFIRM } ui_page_t;
+               UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL, UI_PAGE_ROM, UI_PAGE_ROM_CONFIRM,
+               UI_PAGE_CLOCK, UI_PAGE_CLOCK_CONFIRM } ui_page_t;
 // Rows of UI_PAGE_LIST, top to bottom (ui_menu_row_at's result on that page).
-typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, UI_ROW_TZ, UI_ROW_ROM,
+typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, UI_ROW_TZ, UI_ROW_CLOCK, UI_ROW_ROM,
                UI_ROW_PANEL, UI_ROW_COUNT } ui_row_t;
 // Controls reported by ui_menu_control_at, with the settings key each value is for. Values are already legal:
 //   MUTE        "muted"          0/1: the value a tap switches to (the opposite of cfg->muted)
@@ -198,9 +199,15 @@ typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, 
 //   OFF_BATTERY "off_battery_s"  10, 15, 30, 60, 120, 300, 600, 1800, 3600
 //   PALETTE     "palette"        st_palette_t id
 //   ROM_CANCEL, ROM_SWITCH       the confirm page's pills (no setting; value 0)
+//   CLOCK_SET                    the Pet clock page's pill, only while clock_why is UI_CLOCK_OK (value 0)
+//   CLOCK_CANCEL, CLOCK_OK       the Pet clock confirm's pills (value 0)
 // A slider reports a value for any x on its track band (clamped at the ends), so a drag can keep feeding it.
 typedef enum { UI_CTL_MUTE, UI_CTL_VOLUME, UI_CTL_BRIGHTNESS, UI_CTL_DIM_LEVEL, UI_CTL_DIM_USB, UI_CTL_DIM_BATTERY,
-               UI_CTL_OFF_BATTERY, UI_CTL_PALETTE, UI_CTL_ROM_CANCEL, UI_CTL_ROM_SWITCH } ui_ctl_t;
+               UI_CTL_OFF_BATTERY, UI_CTL_PALETTE, UI_CTL_ROM_CANCEL, UI_CTL_ROM_SWITCH, UI_CTL_CLOCK_SET,
+               UI_CTL_CLOCK_CANCEL, UI_CTL_CLOCK_OK } ui_ctl_t;
+
+// Why the Pet clock page offers no Set pill (UI_CLOCK_OK: it does). PENDING: a request is out.
+typedef enum { UI_CLOCK_OK, UI_CLOCK_UNSUPPORTED, UI_CLOCK_NO_TIME, UI_CLOCK_CATCHUP, UI_CLOCK_PENDING } ui_clock_why_t;
 
 // One row of the ROM picker: the model name ("P1") and a line under it ("Gen 1 - tama.bin").
 typedef struct { const char *name, *sub; } ui_rom_row_t;
@@ -222,6 +229,12 @@ typedef struct {
     int rom_current;             // row of the running ROM, -1 if it isn't listed
     int rom_pick;                // the row tapped, shown on the confirm page (UI_ACT_ROM_SWITCH switches to it)
     bool rom_first;              // first start: "Pick a pet", no back, no confirm: a tap picks
+    // The settings list's Pet clock row and the CLOCK pages. The caller fills pet_s, ball_s, clock_why and
+    // clock_busy every loop while they show. Seconds of the day; -1 unknown (row "-", page "--:--").
+    int32_t pet_s, ball_s;
+    ui_clock_why_t clock_why;
+    bool clock_busy;             // the last attempt timed out: "Pet's clock menu is open" above the pill
+    int32_t confirm_s;           // set by ui_nav when the confirm opens: the ball time it asks about
 } ui_menu_view_t;
 void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p);
 
@@ -257,7 +270,8 @@ typedef struct {
 // double tap on a list row that lies where a pill appears can't switch pets.
 #define UI_CONFIRM_GUARD_MS 500
 // ROM_SWITCH: switch to view.roms[view.rom_pick] (confirmed, or picked on first start).
-typedef enum { UI_ACT_NONE, UI_ACT_REDRAW, UI_ACT_SETTINGS, UI_ACT_ROM_SWITCH } ui_act_t;
+// CLOCK_SYNC: the Pet clock confirm's Set was tapped; nav is back on UI_PAGE_CLOCK. Post the request.
+typedef enum { UI_ACT_NONE, UI_ACT_REDRAW, UI_ACT_SETTINGS, UI_ACT_ROM_SWITCH, UI_ACT_CLOCK_SYNC } ui_act_t;
 void ui_nav_init(ui_nav_t *n);
 // ev comes from ui_gesture_feed (MENU mode on GLANCE and MENU, PET mode on PET); cur is the latest settings and
 // must stay valid until the next call (the view points at it). On UI_ACT_SETTINGS, *out is cur with exactly one

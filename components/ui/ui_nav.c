@@ -81,7 +81,7 @@ static bool is_list(ui_page_t p)
 // Sliders follow a drag; switches, tiles and the ROM pills take taps only.
 static bool is_slider(int ctl)
 {
-    return ctl >= 0 && ctl != UI_CTL_MUTE && ctl != UI_CTL_PALETTE && ctl != UI_CTL_ROM_CANCEL && ctl != UI_CTL_ROM_SWITCH;
+    return ctl >= UI_CTL_VOLUME && ctl <= UI_CTL_OFF_BATTERY;
 }
 
 static ui_act_t tap_row(ui_nav_t *n, int row, const st_settings_t *cur, st_settings_t *out, bool *dc)
@@ -90,7 +90,8 @@ static ui_act_t tap_row(ui_nav_t *n, int row, const st_settings_t *cur, st_setti
     if (v->page == UI_PAGE_LIST) {
         static const ui_page_t PAGES[UI_ROW_COUNT] = {
             [UI_ROW_SOUND] = UI_PAGE_SOUND, [UI_ROW_BRIGHTNESS] = UI_PAGE_BRIGHTNESS, [UI_ROW_DIMMING] = UI_PAGE_DIMMING,
-            [UI_ROW_PALETTE] = UI_PAGE_PALETTE, [UI_ROW_TZ] = UI_PAGE_TZ_REGION, [UI_ROW_PANEL] = UI_PAGE_PANEL,
+            [UI_ROW_PALETTE] = UI_PAGE_PALETTE, [UI_ROW_TZ] = UI_PAGE_TZ_REGION, [UI_ROW_CLOCK] = UI_PAGE_CLOCK,
+            [UI_ROW_PANEL] = UI_PAGE_PANEL,
         };
         if (row == UI_ROW_ROM) { ui_nav_open_roms(n, false); return UI_ACT_REDRAW; }
         if (row < 0 || row >= UI_ROW_COUNT) return UI_ACT_NONE;
@@ -138,6 +139,7 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
     if (boot_short || ev->kind == UI_G_SWIPE_DOWN) {
         if (v->page == UI_PAGE_ROM && v->rom_first) return UI_ACT_NONE;             // nothing to go back to
         if (v->page == UI_PAGE_ROM_CONFIRM) { menu_open(n, UI_PAGE_ROM); return UI_ACT_REDRAW; }  // cancel
+        if (v->page == UI_PAGE_CLOCK_CONFIRM) { menu_open(n, UI_PAGE_CLOCK); return UI_ACT_REDRAW; }
         ui_nav_to_pet(n);
         return UI_ACT_REDRAW;
     }
@@ -162,10 +164,19 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
             return row < 0 ? UI_ACT_NONE : tap_row(n, row, cur, out, display_changed);
         }
         int val, ctl = ui_menu_control_at(v, ev->x, ev->y, &val);
-        if ((ctl == UI_CTL_ROM_CANCEL || ctl == UI_CTL_ROM_SWITCH) && v->t_ms - n->confirm_ms < UI_CONFIRM_GUARD_MS)
-            return UI_ACT_NONE;  // too soon: the rest of a double tap on the row that opened this page
+        bool pill = ctl == UI_CTL_ROM_CANCEL || ctl == UI_CTL_ROM_SWITCH || ctl == UI_CTL_CLOCK_CANCEL || ctl == UI_CTL_CLOCK_OK;
+        if (pill && v->t_ms - n->confirm_ms < UI_CONFIRM_GUARD_MS)
+            return UI_ACT_NONE;  // too soon: the rest of a double tap on what opened this page
         if (ctl == UI_CTL_ROM_CANCEL) { menu_open(n, UI_PAGE_ROM); return UI_ACT_REDRAW; }
         if (ctl == UI_CTL_ROM_SWITCH) return UI_ACT_ROM_SWITCH;
+        if (ctl == UI_CTL_CLOCK_SET) {
+            menu_open(n, UI_PAGE_CLOCK_CONFIRM);
+            n->confirm_ms = v->t_ms;
+            v->confirm_s = v->ball_s;
+            return UI_ACT_REDRAW;
+        }
+        if (ctl == UI_CTL_CLOCK_CANCEL) { menu_open(n, UI_PAGE_CLOCK); return UI_ACT_REDRAW; }
+        if (ctl == UI_CTL_CLOCK_OK) { menu_open(n, UI_PAGE_CLOCK); return UI_ACT_CLOCK_SYNC; }
         return ctl < 0 ? UI_ACT_NONE : edit_ctl(cur, out, display_changed, ctl, val);
     }
     case UI_G_DRAG: {

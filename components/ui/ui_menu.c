@@ -153,8 +153,15 @@ static void duration(unsigned s, char *out, size_t cap)
 
 static const char *const PALETTE_NAMES[3] = { "Classic", "Neutral", "Night" };
 
-static void list_value(const st_settings_t *c, int row, char *out, size_t cap)
+static void hm_or_dash(int32_t s, char *out, size_t cap)
 {
+    if (s >= 0 && s < 86400) snprintf(out, cap, "%02d:%02d", (int)(s / 3600), (int)(s / 60 % 60));
+    else snprintf(out, cap, "-");
+}
+
+static void list_value(const ui_menu_view_t *v, int row, char *out, size_t cap)
+{
+    const st_settings_t *c = v->cfg;
     char d[16];
     out[0] = '\0';
     switch (row) {
@@ -170,13 +177,14 @@ static void list_value(const st_settings_t *c, int row, char *out, size_t cap)
         break;
     case UI_ROW_PALETTE: snprintf(out, cap, "%s", PALETTE_NAMES[c->palette <= ST_PALETTE_NIGHT ? c->palette : 0]); break;
     case UI_ROW_TZ: tz_label(c->tz, out, cap); break;
+    case UI_ROW_CLOCK: hm_or_dash(v->pet_s, out, cap); break;
     case UI_ROW_PANEL: snprintf(out, cap, "QR code"); break;
     default: break;  // ROM: the picker shows the choices
     }
 }
 
 static const char *const LIST_NAMES[UI_ROW_COUNT] = { "Sound", "Brightness", "Dimming", "Palette", "Time zone",
-                                                      "ROM", "Web panel" };
+                                                      "Pet clock", "ROM", "Web panel" };
 
 // ---- Rows of the list pages ----
 int ui_menu_row_count(const ui_menu_view_t *v)
@@ -228,7 +236,8 @@ int ui_menu_row_at(const ui_menu_view_t *v, int x, int y)
 
 bool ui_menu_back_at(const ui_menu_view_t *v, int x, int y)
 {
-    return v->page != UI_PAGE_LIST && v->page != UI_PAGE_ROM_CONFIRM && !(v->page == UI_PAGE_ROM && v->rom_first) &&
+    return v->page != UI_PAGE_LIST && v->page != UI_PAGE_ROM_CONFIRM && v->page != UI_PAGE_CLOCK_CONFIRM &&
+           !(v->page == UI_PAGE_ROM && v->rom_first) &&
            y >= 0 && y < TITLE_Y && x >= 0 && x < UI_W;
 }
 
@@ -268,6 +277,8 @@ static const char *page_title(const ui_menu_view_t *v)
     case UI_PAGE_PANEL: return "Web panel";
     case UI_PAGE_ROM: return v->rom_first ? "Pick a pet" : "Pet ROM";
     case UI_PAGE_ROM_CONFIRM: return "";  // drawn by draw_rom_confirm
+    case UI_PAGE_CLOCK: return "Pet clock";
+    case UI_PAGE_CLOCK_CONFIRM: return "";  // drawn by draw_clock_confirm
     }
     return "";
 }
@@ -405,7 +416,7 @@ static void draw_list(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
         int tx0 = x0 + ROW_PAD_X, tx1 = x1 - ROW_PAD_X + 1;  // text strip [tx0, tx1)
         if (v->page == UI_PAGE_LIST) {
             ui_draw_text_ellipsis(fb, tx0, tx1, y + 5, LIST_NAMES[i], 2, fg);
-            list_value(v->cfg, i, value, sizeof value);
+            list_value(v, i, value, sizeof value);
             ui_draw_text_ellipsis(fb, tx0, tx1 - 7 - 4, y + 25, value, 1, fg);
             ui_draw_text(fb, tx1 - 7, y + 25, ">", 1, fg);
             continue;
@@ -663,6 +674,14 @@ static const char *rom_name(const ui_menu_view_t *v, int i)
     return v->roms && i >= 0 && i < v->rom_count && v->roms[i].name ? v->roms[i].name : NULL;
 }
 
+// A pill button: filled (ink, label in bg) or outlined (label in ink).
+static void draw_pill(uint16_t *fb, int x, int y, int w, const char *label, bool filled, const colors_t *c)
+{
+    ui_fill_rrect(fb, x, y, w, PILL_H, PILL_H / 2, c->ink);
+    if (!filled) ui_fill_rrect(fb, x + 2, y + 2, w - 4, PILL_H - 4, PILL_H / 2 - 2, c->bg);
+    ui_draw_text(fb, x + (w - ui_text_width(label, 1)) / 2, y + (PILL_H - 8) / 2, label, 1, filled ? c->bg : c->ink);
+}
+
 static void draw_rom_confirm(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
 {
     char line[48];
@@ -674,14 +693,69 @@ static void draw_rom_confirm(uint16_t *fb, const ui_menu_view_t *v, const colors
     ui_text_centred_at(fb, CONFIRM_BODY_Y, line, 1, c->ink);
     ui_text_centred_at(fb, CONFIRM_BODY_Y + 14, "and waits for you.", 1, c->ink);
     ui_text_centred_at(fb, CONFIRM_NOTE_Y, "The ball restarts.", 1, c->soft);
-    static const char *const LABEL[2] = { "Cancel", "Switch" };
-    for (int i = 0; i < 2; i++) {
-        int x = pill_x(i);
-        ui_fill_rrect(fb, x, PILL_Y, PILL_W, PILL_H, PILL_H / 2, c->ink);
-        if (i == 0) ui_fill_rrect(fb, x + 2, PILL_Y + 2, PILL_W - 4, PILL_H - 4, PILL_H / 2 - 2, c->bg);
-        ui_draw_text(fb, x + (PILL_W - ui_text_width(LABEL[i], 1)) / 2, PILL_Y + (PILL_H - 8) / 2, LABEL[i], 1,
-                     i == 0 ? c->ink : c->bg);
+    draw_pill(fb, pill_x(0), PILL_Y, PILL_W, "Cancel", false, c);
+    draw_pill(fb, pill_x(1), PILL_Y, PILL_W, "Switch", true, c);
+}
+
+// ---- Pet clock ----
+#define CLOCK_PET_Y 62        // "Pet 09:58:00", scale 2
+#define CLOCK_BALL_Y 86       // "Ball 14:32:05", scale 2
+#define CLOCK_ZONE_Y 108      // the tz setting as it is, scale 1
+#define CLOCK_NOTE_Y 130      // "Pet's clock menu is open" after a timed-out attempt
+#define CLOCK_PILL_Y 148
+#define CLOCK_PILL_W 150
+#define CLOCK_PILL_X ((UI_W - CLOCK_PILL_W) / 2)
+#define CLOCK_CONFIRM_Y 62    // "Set pet clock" / "to 14:32?", scale 2, 18 px apart
+#define CLOCK_CONFIRM_ZONE_Y 102
+#define CLOCK_WARN_Y 118      // three lines, 12 px apart
+#define CLOCK_CONFIRM_PILL_Y 158
+
+static void hms_or_dashes(int32_t s, char *out, size_t cap)
+{
+    if (s >= 0 && s < 86400) snprintf(out, cap, "%02d:%02d:%02d", (int)(s / 3600), (int)(s / 60 % 60), (int)(s % 60));
+    else snprintf(out, cap, "--:--");
+}
+
+static const char *clock_reason(ui_clock_why_t w)
+{
+    switch (w) {
+    case UI_CLOCK_UNSUPPORTED: return "Not available for this pet";
+    case UI_CLOCK_NO_TIME: return "Waiting for internet time";
+    case UI_CLOCK_CATCHUP: return "Pet is catching up";
+    case UI_CLOCK_PENDING: return "Setting the clock...";
+    default: return NULL;
     }
+}
+
+static void draw_clock(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
+{
+    char t[16], line[24];
+    hms_or_dashes(v->pet_s, t, sizeof t);
+    snprintf(line, sizeof line, "Pet %s", t);
+    ui_text_centred_at(fb, CLOCK_PET_Y, line, 2, c->ink);
+    hms_or_dashes(v->ball_s, t, sizeof t);
+    snprintf(line, sizeof line, "Ball %s", t);
+    ui_text_centred_at(fb, CLOCK_BALL_Y, line, 2, c->ink);
+    ui_text_centred_at(fb, CLOCK_ZONE_Y, v->cfg->tz, 1, c->soft);
+    if (v->clock_busy) ui_text_centred_at(fb, CLOCK_NOTE_Y, "Pet's clock menu is open", 1, c->soft);
+    const char *why = clock_reason(v->clock_why);
+    if (why) ui_text_centred_at(fb, CLOCK_PILL_Y + (PILL_H - 8) / 2, why, 1, c->soft);
+    else draw_pill(fb, CLOCK_PILL_X, CLOCK_PILL_Y, CLOCK_PILL_W, "Set to ball time", true, c);
+}
+
+static void draw_clock_confirm(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
+{
+    char line[24];
+    int32_t s = v->confirm_s;
+    if (s >= 0 && s < 86400) snprintf(line, sizeof line, "to %02d:%02d?", (int)(s / 3600), (int)(s / 60 % 60));
+    else snprintf(line, sizeof line, "to the ball's time?");
+    ui_text_centred_at(fb, CLOCK_CONFIRM_Y, "Set pet clock", 2, c->ink);
+    ui_text_centred_at(fb, CLOCK_CONFIRM_Y + 18, line, 2, c->ink);
+    ui_text_centred_at(fb, CLOCK_CONFIRM_ZONE_Y, v->cfg->tz, 1, c->soft);
+    static const char *const WARN[3] = { "Your pet may wake up", "or fall asleep, and", "its age may change." };
+    for (int i = 0; i < 3; i++) ui_text_centred_at(fb, CLOCK_WARN_Y + 12 * i, WARN[i], 1, c->ink);
+    draw_pill(fb, pill_x(0), CLOCK_CONFIRM_PILL_Y, PILL_W, "Cancel", false, c);
+    draw_pill(fb, pill_x(1), CLOCK_CONFIRM_PILL_Y, PILL_W, "Set", true, c);
 }
 
 void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p)
@@ -710,6 +784,8 @@ void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p
     case UI_PAGE_PANEL: draw_panel(fb, v, &c); break;
     case UI_PAGE_ROM: draw_rom_list(fb, v, &c); break;
     case UI_PAGE_ROM_CONFIRM: draw_rom_confirm(fb, v, &c); break;
+    case UI_PAGE_CLOCK: draw_clock(fb, v, &c); break;
+    case UI_PAGE_CLOCK_CONFIRM: draw_clock_confirm(fb, v, &c); break;
     }
     draw_header(fb, v, &c);
 }
@@ -761,6 +837,16 @@ int ui_menu_control_at(const ui_menu_view_t *v, int x, int y, int *value_out)
         for (int i = 0; i < 2; i++)
             if (x >= pill_x(i) && x < pill_x(i) + PILL_W && y >= PILL_Y && y < PILL_Y + PILL_H)
                 ctl = i ? UI_CTL_ROM_SWITCH : UI_CTL_ROM_CANCEL;
+        break;
+    case UI_PAGE_CLOCK:
+        if (v->clock_why == UI_CLOCK_OK && x >= CLOCK_PILL_X && x < CLOCK_PILL_X + CLOCK_PILL_W && y >= CLOCK_PILL_Y &&
+            y < CLOCK_PILL_Y + PILL_H)
+            ctl = UI_CTL_CLOCK_SET;
+        break;
+    case UI_PAGE_CLOCK_CONFIRM:
+        for (int i = 0; i < 2; i++)
+            if (x >= pill_x(i) && x < pill_x(i) + PILL_W && y >= CLOCK_CONFIRM_PILL_Y && y < CLOCK_CONFIRM_PILL_Y + PILL_H)
+                ctl = i ? UI_CTL_CLOCK_OK : UI_CTL_CLOCK_CANCEL;
         break;
     default: break;
     }

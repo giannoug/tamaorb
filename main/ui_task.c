@@ -21,6 +21,7 @@
 #include "press_task.h"
 #include "rom_switch.h"
 #include "qr_encode.h"
+#include "pet_clock.h"
 
 #define LOOP_MS        30
 #define FRAME_MS       16   // while a finger is on the glance or settings: ~60 frames a second
@@ -44,6 +45,46 @@ static void load_rom_rows(ui_menu_view_t *v);
 static void switch_rom(int row);
 static void render_glance(const ui_palette_t *pal, int8_t batt_pct);
 static void resume_on_pet(ui_screen_t *screen, ui_gesture_t *gest, ui_nav_t *nav);
+
+// The Pet clock row and pages: the view's clock fields, refreshed every loop while the menu shows.
+static uint32_t s_clock_id;
+static bool s_clock_pending;
+
+static ui_clock_why_t clock_why(void)
+{
+    if (s_clock_pending) return UI_CLOCK_PENDING;
+    switch (pet_clock_available()) {
+    case PET_CLOCK_OK: return UI_CLOCK_OK;
+    case PET_CLOCK_UNSUPPORTED: return UI_CLOCK_UNSUPPORTED;
+    case PET_CLOCK_NO_TIME: return UI_CLOCK_NO_TIME;
+    default: return UI_CLOCK_CATCHUP;
+    }
+}
+
+// Fills the view's clock fields; true when what the list row or the Pet clock page shows has changed.
+// Every loop, whatever shows: the poll that sees the request applied also asks for the save.
+static void clock_poll(ui_menu_view_t *v)
+{
+    if (!s_clock_pending) return;
+    pet_clock_status_t r = pet_clock_poll(s_clock_id, NULL);
+    if (r == PET_CLOCK_PENDING) return;
+    s_clock_pending = false;
+    v->clock_busy = r == PET_CLOCK_BUSY;
+    ESP_LOGI(TAG, "pet clock: %s", r == PET_CLOCK_OK ? "set" : "busy");
+}
+
+static bool clock_refresh(ui_menu_view_t *v)
+{
+    if (v->page != UI_PAGE_CLOCK && v->page != UI_PAGE_CLOCK_CONFIRM) v->clock_busy = false;  // left the page
+    int32_t pet = pet_clock_pet_s(), ball = pet_clock_ball_s();
+    ui_clock_why_t why = clock_why();
+    bool changed = why != v->clock_why || (v->page == UI_PAGE_CLOCK ? pet != v->pet_s || ball != v->ball_s
+                                                                     : pet / 60 != v->pet_s / 60);
+    v->pet_s = pet;
+    v->ball_s = ball;
+    v->clock_why = why;
+    return changed;
+}
 
 static void ui_task(void *arg)
 {
@@ -151,6 +192,8 @@ static void ui_task(void *arg)
         }
 
         ui_act_t act = UI_ACT_NONE;
+        clock_poll(&nav.view);
+        bool clock_changed = nav.screen == UI_SCREEN_MENU && clock_refresh(&nav.view);  // before the step: the confirm asks about this ball time
         if (out.backlight) {
             st_settings_t edited;
             bool display_changed;
@@ -179,6 +222,14 @@ static void ui_task(void *arg)
         }
         if (nav.screen == UI_SCREEN_MENU && nav.view.page == UI_PAGE_ROM && !nav.view.roms) {
             load_rom_rows(&nav.view);  // the SD scan, once per opening
+            act = UI_ACT_REDRAW;
+        }
+        if (act == UI_ACT_CLOCK_SYNC) {
+            nav.view.clock_busy = false;
+            pet_clock_status_t st = pet_clock_start(&s_clock_id);  // re-checked now: time or the phase may have gone
+            s_clock_pending = st == PET_CLOCK_OK;
+            if (!s_clock_pending) ESP_LOGW(TAG, "pet clock not set (%d)", (int)st);
+            nav.view.clock_why = clock_why();
             act = UI_ACT_REDRAW;
         }
         if (act == UI_ACT_ROM_SWITCH) {
@@ -210,7 +261,7 @@ static void ui_task(void *arg)
         uint8_t level = dim ? dim_pct : cfg.brightness;
         if (backlight && !redraw && (dim != dimmed || level != shown_level)) board_backlight_set(level);
         dimmed = dim;
-        bool dirty = redraw || pal_changed || act == UI_ACT_REDRAW || act == UI_ACT_SETTINGS;
+        bool dirty = redraw || pal_changed || act == UI_ACT_REDRAW || act == UI_ACT_SETTINGS || clock_changed;
         bool frame_new = tc_frame_changed(&frame_seq);
         bool drawn = false;
         if (!backlight) {

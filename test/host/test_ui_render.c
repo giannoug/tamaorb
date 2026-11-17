@@ -299,7 +299,8 @@ static void test_no_ink_outside_circle(void)
     sample_cfg();
     sample_pet();
     static const ui_page_t pages[] = { UI_PAGE_LIST, UI_PAGE_SOUND, UI_PAGE_BRIGHTNESS, UI_PAGE_DIMMING,
-                                       UI_PAGE_PALETTE, UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL };
+                                       UI_PAGE_PALETTE, UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL,
+                                       UI_PAGE_CLOCK, UI_PAGE_CLOCK_CONFIRM };
     char what[64];
     for (int pi = 0; pi < 3; pi++) {
         ui_glance_t g = sample_glance();
@@ -796,9 +797,101 @@ static void test_rom_long_sub_ellipsis(void)
     assert_nothing_outside_circle("rom long sub");
 }
 
+// ---- Pet clock ----
+static ui_menu_view_t clock_view(ui_page_t page)
+{
+    ui_menu_view_t v = view(page);
+    v.pet_s = 9 * 3600 + 58 * 60;
+    v.ball_s = 14 * 3600 + 32 * 60 + 5;
+    v.confirm_s = v.ball_s;
+    v.clock_why = UI_CLOCK_OK;
+    return v;
+}
+
+static void test_clock_row_value(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = clock_view(UI_PAGE_LIST);
+    v.scroll = ui_menu_scroll_max(&v);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("Pet clock", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("09:58", 1, INK, NULL, NULL));
+    v.pet_s = -1;
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_FALSE(find_text("09:58", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Pet clock", 2, INK, NULL, NULL));
+}
+
+static void test_clock_page_texts_fit(void)
+{
+    sample_cfg();
+    strcpy(cfg.tz, "<+0545>-5:45<+0645>,M3.5.0/02:00:00,M10.5.0/03:00:00");  // 52 chars: wider than any row
+    for (int pi = 0; pi < 3; pi++) {
+        uint16_t ink = ui_rgb565(PALS[pi]->ink), bg = ui_rgb565(PALS[pi]->bg);
+        ui_menu_view_t v = clock_view(UI_PAGE_CLOCK);
+        ui_render_menu(fb, &v, PALS[pi]);
+        assert_nothing_outside_circle("clock page");
+        TEST_ASSERT_TRUE(find_text("Pet clock", 2, ink, NULL, NULL));
+        TEST_ASSERT_TRUE(find_text("Pet 09:58:00", 2, ink, NULL, NULL));
+        TEST_ASSERT_TRUE(find_text("Ball 14:32:05", 2, ink, NULL, NULL));
+        TEST_ASSERT_TRUE(find_text(UI_ELLIPSIS, 1, soft_of(PALS[pi]), NULL, NULL));  // the long zone, cut
+        int x, y;
+        TEST_ASSERT_TRUE(find_text("Set to ball time", 1, bg, &x, &y));  // on the filled pill
+        TEST_ASSERT_EQUAL(UI_CTL_CLOCK_SET, ui_menu_control_at(&v, x + 4, y + 4, NULL));
+        v.ball_s = -1;
+        v.pet_s = -1;
+        ui_render_menu(fb, &v, PALS[pi]);
+        TEST_ASSERT_TRUE(find_text("Pet --:--", 2, ink, NULL, NULL));
+        TEST_ASSERT_TRUE(find_text("Ball --:--", 2, ink, NULL, NULL));
+        v.clock_busy = true;
+        ui_render_menu(fb, &v, PALS[pi]);
+        TEST_ASSERT_TRUE(find_text("Pet's clock menu is open", 1, soft_of(PALS[pi]), NULL, NULL));
+        assert_nothing_outside_circle("clock page busy");
+
+        v = clock_view(UI_PAGE_CLOCK_CONFIRM);
+        ui_render_menu(fb, &v, PALS[pi]);
+        assert_nothing_outside_circle("clock confirm");
+        TEST_ASSERT_TRUE(find_text("Set pet clock", 2, ink, NULL, NULL));
+        TEST_ASSERT_TRUE(find_text("to 14:32?", 2, ink, NULL, NULL));
+        TEST_ASSERT_TRUE(find_text("Your pet may wake up", 1, ink, NULL, NULL));
+        TEST_ASSERT_TRUE(find_text("or fall asleep, and", 1, ink, NULL, NULL));
+        TEST_ASSERT_TRUE(find_text("its age may change.", 1, ink, NULL, NULL));
+        int cx, cy, sx, sy;
+        TEST_ASSERT_TRUE(find_text("Cancel", 1, ink, &cx, &cy));
+        TEST_ASSERT_TRUE(find_text("Set", 1, bg, &sx, &sy));
+        TEST_ASSERT_EQUAL(UI_CTL_CLOCK_CANCEL, ui_menu_control_at(&v, cx + 4, cy + 4, NULL));
+        TEST_ASSERT_EQUAL(UI_CTL_CLOCK_OK, ui_menu_control_at(&v, sx + 4, sy + 4, NULL));
+        TEST_ASSERT_FALSE(find_text("< back", 1, soft_of(PALS[pi]), NULL, NULL));
+    }
+}
+
+static void test_clock_reason_replaces_pill(void)
+{
+    sample_cfg();
+    static const struct { ui_clock_why_t why; const char *text; } cases[] = {
+        { UI_CLOCK_UNSUPPORTED, "Not available for this pet" }, { UI_CLOCK_NO_TIME, "Waiting for internet time" },
+        { UI_CLOCK_CATCHUP, "Pet is catching up" }, { UI_CLOCK_PENDING, "Setting the clock..." },
+    };
+    ui_menu_view_t v = clock_view(UI_PAGE_CLOCK);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    int px, py;
+    TEST_ASSERT_TRUE(find_text("Set to ball time", 1, BG, &px, &py));
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        v.clock_why = cases[i].why;
+        ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+        TEST_ASSERT_FALSE(find_text("Set to ball time", 1, BG, NULL, NULL));
+        TEST_ASSERT_TRUE_MESSAGE(find_text(cases[i].text, 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL), cases[i].text);
+        TEST_ASSERT_EQUAL(-1, ui_menu_control_at(&v, px + 4, py + 4, NULL));
+        assert_nothing_outside_circle(cases[i].text);
+    }
+}
+
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_clock_row_value);
+    RUN_TEST(test_clock_page_texts_fit);
+    RUN_TEST(test_clock_reason_replaces_pill);
     RUN_TEST(test_rgb565_classic);
     RUN_TEST(test_outside_circle_black);
     RUN_TEST(test_lit_and_ghost);
