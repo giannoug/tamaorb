@@ -195,7 +195,8 @@ uint32_t tc_clock_request_ms(uint32_t ms_of_day)
 tc_clock_state_t tc_clock_poll(uint32_t id, uint32_t *written_s)
 {
     lock();
-    tc_clock_state_t st = id && id == g_clk_id ? g_clk_state : TC_CLOCK_BUSY;
+    // An older id was replaced by the newest request: it shares its fate. Ids count up from 1 (wrap: 2^32 requests).
+    tc_clock_state_t st = id && id <= g_clk_id ? g_clk_state : TC_CLOCK_BUSY;
     uint32_t w = g_clk_written;
     unlock();
     if (st == TC_CLOCK_APPLIED && written_s) *written_s = w;

@@ -61,7 +61,6 @@ static ui_clock_why_t clock_why(void)
     }
 }
 
-// Fills the view's clock fields; true when what the list row or the Pet clock page shows has changed.
 // Every loop, whatever shows: the poll that sees the request applied also asks for the save.
 static void clock_poll(ui_menu_view_t *v)
 {
@@ -73,6 +72,7 @@ static void clock_poll(ui_menu_view_t *v)
     ESP_LOGI(TAG, "pet clock: %s", r == PET_CLOCK_OK ? "set" : "busy");
 }
 
+// Fills the view's clock fields; true when what the list row or the Pet clock page shows has changed.
 static bool clock_refresh(ui_menu_view_t *v)
 {
     if (v->page != UI_PAGE_CLOCK && v->page != UI_PAGE_CLOCK_CONFIRM) v->clock_busy = false;  // left the page
@@ -193,7 +193,8 @@ static void ui_task(void *arg)
 
         ui_act_t act = UI_ACT_NONE;
         clock_poll(&nav.view);
-        bool clock_changed = nav.screen == UI_SCREEN_MENU && clock_refresh(&nav.view);  // before the step: the confirm asks about this ball time
+        bool was_menu = nav.screen == UI_SCREEN_MENU;
+        bool clock_changed = was_menu && clock_refresh(&nav.view);  // before the step: the confirm asks about this ball time
         if (out.backlight) {
             st_settings_t edited;
             bool display_changed;
@@ -213,6 +214,7 @@ static void ui_task(void *arg)
             ui_gesture_reset(&gest);
         }
 
+        if (!was_menu && nav.screen == UI_SCREEN_MENU) clock_refresh(&nav.view);  // just opened: no stale clock in its first frame
         if (ui_screen_long_press(&screen)) {  // from any screen, lit or not: the ROM list
             tc_post_buttons(0);
             ui_screen_wake(&screen, now_ms());

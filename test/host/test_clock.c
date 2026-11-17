@@ -131,10 +131,48 @@ static void test_newer_request_replaces_older(void)
     NEED_ROM();
     uint32_t id1 = tc_clock_request_ms(HMS(8, 0, 0) * 1000u), id2 = tc_clock_request_ms(HMS(12, 0, 0) * 1000u), written = 0;
     TEST_ASSERT_NOT_EQUAL(id1, id2);
-    TEST_ASSERT_EQUAL(TC_CLOCK_BUSY, tc_clock_poll(id1, NULL));
+    // The older request is folded into the newer one: it reports the newer one's progress and result, so a
+    // caller whose request was overtaken (the panel while the ball's confirm was tapped) hears the clock was set.
+    TEST_ASSERT_EQUAL(TC_CLOCK_PENDING, tc_clock_poll(id1, NULL));
     TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, step_until(id2, &written));
     TEST_ASSERT_TRUE(written == HMS(12, 0, 0) || written == HMS(12, 0, 1));
-    TEST_ASSERT_EQUAL(TC_CLOCK_BUSY, tc_clock_poll(id1, NULL));  // still busy once the newer one applied
+    uint32_t w1 = 0;
+    TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, tc_clock_poll(id1, &w1));
+    TEST_ASSERT_EQUAL_UINT32(written, w1);
+    TEST_ASSERT_EQUAL_UINT32(written, clock_now());  // one write, the newer target
+}
+
+// Posts a request from the step hook at the instruction the ROM starts its 09:59:59 -> 10:00:00 carry, so it is
+// accepted while 0x11-0x15 are still being rewritten. The write must wait for the next tick and its quiet point.
+static uint32_t g_carry_id;
+static int g_carry_hour_low_at_post;
+static void post_mid_carry(void)
+{
+    watch_seconds();
+    if (g_carry_id || nib(0x10) != 0 || nib(0x11) != 5 || nib(0x12) != 9 || nib(0x13) != 5) return;
+    g_carry_hour_low_at_post = nib(0x14);  // still 9: the carry hasn't reached the hours yet
+    g_carry_id = tc_clock_request_ms(HMS(15, 15, 15) * 1000u);
+}
+
+static void test_request_during_rom_carry(void)
+{
+    NEED_ROM();
+    TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, step_until(tc_clock_request_ms(HMS(9, 59, 57) * 1000u), NULL));
+    g_carry_id = 0;
+    g_last_sec = nib(0x10);
+    g_last_change = tc_tick_counter();
+    tc_debug_set_step_hook(post_mid_carry);
+    run_ms(4000);  // the carry happens within these seconds; the request is posted in it
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(0, g_carry_id, "never saw the carry start");
+    TEST_ASSERT_EQUAL(9, g_carry_hour_low_at_post);
+    uint32_t written = 0;
+    tc_clock_state_t st = step_until(g_carry_id, &written);
+    if (st == TC_CLOCK_PENDING) TEST_FAIL_MESSAGE("not applied within 3 s");
+    TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, tc_clock_poll(g_carry_id, &written));
+    TEST_ASSERT_EQUAL_UINT32(written, clock_now());
+    TEST_ASSERT_TRUE(written >= HMS(15, 15, 15) && written <= HMS(15, 15, 20));
+    run_ms(2000);
+    TEST_ASSERT_EQUAL_UINT32(written + 2, clock_now());
 }
 
 static void press(uint8_t mask, uint32_t hold_ms, uint32_t gap_ms)
@@ -186,6 +224,7 @@ int main(void)
     RUN_TEST(test_rollovers_carry_from_written_value);
     RUN_TEST(test_write_changes_only_clock_nibbles);
     RUN_TEST(test_newer_request_replaces_older);
+    RUN_TEST(test_request_during_rom_carry);
     RUN_TEST(test_busy_when_rom_clock_menu_open);
     return UNITY_END();
 }

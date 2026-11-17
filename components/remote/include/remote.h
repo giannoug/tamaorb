@@ -101,10 +101,10 @@ typedef struct {
     bool (*set_wifi)(void *ctx, const char *ssid, const char *pass);  // schedules the restart itself
     void (*restart)(void *ctx);                                       // schedules the restart
     const char *(*guide)(void *ctx, const char *model);               // "p1"|"p2" -> Markdown, NULL if none
-    bool (*restart_pending)(void *ctx);
+    bool (*restart_pending)(void *ctx);  // same as status' restart_pending, without the cost of a full status
     // Sets the pet's clock to the ball's local time; *written_s = the time written (seconds of the day).
     // NOTFOUND: not a P1/P2; NOTIME: no trusted time; CATCHUP; BUSY: the pet's own clock menu stops its clock.
-    rm_err_t (*sync_clock)(void *ctx, int32_t *written_s);  // same as status' restart_pending, without the cost of a full status
+    rm_err_t (*sync_clock)(void *ctx, int32_t *written_s);
     void *ctx;
 } rm_ops_t;
 

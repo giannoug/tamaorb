@@ -669,8 +669,8 @@ function doRestart(){
   api('POST','/api/restart',{}).then(function(r){if(r.ok)restarting();else gerr('Couldn’t restart: '+whyText(r)+'.')},function(){gerr('Couldn’t reach the ball to restart it.')});
 }
 $('restart1').addEventListener('click',doRestart);
-$('pclkset').addEventListener('click',setPetClock);
 $('restart2').addEventListener('click',doRestart);
+$('pclkset').addEventListener('click',setPetClock);
 
 /* ---------- Wi-Fi ---------- */
 $('openwifi').addEventListener('click',function(){$('wifi').hidden=false;$('openwifi').hidden=true;$('ssid').value=st&&st.wifi?st.wifi_ssid:'';$('ssid').focus()});

@@ -57,13 +57,14 @@ uint64_t tc_catchup_converge(uint64_t ticks, uint64_t (*wall_us)(void), tc_catch
 // the time now); which models have a clock there is the caller's business (tc_pet_clock). The emulator task
 // accepts the request at its next instruction and stamps the tick counter, then waits for the ROM's next seconds
 // tick (0x10 changing) and writes TC_CLOCK_QUIET_TICKS after it, when the ROM's carry into 0x11-0x15 (~150 ticks)
-// is long done: the real second at the moment of that tick, rounded to the nearest (within half a second). No tick within TC_CLOCK_TIMEOUT_TICKS (the ROM's own clock menu
-// stops the clock): dropped as busy. A newer request replaces a pending one; only the newest result is kept.
+// is long done: the real second at the moment of that tick, rounded to the nearest (within half a second).
+// No tick within TC_CLOCK_TIMEOUT_TICKS (the ROM's own clock menu stops the clock): dropped as busy. A newer
+// request replaces a pending one, and an older id then reports the newer one's state and result (one write).
 #define TC_CLOCK_QUIET_TICKS   1638u   // ~50 ms
 #define TC_CLOCK_TIMEOUT_TICKS 65536u  // 2 s
 typedef enum { TC_CLOCK_PENDING, TC_CLOCK_APPLIED, TC_CLOCK_BUSY } tc_clock_state_t;
 uint32_t tc_clock_request_ms(uint32_t ms_of_day);  // returns the request id, never 0
-// APPLIED fills *written_s (may be NULL) with the value written. BUSY: timed out, replaced, or an unknown id.
+// APPLIED fills *written_s (may be NULL) with the value written. BUSY: timed out, or an unknown id.
 tc_clock_state_t tc_clock_poll(uint32_t id, uint32_t *written_s);
 
 #ifdef TC_TESTING

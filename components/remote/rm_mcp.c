@@ -30,7 +30,8 @@ static const tool_def_t TOOLS[] = {
      "\"gap_ms\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":2000,\"default\":400,\"description\":\"Pause between steps.\"},"
      "\"settle_ms\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3000,\"default\":500,\"description\":\"Wait after the last step before looking.\"}},"
      "\"required\":[\"buttons\"]}"},
-    {"status", "Returns the ball's status: ROM, model, phase, Wi-Fi, battery, memory, time and last save.",
+    {"status", "Returns the ball's status: ROM, model, phase, Wi-Fi, battery, memory, time, last save, and the pet's clock "
+               "next to the ball's local time (pet_clock, ball_clock: HH:MM:SS, null when unknown).",
      "{\"type\":\"object\",\"properties\":{}}"},
     {"get_settings", "Returns the ball's settings.", "{\"type\":\"object\",\"properties\":{}}"},
     {"set_settings",
@@ -186,10 +187,11 @@ static cJSON *tool_switch_pet(const rm_ops_t *ops, const cJSON *args)
 static cJSON *tool_sync_pet_clock(const rm_ops_t *ops)
 {
     int32_t w = -1;
-    switch (ops->sync_clock(ops->ctx, &w)) {
+    rm_err_t e = ops->sync_clock(ops->ctx, &w);
+    if (e == RM_OK && (w < 0 || w >= 86400)) e = RM_ERR_BUSY;  // can't happen; reported as USB does
+    switch (e) {
     case RM_OK: {
         char t[48];
-        if (w < 0 || w >= 86400) w = 0;
         snprintf(t, sizeof t, "Pet clock set to %02d:%02d:%02d.", (int)(w / 3600), (int)(w / 60 % 60), (int)(w % 60));
         return tool_result(t, false);
     }

@@ -820,6 +820,13 @@ static void test_clock_row_value(void)
     ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
     TEST_ASSERT_FALSE(find_text("09:58", 1, INK, NULL, NULL));
     TEST_ASSERT_TRUE(find_text("Pet clock", 2, INK, NULL, NULL));
+    // the row's value line, just under "Pet clock", is the dash: look only there (other ink can match a "-")
+    int ny;
+    TEST_ASSERT_TRUE(find_text("Pet clock", 2, INK, NULL, &ny));
+    for (int y = 0; y < UI_H; y++)
+        if (y < ny + 16 || y > ny + 30)
+            for (int x = 0; x < UI_W; x++) fb[y * UI_W + x] = BG;
+    TEST_ASSERT_TRUE_MESSAGE(find_text("-", 1, INK, NULL, NULL), "no dash for an unknown pet clock");
 }
 
 static void test_clock_page_texts_fit(void)

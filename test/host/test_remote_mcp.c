@@ -386,6 +386,24 @@ static void test_sync_pet_clock_refusals_are_tool_errors(void)
     cJSON_Delete(r);
 }
 
+static void test_sync_pet_clock_out_of_range_is_busy_like_usb(void)
+{
+    fake.sync_written = 90000;  // can't happen; reported as USB does (busy), never as 00:00:00
+    cJSON *r = tool("sync_pet_clock", "{}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "clock menu"));
+    cJSON_Delete(r);
+}
+
+static void test_status_description_mentions_pet_clock(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", NULL);
+    cJSON *t = cJSON_GetArrayItem(cJSON_GetObjectItem(result(r), "tools"), 2);
+    TEST_ASSERT_EQUAL_STRING("status", cJSON_GetObjectItem(t, "name")->valuestring);
+    TEST_ASSERT_NOT_NULL(strstr(cJSON_GetObjectItem(t, "description")->valuestring, "pet's clock"));
+    cJSON_Delete(r);
+}
+
 static void test_resources(void)
 {
     cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}", NULL);
@@ -511,6 +529,8 @@ int main(void)
     RUN_TEST(test_sync_pet_clock_description_warns);
     RUN_TEST(test_sync_pet_clock_ok);
     RUN_TEST(test_sync_pet_clock_refusals_are_tool_errors);
+    RUN_TEST(test_sync_pet_clock_out_of_range_is_busy_like_usb);
+    RUN_TEST(test_status_description_mentions_pet_clock);
     RUN_TEST(test_resources);
     RUN_TEST(test_resources_read_guide);
     RUN_TEST(test_hostile_input);
