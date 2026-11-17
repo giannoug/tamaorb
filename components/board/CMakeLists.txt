@@ -8,4 +8,4 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "spotpear_ball_128"
     REQUIRES esp_common
-    PRIV_REQUIRES esp_driver_gpio esp_driver_spi esp_driver_ledc esp_driver_i2c esp_driver_sdmmc esp_driver_i2s esp_adc sdmmc fatfs esp_lcd freertos log)
+    PRIV_REQUIRES esp_driver_gpio esp_driver_spi esp_driver_ledc esp_driver_i2c esp_driver_sdmmc esp_driver_i2s esp_adc sdmmc fatfs esp_lcd esp_timer freertos log)

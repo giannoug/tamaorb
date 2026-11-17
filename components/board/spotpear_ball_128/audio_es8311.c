@@ -10,6 +10,7 @@
 #include "esp_codec_dev_defaults.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -25,16 +26,41 @@ static TaskHandle_t s_task;
 static volatile uint32_t s_freq_hz;
 static volatile bool s_on;
 static volatile bool s_muted;
+static volatile bool s_idle_off;    // screen off: speaker off between sounds
+static volatile bool s_prepare;     // a beep is due: switch on now
 
 static void amp(bool on) { gpio_set_level(PIN_AMP_EN, on); }
+
+static uint32_t ms_now(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
+
+// Only this task switches the channel and the amp (the others set flags and notify it), so a disable can't race a
+// write or a prepare. An enabled I2S channel holds a power lock that blocks light sleep.
+static void speaker(bool on)
+{
+    if (!s_tx || on == s_tx_enabled) return;
+    if (on) { amp(true); i2s_channel_enable(s_tx); }
+    else { i2s_channel_disable(s_tx); amp(false); }
+    s_tx_enabled = on;
+    if (s_idle_off) ESP_LOGI(TAG, "speaker %s", on ? "on" : "off (idle)");
+}
 
 static void writer(void *arg)
 {
     static int16_t buf[CHUNK];
     uint32_t phase = 0;  // 16.16 fixed point position within one period
+    uint32_t last_sound = ms_now();
     for (;;) {
-        if (!s_on || s_freq_hz == 0 || s_muted) {
-            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        bool sounding = s_on && s_freq_hz != 0 && !s_muted;
+        if (s_prepare || sounding) last_sound = ms_now();
+        s_prepare = false;
+        uint32_t quiet = ms_now() - last_sound;
+        // Muted: off. Screen on: on whenever not muted (key clicks need the amp already running). Screen off: on
+        // while sounding and for the hold time after, so the ball light-sleeps between the pet's calls.
+        bool want = !s_muted && (!s_idle_off || quiet < BOARD_AUDIO_HOLD_MS);
+        speaker(want);
+        if (!sounding) {
+            TickType_t wait = s_tx_enabled && s_idle_off ? pdMS_TO_TICKS(BOARD_AUDIO_HOLD_MS - quiet + 1) : portMAX_DELAY;
+            ulTaskNotifyTake(pdTRUE, wait);
             continue;
         }
         uint32_t step = (uint32_t)(((uint64_t)s_freq_hz << 16) / RATE);
@@ -102,10 +128,20 @@ void board_tone(uint32_t freq_hz, bool on)
 void board_volume_set(uint8_t pct)
 {
     if (pct > 100) pct = 100;
-    s_muted = pct == 0;
-    amp(!s_muted);  // muted: amp off, no hum
-    // While enabled, the I2S channel holds a power lock that blocks light sleep.
-    if (s_tx && s_muted && s_tx_enabled) { i2s_channel_disable(s_tx); s_tx_enabled = false; }
-    if (s_tx && !s_muted && !s_tx_enabled) { i2s_channel_enable(s_tx); s_tx_enabled = true; }
+    s_muted = pct == 0;  // muted: the writer switches the speaker off (amp off, no hum, light sleep possible)
     if (s_dev && pct) esp_codec_dev_set_out_vol(s_dev, pct);
+    if (s_task) xTaskNotifyGive(s_task);
+}
+
+void board_audio_idle_off(bool allow)
+{
+    s_idle_off = allow;
+    if (s_task) xTaskNotifyGive(s_task);
+}
+
+void board_audio_prepare(void)
+{
+    if (s_muted) return;
+    s_prepare = true;
+    if (s_task) xTaskNotifyGive(s_task);
 }
