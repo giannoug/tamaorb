@@ -29,7 +29,8 @@ static volatile bool s_muted;
 static volatile bool s_idle_off;    // screen off: speaker off between sounds
 static volatile bool s_prepare;     // a beep is due: switch on now
 
-static void amp(bool on) { gpio_set_level(PIN_AMP_EN, on); }
+static bool s_amp_on;  // board_init leaves the amp off while init leaves the channel enabled: track both
+static void amp(bool on) { gpio_set_level(PIN_AMP_EN, on); s_amp_on = on; }
 
 static uint32_t ms_now(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 
@@ -37,9 +38,9 @@ static uint32_t ms_now(void) { return (uint32_t)(esp_timer_get_time() / 1000); }
 // write or a prepare. An enabled I2S channel holds a power lock that blocks light sleep.
 static void speaker(bool on)
 {
-    if (!s_tx || on == s_tx_enabled) return;
-    if (on) { amp(true); i2s_channel_enable(s_tx); }
-    else { i2s_channel_disable(s_tx); amp(false); }
+    if (!s_tx || (on == s_tx_enabled && on == s_amp_on)) return;
+    if (on) { amp(true); if (!s_tx_enabled) i2s_channel_enable(s_tx); }
+    else { if (s_tx_enabled) i2s_channel_disable(s_tx); amp(false); }
     s_tx_enabled = on;
     if (s_idle_off) ESP_LOGI(TAG, "speaker %s", on ? "on" : "off (idle)");
 }
