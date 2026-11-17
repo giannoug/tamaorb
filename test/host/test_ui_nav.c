@@ -19,7 +19,7 @@ void tearDown(void) {}
 
 static ui_act_t step(ui_gkind_t k, int x, int y, int dx, int dy, bool boot)
 {
-    ui_gevent_t ev = { k, (int16_t)x, (int16_t)y, (int16_t)dx, (int16_t)dy, false };
+    ui_gevent_t ev = { .kind = k, .x = (int16_t)x, .y = (int16_t)y, .dx = (int16_t)dx, .dy = (int16_t)dy };
     nav.view.t_ms += 1000;  // deliberate inputs, well apart (see test_confirm_ignores_quick_second_tap)
     return ui_nav_step(&nav, &ev, boot, &cfg, &out, &dc);
 }
@@ -378,7 +378,7 @@ static void test_edit_changes_only_touched_key(void)
 {
     open_page(UI_ROW_SOUND);          // the view sees brightness 80 ...
     cfg.brightness = 80;
-    ui_gevent_t none = { UI_G_NONE, 0, 0, 0, 0, false };
+    ui_gevent_t none = { .kind = UI_G_NONE };
     ui_nav_step(&nav, &none, false, &cfg, &out, &dc);
     cfg.brightness = 33;              // ... but the latest settings have 33
     int x, y;

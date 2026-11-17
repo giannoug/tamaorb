@@ -19,9 +19,9 @@ typedef struct { const char *name; int n; ui_touch_t s[16]; } seq_t;
 // Every sequence starts outside all bands (x and y in 24..215) -- except where noted, the finger may drift.
 static const seq_t SEQS[] = {
     { "tap A", 3, { P1(30, 200), P1(30, 200), UP } },
-    { "tap B", 3, { P1(120, 200), P1(121, 121), UP } },
+    { "tap B", 3, { P1(120, 200), P1(121, 201), UP } },
     { "tap C", 3, { P1(200, 200), P1(200, 200), UP } },
-    { "hold B", 6, { P1(120, 100), P1(120, 100), P1(120, 100), P1(120, 100), P1(120, 100), UP } },
+    { "hold B", 6, { P1(120, 200), P1(120, 200), P1(120, 200), P1(120, 200), P1(120, 200), UP } },
     { "slide A to C", 6, { P1(30, 200), P1(70, 200), P1(120, 200), P1(170, 200), P1(220, 200), UP } },
     { "slide C to A, from just inside the band", 5, { P1(215, 200), P1(150, 200), P1(100, 200), P1(30, 200), UP } },
     { "two points A+C, just inside the bands", 4, { P2(24, 200, 215, 200), P2(24, 200, 215, 200), P2(24, 200, 215, 200), UP } },

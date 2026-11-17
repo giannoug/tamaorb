@@ -115,6 +115,10 @@ static void test_clipped_at_edge(void)
     TEST_ASSERT_NOT_EQUAL(SENT, px(96, 239));
     TEST_ASSERT_EQUAL_HEX16(SENT, px(97, 239));
     TEST_ASSERT_EQUAL_HEX16(SENT, px(0, 142));
+    // x -77..-1 is off the left edge; without the x clip those writes would wrap onto the right end of the row
+    // above (fb[py * UI_W + px] with px < 0), so the right edge must still hold the sentinel.
+    for (int y = 143; y < UI_H; y++)
+        for (int x = 160; x < UI_W; x++) TEST_ASSERT_EQUAL_HEX16(SENT, px(x, y));
 }
 
 int main(void)
