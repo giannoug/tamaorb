@@ -52,8 +52,8 @@ static void writer(void *arg)
     uint32_t last_sound = ms_now();
     for (;;) {
         bool sounding = s_on && s_freq_hz != 0 && !s_muted;
-        if (s_prepare || sounding) last_sound = ms_now();
-        s_prepare = false;
+        if (s_prepare) { s_prepare = false; last_sound = ms_now(); }  // cleared only when seen: none is lost
+        if (sounding) last_sound = ms_now();
         uint32_t quiet = ms_now() - last_sound;
         // Muted: off. Screen on: on whenever not muted (key clicks need the amp already running). Screen off: on
         // while sounding and for the hold time after, so the ball light-sleeps between the pet's calls.

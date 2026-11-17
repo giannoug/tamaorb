@@ -17,13 +17,28 @@ static uint64_t s_slept_us;
 
 static uint64_t now_us(void) { return (uint64_t)esp_timer_get_time(); }
 
+static esp_timer_handle_t s_wake;
+static TaskHandle_t s_sleeper;
+static void wake_sleeper(void *arg) { xTaskNotifyGive(s_sleeper); }
+
+// To the microsecond, never early: a beep waits here for its moment, and vTaskDelay's 1 ms ticks could end up to
+// ~2 ms before it. A one-shot timer wakes the task; light sleep still happens until that timer is due.
 static void sleep_until_us(uint64_t ts)
 {
-    uint64_t now = now_us();
-    if (ts <= now) return;
-    uint64_t d = ts - now;
     int64_t t0 = esp_timer_get_time();
-    vTaskDelay(pdMS_TO_TICKS(d / 1000));
+    if (ts <= (uint64_t)t0) return;
+    if (!s_wake) {
+        const esp_timer_create_args_t a = { .callback = wake_sleeper, .name = "emu_wake" };
+        if (esp_timer_create(&a, &s_wake) != ESP_OK) { vTaskDelay(pdMS_TO_TICKS((ts - t0 + 999) / 1000)); return; }
+    }
+    s_sleeper = xTaskGetCurrentTaskHandle();
+    for (;;) {
+        int64_t left = (int64_t)ts - esp_timer_get_time();
+        if (left <= 0) break;
+        esp_timer_stop(s_wake);  // not running: harmless
+        if (esp_timer_start_once(s_wake, (uint64_t)left) != ESP_OK) { vTaskDelay(1); continue; }
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    }
     s_slept_us += (uint64_t)(esp_timer_get_time() - t0);
 }
 
@@ -34,8 +49,11 @@ static void unlock(void) { taskEXIT_CRITICAL(&s_mux); }
 // agent_feedback = silent mutes the speaker during agent press sequences (one flag read).
 static void tone(uint32_t freq_dhz, bool on) { board_tone(freq_dhz / 10, on && !g_agent_mute); }
 
+// A silent agent press makes no sound, so it doesn't start the speaker either (it would hold off light sleep).
+static void tone_prepare(void) { if (!g_agent_mute) board_audio_prepare(); }
+
 static const tc_platform_t s_plat = { .now_us = now_us, .sleep_until_us = sleep_until_us, .tone = tone,
-                                      .lock = lock, .unlock = unlock, .tone_prepare = board_audio_prepare };
+                                      .lock = lock, .unlock = unlock, .tone_prepare = tone_prepare };
 
 #define PROGRESS_SAVE_US (120 * 1000000LL)
 
