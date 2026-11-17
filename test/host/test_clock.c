@@ -162,7 +162,10 @@ static void test_request_during_rom_carry(void)
     g_last_sec = nib(0x10);
     g_last_change = tc_tick_counter();
     tc_debug_set_step_hook(post_mid_carry);
-    run_ms(4000);  // the carry happens within these seconds; the request is posted in it
+    // Step only until the hook has posted the request: a fixed run could let the write land and the clock tick
+    // on before the checks below (it did on the test ROM, whose seconds fall elsewhere than p1.sav's).
+    uint32_t t0 = tc_tick_counter();
+    while (!g_carry_id && tc_ticks_since(t0, tc_tick_counter()) < 4 * TC_TICK_HZ) tc_step(1);
     TEST_ASSERT_NOT_EQUAL_MESSAGE(0, g_carry_id, "never saw the carry start");
     TEST_ASSERT_EQUAL(9, g_carry_hour_low_at_post);
     uint32_t written = 0;
