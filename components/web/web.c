@@ -177,26 +177,38 @@ static esp_err_t mcp_get(httpd_req_t *req)
 // a time (the press task refuses a second one as busy) and still answer after their sequence, as before.
 #define SLOW_QUEUE 4
 static QueueHandle_t s_slow_q;
+static volatile bool s_slow_busy;  // the worker is running a request
 
 static void slow_worker(void *arg)
 {
     for (;;) {
         httpd_req_t *req;
         if (xQueueReceive(s_slow_q, &req, portMAX_DELAY) != pdTRUE) continue;
+        s_slow_busy = true;
         if (!strcmp(req->uri, "/mcp")) mcp_post(req);
         else api_handler(req);
+        s_slow_busy = false;
         httpd_req_async_handler_complete(req);
     }
 }
 
+static esp_err_t send_json_status(httpd_req_t *req, int code, const char *body)
+{
+    httpd_resp_set_status(req, status_line(code));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, body);
+}
+
 static esp_err_t slow_post(httpd_req_t *req)
 {
+    // A panel press while another request runs is refused as busy, as when the press task is running one; waiting
+    // in the queue it would run seconds later instead. (MCP calls queue: an agent sends one at a time.)
+    if (!strcmp(req->uri, "/api/press") && (s_slow_busy || uxQueueMessagesWaiting(s_slow_q)))
+        return send_json_status(req, 409, "{\"error\":\"busy\"}");
     httpd_req_t *copy = NULL;
     if (httpd_req_async_handler_begin(req, &copy) != ESP_OK) return refuse(req, 500);
     if (xQueueSend(s_slow_q, &copy, 0) != pdTRUE) {  // four already waiting: say so rather than queue forever
-        httpd_resp_set_status(copy, status_line(503));
-        httpd_resp_set_type(copy, "application/json");
-        httpd_resp_sendstr(copy, "{\"error\":\"busy\"}");
+        send_json_status(copy, 503, "{\"error\":\"busy\"}");
         httpd_req_async_handler_complete(copy);
     }
     return ESP_OK;
@@ -221,23 +233,29 @@ static void ws_refuse(httpd_req_t *req)
     httpd_sess_trigger_close(req->handle, httpd_req_to_sockfd(req));
 }
 
+// After the handshake (ESP-IDF 6 no longer calls the handler for it): take a slot or say why not.
+static esp_err_t ws_connected(httpd_req_t *req)
+{
+    int fd = httpd_req_to_sockfd(req), slot = -1;
+    xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
+    for (int i = 0; i < WS_CLIENTS && slot < 0; i++)
+        if (s_ws_fd[i] == fd) slot = i;  // already ours (an IDF that also calls the handler on the handshake)
+    for (int i = 0; i < WS_CLIENTS && slot < 0; i++)
+        if (s_ws_fd[i] < 0 || httpd_ws_get_fd_info(s_httpd, s_ws_fd[i]) != HTTPD_WS_CLIENT_WEBSOCKET) slot = i;
+    if (slot >= 0) s_ws_fd[slot] = fd;
+    xSemaphoreGive(s_ws_mutex);
+    if (slot < 0) {
+        ESP_LOGI(TAG, "debugger refused: %d already open", WS_CLIENTS);
+        ws_refuse(req);
+    } else {
+        ESP_LOGI(TAG, "debugger %d connected", slot);
+    }
+    return ESP_OK;
+}
+
 static esp_err_t ws_debug(httpd_req_t *req)
 {
-    if (req->method == HTTP_GET) {  // the handshake is done: take a slot or say why not
-        int fd = httpd_req_to_sockfd(req), slot = -1;
-        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
-        for (int i = 0; i < WS_CLIENTS && slot < 0; i++)
-            if (s_ws_fd[i] < 0 || httpd_ws_get_fd_info(s_httpd, s_ws_fd[i]) != HTTPD_WS_CLIENT_WEBSOCKET) slot = i;
-        if (slot >= 0) s_ws_fd[slot] = fd;
-        xSemaphoreGive(s_ws_mutex);
-        if (slot < 0) {
-            ESP_LOGI(TAG, "debugger refused: %d already open", WS_CLIENTS);
-            ws_refuse(req);
-        } else {
-            ESP_LOGI(TAG, "debugger %d connected", slot);
-        }
-        return ESP_OK;
-    }
+    if (req->method == HTTP_GET) return ws_connected(req);  // older IDFs call the handler for the handshake
     // The page sends nothing; read off and drop anything that comes (control frames are handled by httpd).
     httpd_ws_frame_t f = { 0 };
     if (httpd_ws_recv_frame(req, &f, 0) != ESP_OK) return ESP_FAIL;
@@ -345,7 +363,8 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
     static const httpd_uri_t uris[] = {
         { .uri = "/", .method = HTTP_GET, .handler = page_get },
         { .uri = "/debug", .method = HTTP_GET, .handler = debug_page_get },
-        { .uri = "/ws/debug", .method = HTTP_GET, .handler = ws_debug, .is_websocket = true },
+        { .uri = "/ws/debug", .method = HTTP_GET, .handler = ws_debug, .is_websocket = true,
+          .ws_post_handshake_cb = ws_connected },
         { .uri = "/mcp", .method = HTTP_POST, .handler = slow_post },
         { .uri = "/api/press", .method = HTTP_POST, .handler = slow_post },  // before /api/*: first match wins
         { .uri = "/mcp", .method = HTTP_GET, .handler = mcp_get },
