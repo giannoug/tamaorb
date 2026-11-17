@@ -42,6 +42,7 @@ main{display:flex;flex-direction:column;gap:16px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0}
 .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;min-height:44px}  /* the same height in every card, so side-by-side titles line up */
 .note{font-size:13px;color:var(--muted)}
+.one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 #s-lcd{flex:1 1 380px}#s-cpu{flex:2 1 520px}#s-dis{flex:3 1 560px}#s-known{flex:1 1 320px}
 .lcd{align-self:center;background:var(--lcd-bg);border:2px solid var(--ink);border-radius:10px;padding:10px;display:grid;grid-template-columns:repeat(32,10px);grid-auto-rows:10px;gap:1px}
 .lcd span{background:var(--lcd-off)}.lcd span.on{background:var(--lcd-ink)}
@@ -52,7 +53,7 @@ main{display:flex;flex-direction:column;gap:16px}
 .tile{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .tile .l{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .tile .v{font-family:var(--mono);font-size:19px;font-weight:650}
-.tile .s{font-size:12px;color:var(--muted)}
+.tile .s{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}  /* one line always: a wrap made the tile, and the page below, jump */
 .flags{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .flag{font-family:var(--mono);font-size:13px;padding:4px 10px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
 .flag.on{border-color:var(--accent);background:var(--accent-tint);color:var(--ink);font-weight:700}
@@ -134,7 +135,7 @@ main{display:flex;flex-direction:column;gap:16px}
     <div class="head"><h2 id="h-lcd">Pet screen</h2><span class="note" id="frame">frame –</span></div>
     <div class="lcd" id="lcd" role="img" aria-label="The pet's LCD"></div>
     <div class="chips" id="icons"></div>
-    <div class="note" id="petline" style="text-align:center">–</div>
+    <div class="note one" id="petline" style="text-align:center">–</div>
   </section>
   <section class="card" id="s-cpu" data-tab="pet" aria-labelledby="h-cpu">
     <div class="head"><h2 id="h-cpu">CPU</h2><span class="note" id="cpuline">E0C6S46</span></div>
@@ -392,10 +393,11 @@ function render() {
   }
   iconEls.forEach((e, i) => e.classList.toggle('on', ((s.icons >> i) & 1) === 1));
   const btn = ['A', 'B', 'C'].filter((_, i) => (s.buttons >> i) & 1).join('+') || 'none';
-  $('petline').textContent = 'Buzzer ' + (s.buzzer ? 'on' : 'off') + ' · buttons ' + btn + ' held · phase ' + s.phase;
+  $('petline').textContent = $('petline').title = 'Buzzer ' + (s.buzzer ? 'on' : 'off') + ' · buttons ' + btn + ' held · phase ' + s.phase;
   $('cpuline').textContent = 'E0C6S46 · tick ' + s.tick.toLocaleString('en-US').replace(/,/g, ' ') + ' · ' + (s.halted ? 'halted' : 'running');
-  const set = (k, v, sub) => { regEls[k].v.textContent = v; regEls[k].s.textContent = sub || ' '; };
-  set('pc', hex3(s.pc), 'bank ' + (s.pc >> 12) + ' · page ' + ((s.pc >> 8) & 15) + ' · step ' + (s.pc & 255).toString(16).toUpperCase().padStart(2, '0'));
+  const set = (k, v, sub) => { regEls[k].v.textContent = v; regEls[k].s.textContent = sub || ' '; regEls[k].s.title = sub || ''; };
+  // bank only when it's 1: the usual line stays short enough not to need cutting
+  set('pc', hex3(s.pc), (s.pc >> 12 ? 'bank 1 · ' : '') + 'page ' + ((s.pc >> 8) & 15) + ' · step ' + (s.pc & 255).toString(16).toUpperCase().padStart(2, '0'));
   set('np', hex(s.np), 'next page');
   set('a', hex(s.a)); set('b', hex(s.b));
   const pq = (v, n) => n + 'P ' + (v >> 8).toString(16).toUpperCase() + ' · ' + n + 'H ' + ((v >> 4) & 15).toString(16).toUpperCase() + ' · ' + n + 'L ' + (v & 15).toString(16).toUpperCase();
