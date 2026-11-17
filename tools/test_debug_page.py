@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The debugger page (components/web/page/debug.html): its disassembler matches tamalib, its labels match the doc."""
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -39,6 +40,8 @@ def test_ops_table_matches_tamalib():
 def disasm():
     node = shutil.which("node")
     if not node:
+        if os.environ.get("CI"):
+            pytest.fail("node is missing in CI: the disassembler tests must run there")
         pytest.skip("node not installed (CI's Linux runner has it)")
     helper = ROOT / "tools" / "debug_page_disasm.mjs"
 
@@ -53,9 +56,9 @@ def test_disassembles_known_words(disasm):
     # (word, pc, word before it) -> text; the words are from tools/gen_testrom.py's program
     cases = [(0xE0F, 0x140, 0), (0xEC2, 0x143, 0), (0xC21, 0x14E, 0), (0x76C, 0x153, 0xDE6), (0xE6F, 0x118, 0),
              (0xE80, 0x116, 0), (0xF44, 0x14C, 0), (0xFF8, 0x11E, 0), (0xB10, 0x14D, 0), (0x66C, 0x149, 0),
-             (0x512, 0x100, 0), (0x0A0, 0x205, 0xE43), (0xD2F, 0, 0), (0xF65, 0, 0)]
+             (0x512, 0x100, 0), (0x0A0, 0x205, 0xE43), (0xD2F, 0, 0), (0xF65, 0, 0), (0x512, 0x1100, 0)]
     want = ["LD A,0xF", "LD A,MX", "ADD MX,0x1", "JP NZ,0x16C", "LDPX MX,0xF", "LD XP,A", "SDF", "HALT", "LD X,0x10",
-            "JP Z,0x16C", "CALZ 0x012", "JP 0x3A0", "NOT MX", "INC M(0x5)"]
+            "JP Z,0x16C", "CALZ 0x012", "JP 0x3A0", "NOT MX", "INC M(0x5)", "CALZ 0x1012"]  # CALZ: page 0 of the bank
     assert disasm(*cases) == want
 
 

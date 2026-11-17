@@ -189,7 +189,7 @@ function disasm(word, pc, prev) {
       const v = n === '0' ? a0 : a1;
       if (k === 'r') return REG[v & 3];
       if (k === 't') return hex3((np << 8) | (v & 0xFF));  // JP, CALL: a step on the current (or PSET) page
-      if (k === 'z') return hex3(v & 0xFF);                // CALZ: page 0
+      if (k === 'z') return hex3((pc & 0x1000) | (v & 0xFF));  // CALZ: page 0 of the current bank
       return hex(v);
     });
   }
@@ -218,7 +218,7 @@ function decode(name, r, model) {
   case 'Light': return H(r[75]) + ' · ' + (r[75] === 15 ? 'on' : r[75] === 0 ? 'off' : '?');
   case 'Droppings': return String(r[77]);
   case 'Age': return String(r[85] * 10 + r[84]);
-  case 'Character': return r[93] ? String(r[93]) : '0 · egg or none';
+  case 'Character': return r[93] ? String(r[93]) : '0 · egg or dead';
   case 'State': return r[94] + (STATE[r[94]] ? ' · ' + STATE[r[94]] : '');
   }
   return '';
@@ -266,7 +266,8 @@ function buildRam(n) {
   ramCols = cols;
   const g = $('ram');
   g.textContent = '';
-  g.style.gridTemplateColumns = (cols === 16 ? '32px' : '52px') + ' repeat(' + cols + ', ' + (cols === 16 ? '17px' : '22px') + ')';
+  // a phone: 16 columns share the width (no sideways scroll even on 320 px); wider: fixed 22 px cells
+  g.style.gridTemplateColumns = cols === 16 ? '30px repeat(16, minmax(0, 1fr))' : '52px repeat(32, 22px)';
   g.append(el('span', 'h'));
   for (let c = 0; c < cols; c++) g.append(el('span', 'h', c.toString(16).toUpperCase()));
   ramCells = [];
@@ -444,16 +445,18 @@ for (const b of document.querySelectorAll('[data-go]')) b.addEventListener('clic
 });
 
 // ---- the WebSocket: the ball pushes a snapshot whenever there is a new one ----
-let ws = null, backoff = 500, retry = 0;
+let ws = null, backoff = 500, retry = 0, lastMsg = 0;
 function connect() {
   if (ws || document.hidden) return;
   clearTimeout(retry);
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/debug');
-  ws.onopen = () => { backoff = 500; conn = 'live'; status(); };
+  ws.onopen = () => { backoff = 500; conn = 'live'; lastMsg = performance.now(); status(); loadOnce(); };
   ws.onmessage = (e) => {
+    lastMsg = performance.now();  // snapshots and the ball's once-a-second "alive" both count, also while frozen
     if (frozen) return;
     let s;
     try { s = JSON.parse(e.data); } catch (_) { return; }
+    if (s.pc === undefined) return;  // the heartbeat
     times.push(performance.now());
     snap = s;
     render();
@@ -467,6 +470,21 @@ function connect() {
     backoff = Math.min(backoff * 2, 5000);
   };
 }
+// A ball that restarted or left Wi-Fi sends no close: after 3 s of silence, drop the socket and dial again.
+// Every second the page says something too, so the ball's server doesn't take this socket for an idle one.
+setInterval(() => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (performance.now() - lastMsg > 3000) {
+    ws.onclose = null;
+    ws.close();
+    ws = null;
+    conn = 'reconnecting';
+    status();
+    connect();
+    return;
+  }
+  ws.send('.');
+}, 1000);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {  // free the ball's slot (and let it sleep) while nobody looks
     if (ws) { ws.onclose = null; ws.close(1000); ws = null; }
@@ -476,17 +494,20 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// ---- once: the program, and the names for the header ----
-fetch('/api/rom', { cache: 'no-store' }).then((r) => (r.ok ? r.arrayBuffer() : null)).then((b) => {
-  if (!b) { $('disnote').textContent = 'No ROM is running, so there is nothing to disassemble.'; return; }
-  const u = new Uint8Array(b);
-  rom = new Uint16Array(u.length >> 1);
-  for (let i = 0; i < rom.length; i++) rom[i] = ((u[2 * i] << 8) | u[2 * i + 1]) & 0xFFF;
-  renderDis();
-}).catch(() => { $('disnote').textContent = 'Couldn’t read the program from the ball; reload to try again.'; });
-fetch('/api/status', { cache: 'no-store' }).then((r) => r.json()).then((s) => {
-  $('sub').textContent = location.host + ' · ' + s.model + (s.rom_name ? ' · ' + s.rom_name : '') + ' · read only';
-}).catch(() => {});
+// ---- on every (re)connect: the program and the names for the header (a pet switch restarts the ball) ----
+function loadOnce() {
+  fetch('/api/rom', { cache: 'no-store' }).then((r) => (r.ok ? r.arrayBuffer() : null)).then((b) => {
+    if (!b) { rom = null; $('dis').textContent = ''; $('disnote').textContent = 'No ROM is running, so there is nothing to disassemble.'; return; }
+    const u = new Uint8Array(b);
+    rom = new Uint16Array(u.length >> 1);
+    for (let i = 0; i < rom.length; i++) rom[i] = ((u[2 * i] << 8) | u[2 * i + 1]) & 0xFFF;
+    $('disnote').textContent = 'The program is read from the ball when the page connects; scroll or use the arrow keys to move.';
+    renderDis();
+  }).catch(() => { $('disnote').textContent = 'Couldn’t read the program from the ball; it is tried again on the next reconnect.'; });
+  fetch('/api/status', { cache: 'no-store' }).then((r) => r.json()).then((s) => {
+    $('sub').textContent = location.host + ' · ' + s.model + (s.rom_name ? ' · ' + s.rom_name : '') + ' · read only';
+  }).catch(() => {});
+}
 if (phone.matches) $('freeze').textContent = 'Freeze';
 connect();
 </script>
