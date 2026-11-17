@@ -202,6 +202,10 @@ dialog h2{font-size:19px}
     <div class="ctl" style="flex-wrap:wrap"><select class="in" id="tz" style="flex:1 1 220px" aria-describedby="e-tz"></select><button type="button" class="btn" id="tzuse" hidden></button></div>
     <div class="ferr" id="e-tz" hidden></div>
   </div>
+  <div class="row">
+    <div class="lg"><b>Pet clock</b><span class="hint" id="pclkwhy">Sets the pet’s own clock to the ball’s time. Press it again after a daylight saving change.</span></div>
+    <div class="ctl" style="flex-wrap:wrap"><span id="pclk">Pet –</span><button type="button" class="btn" id="pclkset">Set pet clock to ball time</button></div>
+  </div>
 </section>
 
 <section class="card" style="gap:16px" aria-labelledby="h-net">
@@ -346,7 +350,7 @@ function ferr(k,m){
   var b=k==='name'?$('sfx-name'):c;if(b&&b.classList)b.classList.toggle('bad',!!m);
   var hh=$('h-'+k);if(hh)hh.hidden=!!m&&k!=='password';
 }
-var ERR={busy:'the ball is busy, try again in a moment',catching:'the ball is still catching up','catching up':'the ball is still catching up','not found':'it wasn’t found on the ball',origin:'this page was opened from another address',invalid:'the ball didn’t accept that',failed:'the ball failed to do it'};
+var ERR={busy:'the ball is busy, try again in a moment','no time':'the ball has no internet time yet',catching:'the ball is still catching up','catching up':'the ball is still catching up','not found':'it wasn’t found on the ball',origin:'this page was opened from another address',invalid:'the ball didn’t accept that',failed:'the ball failed to do it'};
 function whyText(r){return ERR[(r.j&&r.j.error)||'']||'the ball answered '+r.status}
 
 /* ---------- settings ---------- */
@@ -498,6 +502,32 @@ function renderStatus(){
     $('cutxt').textContent=p+' % done'+left+'. Switching pets and restoring saves wait until it finishes. Settings still work.';
   }else cu=null;
   if(s.phase!==lastPhase){lastPhase=s.phase;petsAt=0}
+  renderClock();
+}
+// The pet's own clock, and the button that sets it to the ball's local time (the tz setting).
+function clockWhy(s){
+  if(s.model!=='P1'&&s.model!=='P2')return 'Not available for this pet';
+  if(s.phase!=='run')return 'Pet is catching up';
+  if(!s.ball_clock)return 'Waiting for internet time';
+  return '';
+}
+function renderClock(){
+  var s=st;if(!s)return;
+  $('pclk').textContent='Pet '+(s.pet_clock||'–')+' · Ball '+(s.ball_clock||'–');
+  var why=clockWhy(s);
+  $('pclkset').disabled=!!why||clockBusy;
+  $('pclkwhy').textContent=why||'Sets the pet’s own clock to the ball’s time. Press it again after a daylight saving change.';
+}
+var clockBusy=false;
+function setPetClock(){
+  if(!st||clockWhy(st))return;
+  var zone=S?S.tz:'';
+  if(!confirm('Set pet clock to '+st.ball_clock.slice(0,5)+(zone?' ('+zone+')':'')+'?\n\nYour pet may wake up or fall asleep, and its age may change.'))return;
+  clockBusy=true;renderClock();
+  api('POST','/api/pet-clock/sync').then(function(r){
+    if(r.ok){st.pet_clock=r.j.pet_clock;gerr('')}
+    else gerr('Pet clock not set: '+(r.status===409&&r.j&&r.j.error==='busy'?'the pet’s clock menu is open, or the ball is busy':whyText(r))+'.');
+  },function(){gerr('Pet clock not set: the ball didn’t answer.')}).then(function(){clockBusy=false;renderClock()});
 }
 function failed(){fails++;if(fails>=3&&!lost){lost=true;indicator()}}
 function poll(){
@@ -639,6 +669,7 @@ function doRestart(){
   api('POST','/api/restart',{}).then(function(r){if(r.ok)restarting();else gerr('Couldn’t restart: '+whyText(r)+'.')},function(){gerr('Couldn’t reach the ball to restart it.')});
 }
 $('restart1').addEventListener('click',doRestart);
+$('pclkset').addEventListener('click',setPetClock);
 $('restart2').addEventListener('click',doRestart);
 
 /* ---------- Wi-Fi ---------- */

@@ -46,7 +46,7 @@ These are the MAME `tama` / `tamag2` sets; MAME zips work directly with the tool
 | A / B / C | Tap the left, middle or right button under the pet's screen (anywhere in its part of the strip below it). Touching the pet's screen or the icons above it presses nothing |
 | A + C | Touch A and slide to C, or C to A (the touch chip can't tell two side-by-side fingers apart) |
 | Glance | Swipe down from the top edge. It shows the clock, battery, hunger and happy hearts, a live copy of the pet, what the pet needs, age, weight, discipline and the panel address |
-| Settings | Swipe up from the bottom edge. Tap a row to open it, drag to change a value or scroll the list. Rows: Sound, Brightness, Dimming, Palette, Time zone, ROM, Web panel (a QR code) |
+| Settings | Swipe up from the bottom edge. Tap a row to open it, drag to change a value or scroll the list. Rows: Sound, Brightness, Dimming, Palette, Time zone, Pet clock, ROM, Web panel (a QR code) |
 | Back to the pet | Swipe the other way (up from the bottom on the glance, down from the top in settings), or short-press BOOT |
 | Wake the screen | Tap anywhere. The first tap only wakes it, it never presses a button |
 | Screen on/off | Short press BOOT |
@@ -55,6 +55,8 @@ These are the MAME `tama` / `tamag2` sets; MAME zips work directly with the tool
 A touch that starts in the outer 24 px of any edge (top, bottom, left or right) never presses a pet button, even if it lifts without swiping, and a sideways swipe does nothing. A press that starts on a button keeps it while the finger moves, even up onto the pet's screen. The pet's hunger, happy, age and the other stats are read from the emulator's RAM; if a stat can't be found reliably for a ROM it is left off, and an unknown ROM shows no stats (addresses in `docs/pet-ram.md`).
 
 Mute and time zone are settings (`muted`, `tz`), so the ball, the web panel, MCP and USB all see the same values. `tz` is an IANA name from the built-in table (`GET /api/timezones` lists them) or a POSIX string; the default is `Etc/UTC`. The glance clock uses it.
+
+**Pet clock.** The pet keeps its own clock (it decides bedtime and wake-up), and it starts wherever the ROM or the save left it. Settings → Pet clock shows the pet's time next to the ball's and sets the pet's clock to the ball's local time (the `tz` setting) when you tap *Set to ball time* and confirm. The same action is on the web panel (Time card), in MCP (`sync_pet_clock`) and over USB (`tamaorb-rom.py clock`). Nothing sets it automatically: after a daylight saving change, set it again. **The pet may wake up or fall asleep, and its age may change**: the ROM checks the clock against the pet's night, so moving an asleep pet into the day wakes it with a birthday, and moving the clock back over 09:00 gives it a second one (the same happens when you set the toy's clock in its own menu; details in `docs/pet-ram.md`). It works for P1 and P2 only, needs internet time, and refuses while the pet's own clock menu is open.
 
 ## Build and flash
 
@@ -92,6 +94,7 @@ tools/tamaorb-rom.py wifi "My Network"                    # asks for the passwor
 tools/tamaorb-rom.py status
 tools/tamaorb-rom.py get                                  # all settings as key=value
 tools/tamaorb-rom.py set brightness=30 palette=night      # all or nothing; applied live, kept across power cuts
+tools/tamaorb-rom.py clock                                # set the pet's clock to the ball's time (see Pet clock above)
 ```
 
 ROMs go to `/tamaorb/roms/` on the microSD card. Without a card, a pushed ROM becomes the active one directly. The active ROM is also kept in internal flash, so the pet survives a missing or failed card.
@@ -105,7 +108,7 @@ Once the ball is on Wi-Fi it serves a settings and status page at **`http://tama
   <img src="docs/images/web-panel-phone.png" alt="The web panel at phone width" width="200">
 </p>
 
-The same operations, plus reading the screen (`GET /api/look`) and pressing buttons (`POST /api/press`), are a JSON API under `/api/`.
+The same operations, plus reading the screen (`GET /api/look`), pressing buttons (`POST /api/press`) and setting the pet's clock (`POST /api/pet-clock/sync`; `GET /api/status` has `pet_clock` and `ball_clock`), are a JSON API under `/api/`.
 
 **If `tamaorb.local` doesn't resolve,** use the ball's IP address instead (`http://<ip>/`). Some routers stop forwarding mDNS names about 2 minutes after the ball boots, typically when the PC and the ball are on different subnets. To find the IP, look in your router's DHCP client list, read the boot log over USB (`pio device monitor`, the line `esp_netif_handlers: sta ip: …`), run `tools/tamaorb-rom.py status` over USB (`ip=…`), or open the panel and read the Wi-Fi tile. Give the ball a DHCP reservation so the address doesn't change.
 
@@ -119,7 +122,7 @@ AI agents connect through the MCP server on the ball itself:
 claude mcp add --transport http tamaorb http://tamaorb.local/mcp      # or http://<ip>/mcp
 ```
 
-The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, and a how-to-play guide per model (`main/guide_p1.md`, `main/guide_p2.md`). By default, beeps caused by agent presses play at normal volume but don't wake or undim the screen; `agent_feedback=silent` also mutes them and `visible` lets them wake the screen.
+The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, `sync_pet_clock` (it tells the agent to warn you that the pet may wake up, fall asleep or age), and a how-to-play guide per model (`main/guide_p1.md`, `main/guide_p2.md`). By default, beeps caused by agent presses play at normal volume but don't wake or undim the screen; `agent_feedback=silent` also mutes them and `visible` lets them wake the screen.
 
 **The panel, API and MCP server are open to anyone on your LAN.** There is no login. Requests from other web sites are refused (Origin check), but anything on the network can read the status and press the buttons. Keep the ball on a network you trust. Decision record: `docs/adr/0005-web-panel-on-device.md`.
 
