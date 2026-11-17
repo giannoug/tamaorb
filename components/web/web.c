@@ -8,6 +8,10 @@
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "mdns.h"
 #include "net.h"
 #include "settings.h"
@@ -33,6 +37,7 @@ static const char *status_line(int code)
     case 405: return "405 Method Not Allowed";
     case 409: return "409 Conflict";
     case 413: return "413 Content Too Large";
+    case 503: return "503 Service Unavailable";
     default: return "500 Internal Server Error";
     }
 }
@@ -165,6 +170,122 @@ static esp_err_t mcp_get(httpd_req_t *req)
     return send_plain(req, 405);  // no SSE stream
 }
 
+// ---- Slow requests off the server task ----
+// A press sequence (POST /api/press, or the MCP press tool) answers only when it has run, up to ~10 s. Run on the
+// server task, it held every other request up meanwhile (the panel, MCP, the debugger). These requests are handed
+// to one worker task with ESP-IDF's async request handlers, so the server keeps answering; presses still run one at
+// a time (the press task refuses a second one as busy) and still answer after their sequence, as before.
+#define SLOW_QUEUE 4
+static QueueHandle_t s_slow_q;
+
+static void slow_worker(void *arg)
+{
+    for (;;) {
+        httpd_req_t *req;
+        if (xQueueReceive(s_slow_q, &req, portMAX_DELAY) != pdTRUE) continue;
+        if (!strcmp(req->uri, "/mcp")) mcp_post(req);
+        else api_handler(req);
+        httpd_req_async_handler_complete(req);
+    }
+}
+
+static esp_err_t slow_post(httpd_req_t *req)
+{
+    httpd_req_t *copy = NULL;
+    if (httpd_req_async_handler_begin(req, &copy) != ESP_OK) return refuse(req, 500);
+    if (xQueueSend(s_slow_q, &copy, 0) != pdTRUE) {  // four already waiting: say so rather than queue forever
+        httpd_resp_set_status(copy, status_line(503));
+        httpd_resp_set_type(copy, "application/json");
+        httpd_resp_sendstr(copy, "{\"error\":\"busy\"}");
+        httpd_req_async_handler_complete(copy);
+    }
+    return ESP_OK;
+}
+
+// ---- The debugger's WebSocket: snapshots pushed while a debugger page is open ----
+// At most two pages; each gets the GET /api/debug JSON whenever the emulator has published a new snapshot, at
+// most every 50 ms. No page open: the push task only checks the table. Every snapshot also keeps the ball awake
+// (op_debug), so it drops back to its power saving a few seconds after the last page closes.
+#define WS_CLIENTS 2
+#define WS_PERIOD_MS 50
+static httpd_handle_t s_httpd;
+static int s_ws_fd[WS_CLIENTS] = { -1, -1 };
+static SemaphoreHandle_t s_ws_mutex;
+
+static void ws_refuse(httpd_req_t *req)
+{
+    static const char reason[] = "\x03\xF5two debuggers already open";  // close code 1013, try again later
+    httpd_ws_frame_t f = { .final = true, .type = HTTPD_WS_TYPE_CLOSE, .payload = (uint8_t *)reason,
+                           .len = sizeof reason - 1 };
+    httpd_ws_send_frame(req, &f);
+    httpd_sess_trigger_close(req->handle, httpd_req_to_sockfd(req));
+}
+
+static esp_err_t ws_debug(httpd_req_t *req)
+{
+    if (req->method == HTTP_GET) {  // the handshake is done: take a slot or say why not
+        int fd = httpd_req_to_sockfd(req), slot = -1;
+        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
+        for (int i = 0; i < WS_CLIENTS && slot < 0; i++)
+            if (s_ws_fd[i] < 0 || httpd_ws_get_fd_info(s_httpd, s_ws_fd[i]) != HTTPD_WS_CLIENT_WEBSOCKET) slot = i;
+        if (slot >= 0) s_ws_fd[slot] = fd;
+        xSemaphoreGive(s_ws_mutex);
+        if (slot < 0) {
+            ESP_LOGI(TAG, "debugger refused: %d already open", WS_CLIENTS);
+            ws_refuse(req);
+        } else {
+            ESP_LOGI(TAG, "debugger %d connected", slot);
+        }
+        return ESP_OK;
+    }
+    // The page sends nothing; read off and drop anything that comes (control frames are handled by httpd).
+    httpd_ws_frame_t f = { 0 };
+    if (httpd_ws_recv_frame(req, &f, 0) != ESP_OK) return ESP_FAIL;
+    if (f.len) {
+        uint8_t *buf = ps_malloc(f.len);
+        if (!buf) return ESP_FAIL;
+        f.payload = buf;
+        esp_err_t err = httpd_ws_recv_frame(req, &f, f.len);
+        free(buf);
+        if (err != ESP_OK) return err;
+    }
+    return ESP_OK;
+}
+
+static void ws_push_task(void *arg)
+{
+    uint32_t seq = 0;
+    rm_debug_t *d = ps_malloc(sizeof *d);
+    if (!d) {
+        ESP_LOGE(TAG, "debugger push: no memory");
+        vTaskDelete(NULL);
+        return;
+    }
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(WS_PERIOD_MS));
+        int fds[WS_CLIENTS], n = 0;
+        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
+        for (int i = 0; i < WS_CLIENTS; i++) {
+            if (s_ws_fd[i] >= 0 && httpd_ws_get_fd_info(s_httpd, s_ws_fd[i]) != HTTPD_WS_CLIENT_WEBSOCKET) {
+                ESP_LOGI(TAG, "debugger %d left", i);
+                s_ws_fd[i] = -1;  // closed by the page, the network or httpd
+            }
+            if (s_ws_fd[i] >= 0) fds[n++] = s_ws_fd[i];
+        }
+        xSemaphoreGive(s_ws_mutex);
+        if (!n || !tc_frame_changed(&seq)) continue;
+        s_ops->debug(s_ops->ctx, d);
+        cJSON *j = rm_json_debug(d);
+        char *text = j ? cJSON_PrintUnformatted(j) : NULL;
+        cJSON_Delete(j);
+        if (!text) continue;
+        httpd_ws_frame_t f = { .final = true, .type = HTTPD_WS_TYPE_TEXT, .payload = (uint8_t *)text, .len = strlen(text) };
+        for (int i = 0; i < n; i++)
+            if (httpd_ws_send_frame_async(s_httpd, fds[i], &f) != ESP_OK) httpd_sess_trigger_close(s_httpd, fds[i]);
+        free(text);
+    }
+}
+
 extern const uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");
 extern const uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
 extern const uint8_t debug_html_gz_start[] asm("_binary_debug_html_gz_start");
@@ -200,23 +321,33 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.core_id = 0;
-    cfg.max_open_sockets = 4;
+    // A panel, a debugger (page + WebSocket), an agent and a press waiting in the worker at once. lwIP keeps 3 of
+    // its CONFIG_LWIP_MAX_SOCKETS (10) for itself and httpd's control socket.
+    cfg.max_open_sockets = 7;
     cfg.lru_purge_enable = true;
     // 6 KB overflowed under load before remote's big buffers left the stack. Now about 4.4 KB stays free in the
     // worst case measured; the margin covers the NVS and SD paths (ADR 0005).
     cfg.stack_size = 8192;
     cfg.max_uri_handlers = 12;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
+    s_slow_q = xQueueCreate(SLOW_QUEUE, sizeof(httpd_req_t *));
+    s_ws_mutex = xSemaphoreCreateMutex();
+    if (!s_slow_q || !s_ws_mutex) return ESP_ERR_NO_MEM;
     httpd_handle_t h;
     err = httpd_start(&h, &cfg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "httpd: %s", esp_err_to_name(err));
         return err;
     }
+    s_httpd = h;
+    xTaskCreatePinnedToCore(slow_worker, "web_slow", 8192, NULL, cfg.task_priority, NULL, 0);
+    xTaskCreatePinnedToCore(ws_push_task, "web_ws", 4096, NULL, tskIDLE_PRIORITY + 2, NULL, 0);
     static const httpd_uri_t uris[] = {
         { .uri = "/", .method = HTTP_GET, .handler = page_get },
         { .uri = "/debug", .method = HTTP_GET, .handler = debug_page_get },
-        { .uri = "/mcp", .method = HTTP_POST, .handler = mcp_post },
+        { .uri = "/ws/debug", .method = HTTP_GET, .handler = ws_debug, .is_websocket = true },
+        { .uri = "/mcp", .method = HTTP_POST, .handler = slow_post },
+        { .uri = "/api/press", .method = HTTP_POST, .handler = slow_post },  // before /api/*: first match wins
         { .uri = "/mcp", .method = HTTP_GET, .handler = mcp_get },
         { .uri = "/api/*", .method = HTTP_GET, .handler = api_handler },
         { .uri = "/api/*", .method = HTTP_POST, .handler = api_handler },
