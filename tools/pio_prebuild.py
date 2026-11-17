@@ -34,6 +34,8 @@ with open(src, "rb") as f:
     data = gzip.compress(f.read(), compresslevel=9, mtime=0)
 os.makedirs(dst_dir, exist_ok=True)
 old = open(dst, "rb").read() if os.path.exists(dst) else None
-if old is None or gzip.decompress(old) != gzip.decompress(data):
+# Same page, same bytes (mtime=0, fixed level), so compare them directly: decompressing the old file crashed the
+# build when an interrupted one had left it truncated.
+if old != data:
     with open(dst, "wb") as f:
         f.write(data)
