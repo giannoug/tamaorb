@@ -16,6 +16,7 @@
 #include "remote_ops.h"
 #include "hostlink_task.h"
 #include "net.h"
+#include "pet_clock.h"
 #include "nvs_flash.h"
 #include "tc_rom.h"
 #include "tc_time.h"
@@ -109,6 +110,7 @@ void app_main(void)
     }
     ESP_LOGI(TAG, "running %s", tc_model_name(model));
     tc_rom_decode(s_rom, sizeof s_rom, s_program);
+    pet_clock_init(model);
     ui_task_start(model);  // shows "Starting" until the emulator runs
     if (!emu_init(s_program)) return;
     uint8_t sha1[20];

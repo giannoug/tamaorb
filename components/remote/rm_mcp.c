@@ -54,6 +54,11 @@ static const tool_def_t TOOLS[] = {
     {"switch_pet",
      "Switches to another pet. Saves the current pet, restarts the ball, and the new pet catches up from its own last save.",
      "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"description\":\"A pet name from list_pets.\"}},\"required\":[\"name\"]}"},
+    {"sync_pet_clock",
+     "Sets the pet's clock to the ball's local time (the tz setting). The pet may wake up or fall asleep, and its age may "
+     "change: tell the owner. Fails for ROMs other than P1/P2, without internet time, while catching up, or while the "
+     "pet's own clock menu is open.",
+     "{\"type\":\"object\",\"properties\":{}}"},
 };
 #define N_TOOLS ((int)(sizeof TOOLS / sizeof TOOLS[0]))
 
@@ -178,6 +183,24 @@ static cJSON *tool_switch_pet(const rm_ops_t *ops, const cJSON *args)
     }
 }
 
+static cJSON *tool_sync_pet_clock(const rm_ops_t *ops)
+{
+    int32_t w = -1;
+    switch (ops->sync_clock(ops->ctx, &w)) {
+    case RM_OK: {
+        char t[48];
+        if (w < 0 || w >= 86400) w = 0;
+        snprintf(t, sizeof t, "Pet clock set to %02d:%02d:%02d.", (int)(w / 3600), (int)(w / 60 % 60), (int)(w % 60));
+        return tool_result(t, false);
+    }
+    case RM_ERR_NOTFOUND: return tool_result("not available: the pet's clock is only known for P1 and P2", true);
+    case RM_ERR_NOTIME: return tool_result("the ball has no internet time yet", true);
+    case RM_ERR_CATCHUP: return tool_result("the pet is catching up; try again when it finishes", true);
+    case RM_ERR_BUSY: return tool_result("the pet's clock is stopped (its own clock menu is open); close it and try again", true);
+    default: return tool_result("failed", true);
+    }
+}
+
 static cJSON *tools_call(const rm_ops_t *ops, const cJSON *params)
 {
     const cJSON *name = cJSON_IsObject(params) ? cJSON_GetObjectItemCaseSensitive(params, "name") : NULL;
@@ -205,6 +228,7 @@ static cJSON *tools_call(const rm_ops_t *ops, const cJSON *params)
         r = pets ? tool_json(rm_json_pets(pets, n < 0 ? 0 : n)) : tool_result("out of memory", true);
         free(pets);
     } else if (!strcmp(t, "switch_pet")) r = tool_switch_pet(ops, args);
+    else if (!strcmp(t, "sync_pet_clock")) r = tool_sync_pet_clock(ops);
     else r = tool_error("unknown tool: %s", t);
     cJSON_Delete(own);
     return r;

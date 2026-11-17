@@ -446,6 +446,63 @@ static void test_look_and_press(void)
     expect_err(409, "catching up", NULL);
 }
 
+// ---- pet clock ----
+static void test_status_has_pet_and_ball_clock(void)
+{
+    fake.status.pet_clock_s = 9 * 3600 + 58 * 60;          // 09:58:00
+    fake.status.ball_clock_s = 14 * 3600 + 32 * 60 + 5;    // 14:32:05
+    go(RM_GET, "/api/status", NULL, NULL, NULL);
+    cJSON *j = json();
+    TEST_ASSERT_EQUAL_STRING("09:58:00", cJSON_GetObjectItem(j, "pet_clock")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("14:32:05", cJSON_GetObjectItem(j, "ball_clock")->valuestring);
+    cJSON_Delete(j);
+    fake.status.pet_clock_s = -1;
+    fake.status.ball_clock_s = -1;
+    go(RM_GET, "/api/status", NULL, NULL, NULL);
+    j = json();
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(j, "pet_clock")));
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(j, "ball_clock")));
+    cJSON_Delete(j);
+}
+
+static void test_pet_clock_sync_ok(void)
+{
+    fake.sync_written = 14 * 3600 + 32 * 60 + 5;
+    go(RM_POST, "/api/pet-clock/sync", NULL, "http://tamaorb.local", NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    cJSON *j = json();
+    TEST_ASSERT_EQUAL_STRING("14:32:05", cJSON_GetObjectItem(j, "pet_clock")->valuestring);
+    cJSON_Delete(j);
+    TEST_ASSERT_EQUAL(1, fake.sync_calls);
+}
+
+static void test_pet_clock_sync_refusals(void)
+{
+    static const struct { rm_err_t e; int status; const char *error; } cases[] = {
+        {RM_ERR_NOTFOUND, 404, "not found"}, {RM_ERR_NOTIME, 409, "no time"},
+        {RM_ERR_CATCHUP, 409, "catching up"}, {RM_ERR_BUSY, 409, "busy"},
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        fake.sync_result = cases[i].e;
+        go(RM_POST, "/api/pet-clock/sync", NULL, NULL, NULL);
+        expect_err(cases[i].status, cases[i].error, NULL);
+    }
+}
+
+static void test_pet_clock_sync_get_is_405(void)
+{
+    go(RM_GET, "/api/pet-clock/sync", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(405, resp.status);
+    TEST_ASSERT_EQUAL(0, fake.sync_calls);
+}
+
+static void test_pet_clock_sync_checks_origin(void)
+{
+    go(RM_POST, "/api/pet-clock/sync", NULL, "http://evil.example", NULL);
+    TEST_ASSERT_EQUAL(403, resp.status);
+    TEST_ASSERT_EQUAL(0, fake.sync_calls);
+}
+
 static int s_allocs;
 static void *counting_alloc(size_t n) { s_allocs++; return malloc(n); }
 static void *failing_alloc(size_t n) { (void)n; return NULL; }
@@ -524,6 +581,11 @@ int main(void)
     RUN_TEST(test_save_download_rom_not_listed);
     RUN_TEST(test_pets_and_switch);
     RUN_TEST(test_switch_catching_up_409);
+    RUN_TEST(test_status_has_pet_and_ball_clock);
+    RUN_TEST(test_pet_clock_sync_ok);
+    RUN_TEST(test_pet_clock_sync_refusals);
+    RUN_TEST(test_pet_clock_sync_get_is_405);
+    RUN_TEST(test_pet_clock_sync_checks_origin);
     RUN_TEST(test_look_and_press);
     RUN_TEST(test_big_buffers_come_from_rm_alloc);
     RUN_TEST(test_body_parsed_by_length);

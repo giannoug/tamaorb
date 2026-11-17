@@ -11,6 +11,7 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "net.h"
+#include "pet_clock.h"
 #include "power.h"
 #include "press_task.h"
 #include "rom_store.h"
@@ -85,6 +86,8 @@ static void op_status(void *ctx, rm_status_t *st)
         st->last_save_unix = m.unix_time;
     }
     st->catchup_speed = emu_catchup_speed();
+    st->pet_clock_s = pet_clock_pet_s();
+    st->ball_clock_s = pet_clock_ball_s();
 }
 
 static void op_get_settings(void *ctx, st_settings_t *out) { settings_get(out); }
@@ -205,11 +208,23 @@ static const char *op_guide(void *ctx, const char *model)
     return NULL;
 }
 
+static rm_err_t op_sync_clock(void *ctx, int32_t *written_s)
+{
+    switch (pet_clock_sync(written_s)) {
+    case PET_CLOCK_OK: return RM_OK;
+    case PET_CLOCK_UNSUPPORTED: return RM_ERR_NOTFOUND;
+    case PET_CLOCK_NO_TIME: return RM_ERR_NOTIME;
+    case PET_CLOCK_CATCHUP: return RM_ERR_CATCHUP;
+    default: return RM_ERR_BUSY;
+    }
+}
+
 static rm_ops_t s_ops = {
     .look = op_look, .press = op_press, .status = op_status, .get_settings = op_get_settings,
     .put_settings = op_put_settings, .list_pets = op_list_pets, .switch_pet = op_switch_pet,
     .export_save = op_export_save, .import_save = op_import_save, .set_wifi = op_set_wifi,
-    .restart = op_restart, .guide = op_guide, .restart_pending = op_restart_pending, .ctx = NULL,
+    .restart = op_restart, .guide = op_guide, .restart_pending = op_restart_pending,
+    .sync_clock = op_sync_clock, .ctx = NULL,
 };
 
 const rm_ops_t *remote_ops_init(tc_model_t model, const uint8_t active_sha1[20])

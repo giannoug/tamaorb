@@ -119,11 +119,12 @@ static void test_unknown_method(void)
 
 static void test_tools_list_names(void)
 {
-    static const char *const want[] = {"look", "press", "status", "get_settings", "set_settings", "list_pets", "switch_pet"};
+    static const char *const want[] = {"look", "press", "status", "get_settings", "set_settings", "list_pets", "switch_pet",
+                                       "sync_pet_clock"};
     cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", NULL);
     cJSON *tools = cJSON_GetObjectItem(result(r), "tools");
-    TEST_ASSERT_EQUAL(7, cJSON_GetArraySize(tools));
-    for (int i = 0; i < 7; i++) {
+    TEST_ASSERT_EQUAL(8, cJSON_GetArraySize(tools));
+    for (int i = 0; i < 8; i++) {
         cJSON *t = cJSON_GetArrayItem(tools, i);
         TEST_ASSERT_EQUAL_STRING(want[i], cJSON_GetObjectItem(t, "name")->valuestring);
         TEST_ASSERT_EQUAL_STRING("object", cJSON_GetObjectItem(cJSON_GetObjectItem(t, "inputSchema"), "type")->valuestring);
@@ -346,6 +347,45 @@ static void test_switch_pet_during_catchup(void)
     cJSON_Delete(r);
 }
 
+static void test_sync_pet_clock_description_warns(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", NULL);
+    cJSON *tools = cJSON_GetObjectItem(result(r), "tools");
+    cJSON *t = cJSON_GetArrayItem(tools, 7);
+    TEST_ASSERT_EQUAL_STRING("sync_pet_clock", cJSON_GetObjectItem(t, "name")->valuestring);
+    TEST_ASSERT_NOT_NULL(strstr(cJSON_GetObjectItem(t, "description")->valuestring, "age may change"));
+    cJSON_Delete(r);
+}
+
+static void test_sync_pet_clock_ok(void)
+{
+    fake.sync_written = 14 * 3600 + 32 * 60 + 5;
+    cJSON *r = tool("sync_pet_clock", "{}");
+    TEST_ASSERT_FALSE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "14:32:05"));
+    TEST_ASSERT_EQUAL(1, fake.sync_calls);
+    cJSON_Delete(r);
+}
+
+static void test_sync_pet_clock_refusals_are_tool_errors(void)
+{
+    fake.sync_result = RM_ERR_BUSY;
+    cJSON *r = tool("sync_pet_clock", "{}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "clock menu"));
+    cJSON_Delete(r);
+    fake.sync_result = RM_ERR_NOTIME;
+    r = tool("sync_pet_clock", "{}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "no internet time"));
+    cJSON_Delete(r);
+    fake.sync_result = RM_ERR_NOTFOUND;
+    r = tool("sync_pet_clock", "{}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "P1 and P2"));
+    cJSON_Delete(r);
+}
+
 static void test_resources(void)
 {
     cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}", NULL);
@@ -468,6 +508,9 @@ int main(void)
     RUN_TEST(test_status_and_pets_json);
     RUN_TEST(test_switch_pet);
     RUN_TEST(test_switch_pet_during_catchup);
+    RUN_TEST(test_sync_pet_clock_description_warns);
+    RUN_TEST(test_sync_pet_clock_ok);
+    RUN_TEST(test_sync_pet_clock_refusals_are_tool_errors);
     RUN_TEST(test_resources);
     RUN_TEST(test_resources_read_guide);
     RUN_TEST(test_hostile_input);

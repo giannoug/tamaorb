@@ -79,8 +79,16 @@ static bool f_restart_pending(void *ctx)
     return fake.status.restart_pending;
 }
 
-rm_ops_t fake_ops = {f_look, f_press, f_status, f_get, f_put, f_pets, f_switch, f_export, f_import, f_wifi, f_restart, f_guide,
-                     f_restart_pending, NULL};
+static rm_err_t f_sync_clock(void *ctx, int32_t *written_s)
+{
+    fake.sync_calls++;
+    if (fake.sync_result == RM_OK) *written_s = fake.sync_written;
+    return fake.sync_result;
+}
+rm_ops_t fake_ops = {.look = f_look, .press = f_press, .status = f_status, .get_settings = f_get, .put_settings = f_put,
+                     .list_pets = f_pets, .switch_pet = f_switch, .export_save = f_export, .import_save = f_import,
+                     .set_wifi = f_wifi, .restart = f_restart, .guide = f_guide, .restart_pending = f_restart_pending,
+                     .sync_clock = f_sync_clock, .ctx = NULL};
 
 void fake_reset(void)
 {
@@ -94,6 +102,8 @@ void fake_reset(void)
     fake.status.model = TC_MODEL_P1;
     fake.status.phase = RM_PHASE_RUN;
     fake.status.catchup_speed = 24.0f;
+    fake.status.pet_clock_s = -1;
+    fake.status.ball_clock_s = -1;
     snprintf(fake.pets[0].name, sizeof fake.pets[0].name, "tama.bin");
     fake.pets[0].model = TC_MODEL_P1;
     fake.pets[0].active = true;

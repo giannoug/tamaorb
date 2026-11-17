@@ -67,7 +67,7 @@ void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[48]);
 #include "cJSON.h"
 #include "settings.h"
 
-typedef enum { RM_OK = 0, RM_ERR_BUSY, RM_ERR_CATCHUP, RM_ERR_NOTFOUND, RM_ERR_BAD, RM_ERR_IO } rm_err_t;
+typedef enum { RM_OK = 0, RM_ERR_BUSY, RM_ERR_CATCHUP, RM_ERR_NOTFOUND, RM_ERR_BAD, RM_ERR_IO, RM_ERR_NOTIME } rm_err_t;
 typedef struct {
     char name[64];
     tc_model_t model;
@@ -86,6 +86,7 @@ typedef struct {
     bool usb, wifi, time_trusted, sd_present, restart_pending, last_save_known;
     int64_t unix_time, last_save_unix;
     float catchup_speed;
+    int32_t pet_clock_s, ball_clock_s;  // seconds of the day; -1 unknown (JSON: "HH:MM:SS" or null)
 } rm_status_t;
 typedef struct {
     void (*look)(void *ctx, rm_look_t *out);
@@ -100,7 +101,10 @@ typedef struct {
     bool (*set_wifi)(void *ctx, const char *ssid, const char *pass);  // schedules the restart itself
     void (*restart)(void *ctx);                                       // schedules the restart
     const char *(*guide)(void *ctx, const char *model);               // "p1"|"p2" -> Markdown, NULL if none
-    bool (*restart_pending)(void *ctx);  // same as status' restart_pending, without the cost of a full status
+    bool (*restart_pending)(void *ctx);
+    // Sets the pet's clock to the ball's local time; *written_s = the time written (seconds of the day).
+    // NOTFOUND: not a P1/P2; NOTIME: no trusted time; CATCHUP; BUSY: the pet's own clock menu stops its clock.
+    rm_err_t (*sync_clock)(void *ctx, int32_t *written_s);  // same as status' restart_pending, without the cost of a full status
     void *ctx;
 } rm_ops_t;
 
@@ -116,6 +120,8 @@ cJSON *rm_json_settings(const st_settings_t *s);  // numbers as numbers, enums a
 // *display_changed (may be NULL) is true iff a display key's value changed.
 const char *rm_json_patch_settings(const cJSON *patch, st_settings_t *s, bool *display_changed);
 cJSON *rm_json_status(const rm_status_t *st);
+// key: "HH:MM:SS" for 0-86399 seconds of the day, else null.
+void rm_json_add_clock(cJSON *o, const char *key, int32_t sec_of_day);
 cJSON *rm_json_pets(const rm_pet_t *p, int n);
 // buttons (string "A AC" or array), hold_ms, gap_ms, settle_ms. NULL ok, else the bad field.
 // Does not range-check: run rm_press_validate on the result.

@@ -59,6 +59,7 @@ static void err_from(rm_resp_t *r, rm_err_t e)
     case RM_ERR_CATCHUP: set_err(r, 409, "catching up", NULL); break;
     case RM_ERR_NOTFOUND: set_err(r, 404, "not found", NULL); break;
     case RM_ERR_BAD: set_err(r, 400, "invalid", NULL); break;
+    case RM_ERR_NOTIME: set_err(r, 409, "no time", NULL); break;
     default: set_err(r, 500, "failed", NULL); break;
     }
 }
@@ -311,6 +312,16 @@ static void h_save_put(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha
     set_ok(r, f && pet.active, true);
 }
 
+static void h_pet_clock_sync(const rm_ops_t *ops, rm_resp_t *r)
+{
+    int32_t written = -1;
+    rm_err_t e = ops->sync_clock(ops->ctx, &written);
+    if (e != RM_OK) { err_from(r, e); return; }
+    cJSON *j = cJSON_CreateObject();
+    if (j) rm_json_add_clock(j, "pet_clock", written);
+    set_json(r, 200, j);
+}
+
 // ---- router ----
 void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
 {
@@ -334,7 +345,7 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         {"/api/wifi", M(RM_POST)},         {"/api/restart", M(RM_POST)},
         {"/api/pets", M(RM_GET)},          {"/api/pets/switch", M(RM_POST)},
         {"/api/look", M(RM_GET)},          {"/api/press", M(RM_POST)},
-        {"/api/timezones", M(RM_GET)},
+        {"/api/timezones", M(RM_GET)},     {"/api/pet-clock/sync", M(RM_POST)},
     };
     if (match_save_path(path, sha)) {
         if (q->method == RM_GET) h_save_get(ops, sha, r);
@@ -355,6 +366,7 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         case 6: look_reply(ops, r); break;
         case 7: h_press(ops, q, r); break;
         case 8: h_timezones(r); break;
+        case 9: h_pet_clock_sync(ops, r); break;
         }
         return;
     }

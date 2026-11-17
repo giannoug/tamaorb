@@ -90,6 +90,14 @@ const char *rm_json_patch_settings(const cJSON *patch, st_settings_t *s, bool *d
 
 static const char *model_name(tc_model_t m) { return m == TC_MODEL_P1 ? "P1" : m == TC_MODEL_P2 ? "P2" : "unknown"; }
 
+void rm_json_add_clock(cJSON *o, const char *key, int32_t sec_of_day)
+{
+    if (sec_of_day < 0 || sec_of_day >= 86400) { cJSON_AddNullToObject(o, key); return; }
+    char t[12];
+    snprintf(t, sizeof t, "%02d:%02d:%02d", (int)(sec_of_day / 3600), (int)(sec_of_day / 60 % 60), (int)(sec_of_day % 60));
+    cJSON_AddStringToObject(o, key, t);
+}
+
 cJSON *rm_json_status(const rm_status_t *st)
 {
     cJSON *o = cJSON_CreateObject();
@@ -118,6 +126,8 @@ cJSON *rm_json_status(const rm_status_t *st)
     if (st->last_save_known) cJSON_AddNumberToObject(o, "last_save_unix", (double)st->last_save_unix);
     else cJSON_AddNullToObject(o, "last_save_unix");
     cJSON_AddNumberToObject(o, "catchup_speed", st->catchup_speed);
+    rm_json_add_clock(o, "pet_clock", st->pet_clock_s);
+    rm_json_add_clock(o, "ball_clock", st->ball_clock_s);
     return o;
 }
 

@@ -30,6 +30,10 @@ typedef struct {
     char wifi_ssid[64], wifi_pass[64];
     int wifi_calls, restart_calls;
     int status_calls, restart_pending_calls;
+    // pet clock
+    rm_err_t sync_result;
+    int32_t sync_written;
+    int sync_calls;
 } fake_state_t;
 
 extern fake_state_t fake;
