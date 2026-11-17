@@ -28,8 +28,13 @@ jobs:
       - run: pytest tools
 
   firmware:
-    name: Firmware build (PlatformIO, espressif32 8.0.0)
-    runs-on: ubuntu-latest
+    name: Firmware build (PlatformIO, espressif32 8.0.0, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The README promises Windows, Linux and macOS builds; build on all three.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
