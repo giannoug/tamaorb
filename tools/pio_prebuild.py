@@ -5,8 +5,8 @@
 #    change, not when a component's CMakeLists.txt, idf_component.yml or Kconfig does: after pulling such a
 #    change, an incremental build would use the old file lists. If any of those is newer than build.ninja,
 #    remove build.ninja, which makes PlatformIO configure again.
-# 2. components/web/CMakeLists.txt gzips the web page while CMake configures, and an edited page alone doesn't
-#    trigger that. Gzip it here before every build (Python's gzip: works on Windows too), writing only when the
+# 2. components/web/CMakeLists.txt gzips the web pages while CMake configures, and an edited page alone doesn't
+#    trigger that. Gzip them here before every build (Python's gzip: works on Windows too), writing only when the
 #    content changed so an unchanged page doesn't relink.
 import glob
 import gzip
@@ -27,15 +27,16 @@ if os.path.isfile(ninja):
     if any(os.path.getmtime(f) > built for f in watched):
         os.remove(ninja)
 
-src = os.path.join(project, "components", "web", "page", "index.html")
 dst_dir = os.path.join(build, "esp-idf", "web")
-dst = os.path.join(dst_dir, "index.html.gz")
-with open(src, "rb") as f:
-    data = gzip.compress(f.read(), compresslevel=9, mtime=0)
 os.makedirs(dst_dir, exist_ok=True)
-old = open(dst, "rb").read() if os.path.exists(dst) else None
-# Same page, same bytes (mtime=0, fixed level), so compare them directly: decompressing the old file crashed the
-# build when an interrupted one had left it truncated.
-if old != data:
-    with open(dst, "wb") as f:
-        f.write(data)
+for page in ("index.html", "debug.html"):  # the panel and the debugger (components/web/CMakeLists.txt)
+    src = os.path.join(project, "components", "web", "page", page)
+    dst = os.path.join(dst_dir, page + ".gz")
+    with open(src, "rb") as f:
+        data = gzip.compress(f.read(), compresslevel=9, mtime=0)
+    old = open(dst, "rb").read() if os.path.exists(dst) else None
+    # Same page, same bytes (mtime=0, fixed level), so compare them directly: decompressing the old file crashed
+    # the build when an interrupted one had left it truncated.
+    if old != data:
+        with open(dst, "wb") as f:
+            f.write(data)

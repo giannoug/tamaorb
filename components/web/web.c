@@ -167,14 +167,19 @@ static esp_err_t mcp_get(httpd_req_t *req)
 
 extern const uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");
 extern const uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
+extern const uint8_t debug_html_gz_start[] asm("_binary_debug_html_gz_start");
+extern const uint8_t debug_html_gz_end[] asm("_binary_debug_html_gz_end");
 
-static esp_err_t page_get(httpd_req_t *req)
+static esp_err_t send_page(httpd_req_t *req, const uint8_t *start, const uint8_t *end)
 {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-    return httpd_resp_send(req, (const char *)index_html_gz_start, index_html_gz_end - index_html_gz_start);
+    return httpd_resp_send(req, (const char *)start, end - start);
 }
+
+static esp_err_t page_get(httpd_req_t *req) { return send_page(req, index_html_gz_start, index_html_gz_end); }
+static esp_err_t debug_page_get(httpd_req_t *req) { return send_page(req, debug_html_gz_start, debug_html_gz_end); }
 
 esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
 {
@@ -210,6 +215,7 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
     }
     static const httpd_uri_t uris[] = {
         { .uri = "/", .method = HTTP_GET, .handler = page_get },
+        { .uri = "/debug", .method = HTTP_GET, .handler = debug_page_get },
         { .uri = "/mcp", .method = HTTP_POST, .handler = mcp_post },
         { .uri = "/mcp", .method = HTTP_GET, .handler = mcp_get },
         { .uri = "/api/*", .method = HTTP_GET, .handler = api_handler },

@@ -15,6 +15,11 @@ class Env:
         return self.vars[s]
 
 
+def make_pages(tmp_path):
+    make_page(tmp_path)
+    make_page(tmp_path, b"<html>debugger</html>", "debug.html")
+
+
 def run(tmp_path):
     project, build = tmp_path / "proj", tmp_path / "build"
     env = Env(project, build)
@@ -22,21 +27,21 @@ def run(tmp_path):
     return build / "esp-idf" / "web" / "index.html.gz"
 
 
-def make_page(tmp_path, html=b"<html>panel</html>"):
-    page = tmp_path / "proj" / "components" / "web" / "page" / "index.html"
+def make_page(tmp_path, html=b"<html>panel</html>", name="index.html"):
+    page = tmp_path / "proj" / "components" / "web" / "page" / name
     page.parent.mkdir(parents=True, exist_ok=True)
     page.write_bytes(html)
     return page
 
 
 def test_writes_the_gzipped_page(tmp_path):
-    make_page(tmp_path)
+    make_pages(tmp_path)
     out = run(tmp_path)
     assert gzip.decompress(out.read_bytes()) == b"<html>panel</html>"
 
 
 def test_truncated_gz_from_an_interrupted_build_is_replaced(tmp_path):
-    make_page(tmp_path)
+    make_pages(tmp_path)
     out = run(tmp_path)
     out.write_bytes(out.read_bytes()[:10])  # a build cut off while writing it
     run(tmp_path)
@@ -44,7 +49,7 @@ def test_truncated_gz_from_an_interrupted_build_is_replaced(tmp_path):
 
 
 def test_unchanged_page_is_not_rewritten(tmp_path):
-    make_page(tmp_path)
+    make_pages(tmp_path)
     out = run(tmp_path)
     before = out.stat().st_mtime_ns
     run(tmp_path)
@@ -52,8 +57,25 @@ def test_unchanged_page_is_not_rewritten(tmp_path):
 
 
 def test_changed_page_is_rewritten(tmp_path):
+    make_pages(tmp_path)
     page = make_page(tmp_path)
     out = run(tmp_path)
     page.write_bytes(b"<html>new</html>")
     run(tmp_path)
     assert gzip.decompress(out.read_bytes()) == b"<html>new</html>"
+
+
+def test_both_pages_gzipped(tmp_path):
+    make_pages(tmp_path)
+    out = run(tmp_path)
+    dbg = out.with_name("debug.html.gz")
+    assert gzip.decompress(out.read_bytes()) == b"<html>panel</html>"
+    assert gzip.decompress(dbg.read_bytes()) == b"<html>debugger</html>"
+
+
+def test_truncated_debug_gz_is_replaced(tmp_path):
+    make_pages(tmp_path)
+    dbg = run(tmp_path).with_name("debug.html.gz")
+    dbg.write_bytes(dbg.read_bytes()[:10])
+    run(tmp_path)
+    assert gzip.decompress(dbg.read_bytes()) == b"<html>debugger</html>"
