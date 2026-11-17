@@ -110,6 +110,8 @@ Once the ball is on Wi-Fi it serves a settings and status page at **`http://tama
 
 The same operations, plus reading the screen (`GET /api/look`), pressing buttons (`POST /api/press`) and setting the pet's clock (`POST /api/pet-clock/sync`; `GET /api/status` has `pet_clock` and `ball_clock`), are a JSON API under `/api/`.
 
+**Debugger.** `http://tamaorb.local/debug` (the panel's Debugger button) shows the emulator from the inside, live: the pet's screen, the CPU registers, flags and interrupts, a disassembly of the running ROM that follows the program counter, and the RAM as a grid where every change lights up and the known pet addresses (`docs/pet-ram.md`) are marked and decoded. It only looks, never changes the pet. The ball pushes a snapshot up to 20 times a second over a WebSocket to at most two open debuggers, and stays awake (no light sleep, no Wi-Fi power save) while one is open. On a phone it splits into three tabs. `GET /api/debug` is the same snapshot once; `GET /api/rom` is the running program (anyone on your LAN can download it, like everything else here).
+
 **If `tamaorb.local` doesn't resolve,** use the ball's IP address instead (`http://<ip>/`). Some routers stop forwarding mDNS names about 2 minutes after the ball boots, typically when the PC and the ball are on different subnets. To find the IP, look in your router's DHCP client list, read the boot log over USB (`pio device monitor`, the line `esp_netif_handlers: sta ip: …`), run `tools/tamaorb-rom.py status` over USB (`ip=…`), or open the panel and read the Wi-Fi tile. Give the ball a DHCP reservation so the address doesn't change.
 
 Without Wi-Fi, the same settings work over the cable with `tamaorb-rom.py get` and `set`.
@@ -122,7 +124,7 @@ AI agents connect through the MCP server on the ball itself:
 claude mcp add --transport http tamaorb http://tamaorb.local/mcp      # or http://<ip>/mcp
 ```
 
-The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, `sync_pet_clock` (it tells the agent to warn you that the pet may wake up, fall asleep or age), and a how-to-play guide per model (`main/guide_p1.md`, `main/guide_p2.md`). By default, beeps caused by agent presses play at normal volume but don't wake or undim the screen; `agent_feedback=silent` also mutes them and `visible` lets them wake the screen.
+The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, `sync_pet_clock` (it tells the agent to warn you that the pet may wake up, fall asleep or age), `read_ram` (the RAM and CPU registers, read only, for finding addresses), and a how-to-play guide per model (`main/guide_p1.md`, `main/guide_p2.md`). By default, beeps caused by agent presses play at normal volume but don't wake or undim the screen; `agent_feedback=silent` also mutes them and `visible` lets them wake the screen.
 
 **The panel, API and MCP server are open to anyone on your LAN.** There is no login. Requests from other web sites are refused (Origin check), but anything on the network can read the status and press the buttons. Keep the ball on a network you trust. Decision record: `docs/adr/0005-web-panel-on-device.md`.
 

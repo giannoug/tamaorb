@@ -1,2 +1,494 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>TamaOrb debugger</title></head><body><p>Debugger: coming in the next commit.</p></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TamaOrb debugger</title>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later. Read only: this page never changes the pet. -->
+<style>
+:root{
+--ground:#F2F3EC;--surface:#FFFFFF;--surface-2:#F6F7F1;--ink:#1C2518;--muted:#556050;
+--accent:#3D5A2A;--on-accent:#FFFFFF;--accent-tint:#EEF2E4;
+--line:#D8DDCC;--line-soft:#E3E7D8;--line-control:#B7C0A6;--line-hover:#8E9A7C;
+--busy-bg:#F6E8CB;--busy-line:#E2C88F;--busy-ink:#4A3608;--pending:#B98A1E;--ok:#3D7A2A;--error:#9B2C1A;
+--lcd-bg:#B6C19E;--lcd-ink:#1C2518;--lcd-off:rgba(28,37,24,.07);
+--heat3:#B9CF92;--heat2:#D3E1B8;--heat1:#E8EEDB;--zero:#A7AE9C;
+--mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+h1,h2{margin:0}
+h1{font-size:22px;line-height:1.2;font-weight:700}
+h2{font-size:17px;font-weight:650}
+.wrap{max-width:1200px;margin:0 auto;padding:24px 16px 40px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:4px 0 8px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand div{display:flex;flex-direction:column;min-width:0}
+.sub{font-family:var(--mono);font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.hbtns{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.status{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.status i{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.status.wait i{background:var(--pending)}
+.status.frozen{color:var(--busy-ink);background:var(--busy-bg);border:1px solid var(--busy-line);border-radius:999px;padding:4px 12px}
+.status.frozen i{background:var(--pending)}
+.status.bad{color:var(--error)}.status.bad i{background:var(--error)}
+.btn{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line-control);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
+.btn:hover{border-color:var(--line-hover);background:var(--surface-2)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row2{display:flex;flex-wrap:wrap;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px}
+.note{font-size:13px;color:var(--muted)}
+#s-lcd{flex:1 1 380px}#s-cpu{flex:2 1 520px}#s-dis{flex:3 1 560px}#s-known{flex:1 1 320px}
+.lcd{align-self:center;background:var(--lcd-bg);border:2px solid var(--ink);border-radius:10px;padding:10px;display:grid;grid-template-columns:repeat(32,10px);grid-auto-rows:10px;gap:1px}
+.lcd span{background:var(--lcd-off)}.lcd span.on{background:var(--lcd-ink)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.chip{font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+.chip.on{border-color:var(--accent);background:var(--accent);color:var(--on-accent);font-weight:600}
+.regs{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.tile{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile .l{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font-family:var(--mono);font-size:19px;font-weight:650}
+.tile .s{font-size:12px;color:var(--muted)}
+.flags{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.flag{font-family:var(--mono);font-size:13px;padding:4px 10px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+.flag.on{border-color:var(--accent);background:var(--accent-tint);color:var(--ink);font-weight:700}
+.irqs{display:flex;flex-direction:column;font-size:14px}
+.irq{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;padding:6px 0;border-top:1px solid var(--line-soft)}
+.irq .m{font-family:var(--mono);font-size:13px}.irq .s{color:var(--muted);font-size:13px;min-width:130px;text-align:right}
+.ctl{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.ctl label{display:flex;align-items:center;gap:8px;font-size:14px;min-height:44px}
+.ctl input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent)}
+.ctl input[type=text]{width:100px;min-height:44px;padding:0 10px;border-radius:8px;border:1px solid var(--line-control);font-family:var(--mono);font-size:16px}
+.dis{font-family:var(--mono);font-size:13px;display:flex;flex-direction:column;outline-offset:4px;touch-action:none;user-select:none}
+.ln{display:grid;grid-template-columns:20px 56px 44px minmax(0,1fr);gap:8px;padding:3px 8px;border-radius:4px;white-space:pre}
+.ln .a,.ln .w{color:var(--muted)}.ln .p{color:var(--accent);font-weight:700}
+.ln.pc{background:var(--accent-tint);box-shadow:inset 3px 0 0 var(--accent);font-weight:700}
+.known{display:flex;flex-direction:column;font-size:14px}
+.kn{display:grid;grid-template-columns:minmax(0,1fr) 92px 110px;gap:8px;padding:5px 0;border-top:1px solid var(--line-soft);align-items:baseline}
+.kn .a,.kn .v{font-family:var(--mono);font-size:13px}.kn .a{color:var(--muted)}.kn .v{text-align:right}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:6px}.legend i{width:14px;height:14px;border-radius:3px}
+.sel{background:var(--ink);color:#DDE6C8;border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:13px;min-height:36px}
+.ramwrap{overflow-x:auto}
+.ram{font-family:var(--mono);font-size:13px;display:grid;gap:2px;min-width:min-content}
+.ram span{height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px}
+.ram .h,.ram .r{color:var(--muted);font-size:11px}.ram .r{justify-content:flex-start;font-size:13px}
+.ram .c{cursor:pointer}.ram .z{color:var(--zero)}
+.ram .k{box-shadow:inset 0 -2px 0 var(--accent);font-weight:700}
+.ram .h3{background:var(--heat3)}.ram .h2{background:var(--heat2)}.ram .h1{background:var(--heat1)}
+.ram .c.sel1{outline:2px solid var(--ink);outline-offset:-2px}
+.tabs{display:none}
+@media (max-width:699px){
+  .wrap{padding:16px 12px 32px;gap:12px}
+  header{flex-direction:column;align-items:stretch;gap:10px;padding:0}
+  h1{font-size:19px}
+  .hbtns{justify-content:space-between}
+  .tabs{display:flex;position:sticky;top:0;z-index:1;background:var(--ground);padding:6px 0 10px;border-bottom:1px solid var(--line)}
+  .tabs div{display:flex;gap:4px;background:var(--line-soft);border-radius:10px;padding:3px;flex:1}
+  .tabs button{flex:1;min-height:40px;border:0;border-radius:7px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;background:transparent;color:var(--muted)}
+  .tabs button[aria-pressed=true]{background:var(--surface);color:var(--ink)}
+  main{display:flex;flex-direction:column;gap:12px}
+  .row2{display:contents}
+  #s-ram{order:1}#s-known{order:2}
+  body[data-tab=pet] [data-tab]:not([data-tab=pet]),body[data-tab=code] [data-tab]:not([data-tab=code]),body[data-tab=ram] [data-tab]:not([data-tab=ram]){display:none}
+  .card{padding:14px;gap:12px}
+  .lcd{grid-template-columns:repeat(32,8px);grid-auto-rows:8px;padding:8px}
+  .regs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .regs .tile:first-child{grid-column:1/-1}
+  .ln{grid-template-columns:14px 40px minmax(0,1fr) 34px}.ln .w{order:4;text-align:right}
+  .ram span{height:19px}.ram{font-size:12px}
+  .kn{grid-template-columns:minmax(0,1fr) 60px 100px}
+}
+</style>
+</head>
+<body data-tab="pet">
+<div class="wrap">
+<header>
+  <div class="brand">
+    <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="18" fill="#B6C19E" stroke="#1C2518" stroke-width="2"/><g fill="#1C2518"><rect x="13" y="15" width="3" height="3"/><rect x="24" y="15" width="3" height="3"/><rect x="15" y="24" width="10" height="2"/></g></svg>
+    <div><h1>TamaOrb debugger</h1><span class="sub" id="sub">read only</span></div>
+  </div>
+  <div class="hbtns">
+    <span class="status wait" id="status" role="status" aria-live="polite"><i></i><span id="stxt">Connecting…</span></span>
+    <button type="button" class="btn" id="freeze" aria-pressed="false">Freeze view</button>
+    <a class="btn" href="/">Back to the panel</a>
+  </div>
+</header>
+<nav class="tabs" aria-label="Debugger views"><div>
+  <button type="button" data-go="pet" aria-pressed="true">Pet &amp; CPU</button>
+  <button type="button" data-go="code" aria-pressed="false">Code</button>
+  <button type="button" data-go="ram" aria-pressed="false">RAM</button>
+</div></nav>
+<main>
+<div class="row2">
+  <section class="card" id="s-lcd" data-tab="pet" aria-labelledby="h-lcd">
+    <div class="head"><h2 id="h-lcd">Pet screen</h2><span class="note" id="frame">frame –</span></div>
+    <div class="lcd" id="lcd" role="img" aria-label="The pet's LCD"></div>
+    <div class="chips" id="icons"></div>
+    <div class="note" id="petline" style="text-align:center">–</div>
+  </section>
+  <section class="card" id="s-cpu" data-tab="pet" aria-labelledby="h-cpu">
+    <div class="head"><h2 id="h-cpu">CPU</h2><span class="note" id="cpuline">E0C6S46</span></div>
+    <div class="regs" id="regs"></div>
+    <div class="flags" id="flags"><span style="font-size:13px;font-weight:600">Flags</span></div>
+    <div class="irqs" id="irqs"><span style="font-size:13px;font-weight:600;padding-bottom:4px">Interrupts</span></div>
+  </section>
+</div>
+<div class="row2">
+  <section class="card" id="s-dis" data-tab="code" aria-labelledby="h-dis">
+    <div class="head">
+      <h2 id="h-dis">Disassembly</h2>
+      <div class="ctl">
+        <label><input type="checkbox" id="follow" checked>Follow PC</label>
+        <label for="goto" style="min-height:0">Go to</label>
+        <input type="text" id="goto" value="0x100" spellcheck="false" autocomplete="off">
+        <button type="button" class="btn" id="go">Go</button>
+      </div>
+    </div>
+    <div class="dis" id="dis" tabindex="0" aria-label="Disassembly; arrow keys, Page Up and Page Down scroll"></div>
+    <span class="note" id="disnote">The program is read from the ball once; scroll or use the arrow keys to move.</span>
+  </section>
+  <section class="card" id="s-known" data-tab="ram" aria-labelledby="h-known">
+    <h2 id="h-known">Known addresses</h2>
+    <div class="known" id="known"></div>
+    <span class="note" id="knownnote">From docs/pet-ram.md. Underlined in the grid.</span>
+  </section>
+</div>
+<section class="card" id="s-ram" data-tab="ram" aria-labelledby="h-ram">
+  <div class="head">
+    <h2 id="h-ram">RAM <span class="note" id="ramsize" style="font-weight:400"></span></h2>
+    <div class="legend"><span><i style="background:var(--heat3)"></i>changed now</span><span><i style="background:var(--heat1)"></i>fading over 2 s</span><span><i style="box-shadow:inset 0 -2px 0 var(--accent)"></i>known address</span></div>
+  </div>
+  <div class="sel" id="sel" aria-live="polite">Hover or tap a nibble</div>
+  <div class="ramwrap"><div class="ram" id="ram"></div></div>
+</section>
+</main>
+</div>
+<script>
+'use strict';
+/*DISASM-BEGIN*/
+const OPS = /*OPS-BEGIN*/[[3648,4064,0,0,"PSET {i0}"],[0,3840,0,0,"JP {t0}"],[512,3840,0,0,"JP C,{t0}"],[768,3840,0,0,"JP NC,{t0}"],[1536,3840,0,0,"JP Z,{t0}"],[1792,3840,0,0,"JP NZ,{t0}"],[4072,4095,0,0,"JPBA"],[1024,3840,0,0,"CALL {t0}"],[1280,3840,0,0,"CALZ {z0}"],[4063,4095,0,0,"RET"],[4062,4095,0,0,"RETS"],[256,3840,0,0,"RETD {i0}"],[4091,4095,0,0,"NOP5"],[4095,4095,0,0,"NOP7"],[4088,4095,0,0,"HALT"],[3808,4095,0,0,"INC X"],[3824,4095,0,0,"INC Y"],[2816,3840,0,0,"LD X,{i0}"],[2048,3840,0,0,"LD Y,{i0}"],[3712,4092,0,0,"LD XP,{r0}"],[3716,4092,0,0,"LD XH,{r0}"],[3720,4092,0,0,"LD XL,{r0}"],[3728,4092,0,0,"LD YP,{r0}"],[3732,4092,0,0,"LD YH,{r0}"],[3736,4092,0,0,"LD YL,{r0}"],[3744,4092,0,0,"LD {r0},XP"],[3748,4092,0,0,"LD {r0},XH"],[3752,4092,0,0,"LD {r0},XL"],[3760,4092,0,0,"LD {r0},YP"],[3764,4092,0,0,"LD {r0},YH"],[3768,4092,0,0,"LD {r0},YL"],[2560,4080,0,0,"ADC XH,{i0}"],[2576,4080,0,0,"ADC XL,{i0}"],[2592,4080,0,0,"ADC YH,{i0}"],[2608,4080,0,0,"ADC YL,{i0}"],[2624,4080,0,0,"CP XH,{i0}"],[2640,4080,0,0,"CP XL,{i0}"],[2656,4080,0,0,"CP YH,{i0}"],[2672,4080,0,0,"CP YL,{i0}"],[3584,4032,4,48,"LD {r0},{i1}"],[3776,4080,2,12,"LD {r0},{r1}"],[4000,4080,0,0,"LD A,M({i0})"],[4016,4080,0,0,"LD B,M({i0})"],[3968,4080,0,0,"LD M({i0}),A"],[3984,4080,0,0,"LD M({i0}),B"],[3680,4080,0,0,"LDPX MX,{i0}"],[3808,4080,2,12,"LDPX {r0},{r1}"],[3696,4080,0,0,"LDPY MY,{i0}"],[3824,4080,2,12,"LDPY {r0},{r1}"],[2304,3840,0,0,"LBPX {i0}"],[3904,4080,0,0,"SET {i0}"],[3920,4080,0,0,"RST {i0}"],[3905,4095,0,0,"SCF"],[3934,4095,0,0,"RCF"],[3906,4095,0,0,"SZF"],[3933,4095,0,0,"RZF"],[3908,4095,0,0,"SDF"],[3931,4095,0,0,"RDF"],[3912,4095,0,0,"EI"],[3927,4095,0,0,"DI"],[4059,4095,0,0,"INC SP"],[4043,4095,0,0,"DEC SP"],[4032,4092,0,0,"PUSH {r0}"],[4036,4095,0,0,"PUSH XP"],[4037,4095,0,0,"PUSH XH"],[4038,4095,0,0,"PUSH XL"],[4039,4095,0,0,"PUSH YP"],[4040,4095,0,0,"PUSH YH"],[4041,4095,0,0,"PUSH YL"],[4042,4095,0,0,"PUSH F"],[4048,4092,0,0,"POP {r0}"],[4052,4095,0,0,"POP XP"],[4053,4095,0,0,"POP XH"],[4054,4095,0,0,"POP XL"],[4055,4095,0,0,"POP YP"],[4056,4095,0,0,"POP YH"],[4057,4095,0,0,"POP YL"],[4058,4095,0,0,"POP F"],[4064,4092,0,0,"LD SPH,{r0}"],[4080,4092,0,0,"LD SPL,{r0}"],[4068,4092,0,0,"LD {r0},SPH"],[4084,4092,0,0,"LD {r0},SPL"],[3072,4032,4,48,"ADD {r0},{i1}"],[2688,4080,2,12,"ADD {r0},{r1}"],[3136,4032,4,48,"ADC {r0},{i1}"],[2704,4080,2,12,"ADC {r0},{r1}"],[2720,4080,2,12,"SUB {r0},{r1}"],[3392,4032,4,48,"SBC {r0},{i1}"],[2736,4080,2,12,"SBC {r0},{r1}"],[3200,4032,4,48,"AND {r0},{i1}"],[2752,4080,2,12,"AND {r0},{r1}"],[3264,4032,4,48,"OR {r0},{i1}"],[2768,4080,2,12,"OR {r0},{r1}"],[3328,4032,4,48,"XOR {r0},{i1}"],[2784,4080,2,12,"XOR {r0},{r1}"],[3520,4032,4,48,"CP {r0},{i1}"],[3840,4080,2,12,"CP {r0},{r1}"],[3456,4032,4,48,"FAN {r0},{i1}"],[3856,4080,2,12,"FAN {r0},{r1}"],[2800,4080,0,0,"RLC {r0}"],[3724,4092,0,0,"RRC {r0}"],[3936,4080,0,0,"INC M({i0})"],[3952,4080,0,0,"DEC M({i0})"],[3880,4092,0,0,"ACPX {r0}"],[3884,4092,0,0,"ACPY {r0}"],[3896,4092,0,0,"SCPX {r0}"],[3900,4092,0,0,"SCPY {r0}"],[3343,4047,4,0,"NOT {r0}"]]/*OPS-END*/;
+const REG = ['A', 'B', 'MX', 'MY'];
+const hex = (v) => '0x' + v.toString(16).toUpperCase();
+const hex3 = (v) => '0x' + v.toString(16).toUpperCase().padStart(3, '0');
+// The most specific mask first (a stable sort): SET 0x4 is SDF, XOR MX,0xF is NOT MX and so on, the same
+// instruction under its own name. Among equal masks tamalib's order stands; operands are taken out as in cpu.c.
+const bits = (m) => { let n = 0; for (; m; m &= m - 1) n++; return n; };
+const OPS_BY_NAME = OPS.map((o, i) => [o, i]).sort((p, q) => bits(q[0][1]) - bits(p[0][1]) || p[1] - q[1]).map((p) => p[0]);
+// word: a 12-bit instruction at pc; prev: the word before it (a PSET there sets the page of the next jump).
+function disasm(word, pc, prev) {
+  const w = word & 0xFFF;
+  for (const [code, mask, shift, maskArg0, text] of OPS_BY_NAME) {
+    if ((w & mask) !== code) continue;
+    let a0, a1 = 0;
+    if (maskArg0) { a0 = (w & maskArg0) >> shift; a1 = w & ~(mask | maskArg0) & 0xFFF; }
+    else a0 = (w & ~mask & 0xFFF) >> shift;
+    const np = (prev & 0xFE0) === 0xE40 ? prev & 0x1F : (pc >> 8) & 0x1F;  // bank and page
+    return text.replace(/\{([rtiz])([01])\}/g, (_, k, n) => {
+      const v = n === '0' ? a0 : a1;
+      if (k === 'r') return REG[v & 3];
+      if (k === 't') return hex3((np << 8) | (v & 0xFF));  // JP, CALL: a step on the current (or PSET) page
+      if (k === 'z') return hex3(v & 0xFF);                // CALZ: page 0
+      return hex(v);
+    });
+  }
+  return '???';
+}
+/*DISASM-END*/
+
+// docs/pet-ram.md: name, first and last address (P1 and P2 share them).
+const KNOWN = /*KNOWN-BEGIN*/[["Clock",16,21],["Call icon",45,45],["Hunger",64,64],["Happy",65,65],["Care mistakes",66,66],["Discipline",67,67],["Weight",70,71],["Sick",72,72],["Light",75,75],["Droppings",77,77],["Age",84,85],["Character",93,93],["State",94,94]]/*KNOWN-END*/;
+const STATE = { 1: 'normal', 2: 'eating', 3: 'asleep', 5: 'playing', 9: 'sick', 10: 'dead' };
+const hearts = (v) => Math.floor((v + 1) / 4);
+function decode(name, r, model) {
+  const H = (v) => v.toString(16).toUpperCase();
+  switch (name) {
+  case 'Clock': {
+    const s = r[17] * 10 + r[16], m = r[19] * 10 + r[18], h = r[21] * 16 + r[20];
+    const p = (n) => String(n).padStart(2, '0');
+    return p(h) + ':' + p(m) + ':' + p(s);
+  }
+  case 'Call icon': return H(r[45]) + ' · ' + (r[45] & 8 ? 'on' : 'off');
+  case 'Hunger': case 'Happy': { const v = r[name === 'Hunger' ? 64 : 65]; const n = hearts(v); return H(v) + ' · ' + n + (n === 1 ? ' heart' : ' hearts'); }
+  case 'Care mistakes': return String(r[66]);
+  case 'Discipline': return H(r[67]) + ' · ' + hearts(r[67]) + '/4';
+  case 'Weight': return (r[71] * 10 + r[70]) + (model === 'P1' ? ' lb' : ' g');
+  case 'Sick': return H(r[72]) + ' · ' + (r[72] >= 8 ? 'sick' : 'healthy');
+  case 'Light': return H(r[75]) + ' · ' + (r[75] === 15 ? 'on' : r[75] === 0 ? 'off' : '?');
+  case 'Droppings': return String(r[77]);
+  case 'Age': return String(r[85] * 10 + r[84]);
+  case 'Character': return r[93] ? String(r[93]) : '0 · egg or none';
+  case 'State': return r[94] + (STATE[r[94]] ? ' · ' + STATE[r[94]] : '');
+  }
+  return '';
+}
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const phone = window.matchMedia('(max-width: 699px)');
+
+// ---- static structure ----
+const lcdCells = [];
+for (let i = 0; i < 512; i++) lcdCells.push($('lcd').appendChild(el('span')));
+const ICONS = ['Food', 'Light', 'Game', 'Medicine', 'Bathroom', 'Meter', 'Discipline', 'Attention'];
+const iconEls = ICONS.map((n) => $('icons').appendChild(el('span', 'chip', n)));
+const REGS = [['PC', 'pc'], ['NP', 'np'], ['A', 'a'], ['B', 'b'], ['X', 'x'], ['Y', 'y'], ['SP', 'sp'], ['Call depth', 'cd']];
+const regEls = {};
+for (const [label, key] of REGS) {
+  const t = $('regs').appendChild(el('div', 'tile'));
+  t.append(el('span', 'l', label));
+  regEls[key] = { v: t.appendChild(el('span', 'v', '–')), s: t.appendChild(el('span', 's', ' ')) };
+}
+const flagEls = ['C', 'Z', 'D', 'I'].map((n) => $('flags').appendChild(el('span', 'flag', n + ' 0')));
+const IRQ = ['Prog timer', 'Serial', 'K10–K13', 'K00–K03', 'Stopwatch', 'Clock timer'];
+const irqEls = IRQ.map((n) => {
+  const row = $('irqs').appendChild(el('div', 'irq'));
+  row.append(el('span', null, n));
+  return { m: row.appendChild(el('span', 'm', '–')), s: row.appendChild(el('span', 's', '')) };
+});
+
+// ---- state ----
+let snap = null, frozen = false, rom = null, follow = true, view = 0x100;
+let prevRam = null, changedAt = new Float64Array(768), selAddr = -1, ramCells = [], ramCols = 0;
+const times = [];
+
+function knownAt(a, model) {
+  if (model !== 'P1' && model !== 'P2') return null;
+  for (const k of KNOWN) if (a >= k[1] && a <= k[2]) return k[0];
+  return null;
+}
+
+// ---- RAM grid: 32 per row, 16 on a phone ----
+function buildRam(n) {
+  const cols = phone.matches ? 16 : 32;
+  if (cols === ramCols && ramCells.length === n) return;
+  ramCols = cols;
+  const g = $('ram');
+  g.textContent = '';
+  g.style.gridTemplateColumns = (cols === 16 ? '32px' : '52px') + ' repeat(' + cols + ', ' + (cols === 16 ? '17px' : '22px') + ')';
+  g.append(el('span', 'h'));
+  for (let c = 0; c < cols; c++) g.append(el('span', 'h', c.toString(16).toUpperCase()));
+  ramCells = [];
+  for (let a = 0; a < n; a++) {
+    if (a % cols === 0) g.append(el('span', 'r', (cols === 16 ? '' : '0x') + a.toString(16).toUpperCase().padStart(3, '0')));
+    const c = g.appendChild(el('span', 'c'));
+    c.dataset.a = a;
+    ramCells.push(c);
+  }
+  $('ramsize').textContent = n + ' nibbles · 0x000–' + hex3(n - 1);
+  prevRam = null;
+  if (snap) renderRam(true);
+}
+function showSel(a) {
+  selAddr = a;
+  for (const c of $('ram').querySelectorAll('.sel1')) c.classList.remove('sel1');
+  if (a < 0 || !snap || a >= snap.ram.length) { $('sel').textContent = 'Hover or tap a nibble'; return; }
+  ramCells[a] && ramCells[a].classList.add('sel1');
+  const v = parseInt(snap.ram[a], 16), name = knownAt(a, snap.model);
+  $('sel').textContent = hex3(a) + (name ? ' ' + name : '') + ' = ' + v + (name ? ' · ' + decode(name, ramArr(), snap.model) : '');
+}
+$('ram').addEventListener('mouseover', (e) => { const a = e.target.dataset.a; if (a != null && !phone.matches) showSel(+a); });
+$('ram').addEventListener('click', (e) => { const a = e.target.dataset.a; if (a != null) showSel(+a); });
+phone.addEventListener('change', () => { if (snap) buildRam(snap.ram.length); });
+
+let ramArrCache = null;
+function ramArr() {
+  if (!ramArrCache) { ramArrCache = new Uint8Array(snap.ram.length); for (let i = 0; i < snap.ram.length; i++) ramArrCache[i] = parseInt(snap.ram[i], 16); }
+  return ramArrCache;
+}
+function renderRam(all) {
+  const r = snap.ram, now = performance.now();
+  for (let a = 0; a < r.length && a < ramCells.length; a++) {
+    if (!all && prevRam && prevRam[a] === r[a]) continue;
+    const c = ramCells[a];
+    c.textContent = r[a];
+    if (prevRam && prevRam[a] !== r[a]) changedAt[a] = now;
+    c.classList.toggle('z', r[a] === '0');
+    c.classList.toggle('k', !!knownAt(a, snap.model));
+  }
+  prevRam = r;
+  fade();
+}
+function fade() {
+  const now = performance.now();
+  for (let a = 0; a < ramCells.length; a++) {
+    const t = changedAt[a];
+    if (!t) continue;
+    const age = now - t, c = ramCells[a];
+    c.classList.toggle('h3', age < 400);
+    c.classList.toggle('h2', age >= 400 && age < 1200);
+    c.classList.toggle('h1', age >= 1200 && age < 2000);
+    if (age >= 2000) changedAt[a] = 0;
+  }
+}
+setInterval(() => { if (!frozen && snap) fade(); }, 150);
+
+// ---- disassembly ----
+const LINES = 24;
+function renderDis() {
+  const box = $('dis');
+  if (!rom) return;
+  const pc = snap ? snap.pc : -1;
+  if (follow && pc >= 0) view = pc;
+  const start = Math.max(0, Math.min(rom.length - LINES, view - 8));
+  box.textContent = '';
+  for (let a = start; a < start + LINES && a < rom.length; a++) {
+    const ln = el('div', 'ln' + (a === pc ? ' pc' : ''));
+    ln.append(el('span', 'p', a === pc ? '▶' : ''), el('span', 'a', hex3(a)),
+              el('span', 'w', rom[a].toString(16).toUpperCase().padStart(3, '0')),
+              el('span', 'm', disasm(rom[a], a, a ? rom[a - 1] : 0)));
+    box.append(ln);
+  }
+}
+function move(lines) {
+  if (!rom) return;
+  view = Math.max(8, Math.min(rom.length - LINES + 8, view + lines));
+  setFollow(false);
+  renderDis();
+}
+function setFollow(on) { follow = on; $('follow').checked = on; }
+$('dis').addEventListener('wheel', (e) => { e.preventDefault(); move(Math.sign(e.deltaY) * 3); }, { passive: false });
+let touchY = null;
+$('dis').addEventListener('touchstart', (e) => { touchY = e.touches[0].clientY; }, { passive: true });
+$('dis').addEventListener('touchmove', (e) => {
+  if (touchY == null) return;
+  const d = touchY - e.touches[0].clientY;
+  if (Math.abs(d) >= 20) { move(Math.trunc(d / 20)); touchY = e.touches[0].clientY; }
+}, { passive: true });
+$('dis').addEventListener('keydown', (e) => {
+  const k = { ArrowUp: -1, ArrowDown: 1, PageUp: -LINES, PageDown: LINES }[e.key];
+  if (k) { e.preventDefault(); move(k); }
+});
+$('follow').addEventListener('change', (e) => { follow = e.target.checked; renderDis(); });
+function goTo() {
+  const v = parseInt($('goto').value.trim().replace(/^0x/i, ''), 16);
+  if (!Number.isFinite(v) || !rom) return;
+  view = Math.max(0, Math.min(rom.length - 1, v));
+  setFollow(false);
+  renderDis();
+}
+$('go').addEventListener('click', goTo);
+$('goto').addEventListener('keydown', (e) => { if (e.key === 'Enter') goTo(); });
+
+// ---- one snapshot ----
+function render() {
+  const s = snap;
+  ramArrCache = null;
+  $('frame').textContent = 'frame ' + s.seq.toLocaleString('en-US').replace(/,/g, ' ');
+  for (let y = 0; y < 16; y++) {
+    const row = parseInt(s.lcd[y], 16);
+    for (let x = 0; x < 32; x++) lcdCells[y * 32 + x].classList.toggle('on', ((row >>> x) & 1) === 1);
+  }
+  iconEls.forEach((e, i) => e.classList.toggle('on', ((s.icons >> i) & 1) === 1));
+  const btn = ['A', 'B', 'C'].filter((_, i) => (s.buttons >> i) & 1).join('+') || 'none';
+  $('petline').textContent = 'Buzzer ' + (s.buzzer ? 'on' : 'off') + ' · buttons ' + btn + ' held · phase ' + s.phase;
+  $('cpuline').textContent = 'E0C6S46 · tick ' + s.tick.toLocaleString('en-US').replace(/,/g, ' ') + ' · ' + (s.halted ? 'halted' : 'running');
+  const set = (k, v, sub) => { regEls[k].v.textContent = v; regEls[k].s.textContent = sub || ' '; };
+  set('pc', hex3(s.pc), 'bank ' + (s.pc >> 12) + ' · page ' + ((s.pc >> 8) & 15) + ' · step ' + (s.pc & 255).toString(16).toUpperCase().padStart(2, '0'));
+  set('np', hex(s.np), 'next page');
+  set('a', hex(s.a)); set('b', hex(s.b));
+  const pq = (v, n) => n + 'P ' + (v >> 8).toString(16).toUpperCase() + ' · ' + n + 'H ' + ((v >> 4) & 15).toString(16).toUpperCase() + ' · ' + n + 'L ' + (v & 15).toString(16).toUpperCase();
+  set('x', hex3(s.x), pq(s.x, 'X')); set('y', hex3(s.y), pq(s.y, 'Y'));
+  set('sp', '0x' + s.sp.toString(16).toUpperCase().padStart(2, '0'), 'stack');
+  set('cd', String(s.call_depth), s.call_depth ? 'in a call or interrupt' : 'main loop');
+  flagEls.forEach((e, i) => { const on = (s.flags >> i) & 1; e.textContent = 'CZDI'[i] + ' ' + on; e.classList.toggle('on', !!on); });
+  s.irq.forEach((q, i) => {
+    irqEls[i].m.textContent = 'mask ' + q.mask.toString(16).toUpperCase() + ' · flags ' + q.factor.toString(16).toUpperCase();
+    irqEls[i].s.textContent = q.mask ? 'enabled' : 'off';
+  });
+  const showKnown = s.model === 'P1' || s.model === 'P2';
+  $('s-known').hidden = !showKnown;
+  if (showKnown && s.ram.length) {
+    const r = ramArr(), box = $('known');
+    box.textContent = '';
+    for (const [name, first, last] of KNOWN) {
+      const row = box.appendChild(el('div', 'kn'));
+      row.append(el('span', null, name), el('span', 'a', first === last ? hex(first) : hex(first) + '–' + hex(last)),
+                 el('span', 'v', decode(name, r, s.model)));
+    }
+  }
+  if (s.ram.length) { buildRam(s.ram.length); renderRam(false); }
+  if (selAddr >= 0) showSel(selAddr);
+  renderDis();
+}
+
+// ---- header ----
+let conn = 'connecting', frozenAt = '';
+function status() {
+  const st = $('status');
+  st.className = 'status';
+  if (frozen) { st.classList.add('frozen'); $('stxt').textContent = 'Frozen at ' + frozenAt + ' · the pet keeps running'; return; }
+  if (conn === 'live') {
+    const now = performance.now();
+    while (times.length && now - times[0] > 2000) times.shift();
+    $('stxt').textContent = 'Live · ' + Math.round(times.length / 2) + '/s';
+    return;
+  }
+  st.classList.add(conn === 'refused' ? 'bad' : 'wait');
+  $('stxt').textContent = conn === 'refused' ? 'Two debuggers are already open · retrying' : conn === 'reconnecting' ? 'Reconnecting…' : 'Connecting…';
+}
+setInterval(status, 500);
+$('freeze').addEventListener('click', () => {
+  frozen = !frozen;
+  const d = new Date();
+  frozenAt = d.toLocaleTimeString([], { hour12: false }) + '.' + Math.floor(d.getMilliseconds() / 100);
+  $('freeze').textContent = frozen ? 'Resume' : (phone.matches ? 'Freeze' : 'Freeze view');
+  $('freeze').setAttribute('aria-pressed', String(frozen));
+  status();
+});
+for (const b of document.querySelectorAll('[data-go]')) b.addEventListener('click', () => {
+  document.body.dataset.tab = b.dataset.go;
+  for (const o of document.querySelectorAll('[data-go]')) o.setAttribute('aria-pressed', String(o === b));
+  if (b.dataset.go === 'ram' && snap) buildRam(snap.ram.length);
+});
+
+// ---- the WebSocket: the ball pushes a snapshot whenever there is a new one ----
+let ws = null, backoff = 500, retry = 0;
+function connect() {
+  if (ws || document.hidden) return;
+  clearTimeout(retry);
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/debug');
+  ws.onopen = () => { backoff = 500; conn = 'live'; status(); };
+  ws.onmessage = (e) => {
+    if (frozen) return;
+    let s;
+    try { s = JSON.parse(e.data); } catch (_) { return; }
+    times.push(performance.now());
+    snap = s;
+    render();
+  };
+  ws.onclose = (e) => {
+    ws = null;
+    conn = /two debuggers/.test(e.reason || '') ? 'refused' : 'reconnecting';
+    status();
+    if (document.hidden) return;
+    retry = setTimeout(connect, conn === 'refused' ? 5000 : backoff);
+    backoff = Math.min(backoff * 2, 5000);
+  };
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {  // free the ball's slot (and let it sleep) while nobody looks
+    if (ws) { ws.onclose = null; ws.close(1000); ws = null; }
+    clearTimeout(retry);
+  } else {
+    connect();
+  }
+});
+
+// ---- once: the program, and the names for the header ----
+fetch('/api/rom', { cache: 'no-store' }).then((r) => (r.ok ? r.arrayBuffer() : null)).then((b) => {
+  if (!b) { $('disnote').textContent = 'No ROM is running, so there is nothing to disassemble.'; return; }
+  const u = new Uint8Array(b);
+  rom = new Uint16Array(u.length >> 1);
+  for (let i = 0; i < rom.length; i++) rom[i] = ((u[2 * i] << 8) | u[2 * i + 1]) & 0xFFF;
+  renderDis();
+}).catch(() => { $('disnote').textContent = 'Couldn’t read the program from the ball; reload to try again.'; });
+fetch('/api/status', { cache: 'no-store' }).then((r) => r.json()).then((s) => {
+  $('sub').textContent = location.host + ' · ' + s.model + (s.rom_name ? ' · ' + s.rom_name : '') + ' · read only';
+}).catch(() => {});
+if (phone.matches) $('freeze').textContent = 'Freeze';
+connect();
+</script>
+</body>
+</html>
