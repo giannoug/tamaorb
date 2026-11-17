@@ -40,9 +40,8 @@ static void send_rows(void *ctx, const uint16_t *fb, int y0, int y1) { board_dis
 static void show(void) { ui_send_changed(&s_sent, s_fb, send_rows, NULL); }  // every frame goes through here
 
 static void read_touch(ui_touch_t *t);
-static uint8_t read_touch_buttons(ui_touch_tracker_t *tr);
 static void load_rom_rows(ui_menu_view_t *v);
-static void switch_rom(int row);
+static void switch_rom(int row, int rows);
 static void render_glance(const ui_palette_t *pal, int8_t batt_pct);
 static void resume_on_pet(ui_screen_t *screen, ui_gesture_t *gest, ui_nav_t *nav);
 
@@ -216,8 +215,7 @@ static void ui_task(void *arg)
 
         if (!was_menu && nav.screen == UI_SCREEN_MENU) clock_refresh(&nav.view);  // just opened: no stale clock in its first frame
         if (ui_screen_long_press(&screen)) {  // from any screen, lit or not: the ROM list
-            tc_post_buttons(0);
-            ui_screen_wake(&screen, now_ms());
+            tc_post_buttons(0);  // ui_screen_update already woke the screen when the long press fired
             ui_nav_open_roms(&nav, true);
             ui_gesture_reset(&gest);  // a touch held now belongs to no row
             act = UI_ACT_REDRAW;
@@ -236,7 +234,7 @@ static void ui_task(void *arg)
         }
         if (act == UI_ACT_ROM_SWITCH) {
             tc_post_buttons(0);
-            switch_rom(nav.view.rom_pick);  // restarts the ball, or returns after saying why it didn't
+            switch_rom(nav.view.rom_pick, nav.view.rom_count);  // restarts the ball, or returns after saying why it didn't
             resume_on_pet(&screen, &gest, &nav);
             power_screen_on(false);
             backlight = false;  // force a fresh pet frame
@@ -347,8 +345,9 @@ static void render_glance(const ui_palette_t *pal, int8_t batt_pct)
 // After an overlay or at the start of play: the pet screen, and a BOOT press or touch still held is ignored.
 static void resume_on_pet(ui_screen_t *screen, ui_gesture_t *gest, ui_nav_t *nav)
 {
-    ui_touch_tracker_t probe = { 0 };
-    ui_screen_resume(screen, now_ms(), board_boot_down(), read_touch_buttons(&probe) != 0);
+    ui_touch_t t;
+    read_touch(&t);  // any finger still down, also on the LCD where it presses nothing: ignored until it lifts
+    ui_screen_resume(screen, now_ms(), board_boot_down(), t.count != 0);
     ui_gesture_reset(gest);
     ui_nav_to_pet(nav);
 }
@@ -380,13 +379,6 @@ static void read_touch(ui_touch_t *t)
     memset(t, 0, sizeof *t);
     t->count = bt.count;
     for (int i = 0; i < bt.count && i < 2; i++) { t->pt[i].x = bt.pt[i].x; t->pt[i].y = bt.pt[i].y; }
-}
-
-static uint8_t read_touch_buttons(ui_touch_tracker_t *tr)
-{
-    ui_touch_t t;
-    read_touch(&t);
-    return ui_touch_track(tr, &t);
 }
 
 // The ROM picker's rows: one per distinct P1/P2 dump (first start, or the list opened during play; never both
@@ -467,9 +459,9 @@ int ui_pick_rom(const tc_rom_entry_t *roms, int n)
 
 // Switch confirmed on the ROM list (row of s_rows): save the pet, store the new ROM and restart. The switch
 // itself is shared with the remote API (rom_switch_to); the messages stay here.
-static void switch_rom(int row)
+static void switch_rom(int row, int rows)
 {
-    if (row < 0 || row >= MAX_ROMS || !s_rows[row].name) return;
+    if (row < 0 || row >= rows || row >= MAX_ROMS) return;  // rows: this scan's count (older rows may linger)
     const char *name = s_scan[s_row_entry[row]].name;
     ESP_LOGI(TAG, "switching to %s", name);
     ui_message("Switching", "Saving your pet...");
