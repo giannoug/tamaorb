@@ -89,6 +89,7 @@ static void end(hl_session_t *s, hl_emit_fn reply, void *rctx)
     uint8_t h[20];
     tc_model_t m = tc_rom_identify(s->data, s->size, h);
     if (memcmp(h, s->sha1, 20) != 0) { reply(rctx, "@TO ERR sha1"); return; }
+    if (s->ops->identify) m = s->ops->identify(s->ops->ctx, s->data, s->size);
     if (m != TC_MODEL_P1 && m != TC_MODEL_P2) { reply(rctx, "@TO ERR unknown"); return; }
     hl_store_result_t r = s->ops->store(s->ops->ctx, s->name, s->data, s->size);
     if (r == HL_STORE_FAIL) { reply(rctx, "@TO ERR io"); return; }

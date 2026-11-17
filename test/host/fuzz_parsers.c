@@ -81,7 +81,8 @@ static void hl_status(void *c, char *o, size_t cap) { (void)c; snprintf(o, cap, 
 static st_settings_t hl_cur;
 static void hl_get(void *c, st_settings_t *o) { (void)c; *o = hl_cur; }
 static void hl_put(void *c, const st_settings_t *s, bool d) { (void)c; (void)d; hl_cur = *s; }
-static const hl_ops_t HL_OPS = { hl_store, hl_list, hl_rm, hl_wifi, hl_status, hl_get, hl_put, NULL };
+static const hl_ops_t HL_OPS = { .store = hl_store, .list = hl_list, .remove = hl_rm, .wifi = hl_wifi, .status = hl_status,
+                                 .get_settings = hl_get, .put_settings = hl_put };
 
 static void run_one(int t, const uint8_t *data, size_t len)
 {

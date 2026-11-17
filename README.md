@@ -135,7 +135,7 @@ test/host/run.sh                         # portable core on Linux (ROM tests use
 pip install -r tools/requirements.txt && pytest tools
 ```
 
-Without the ROM dumps (as in CI), the emulator and pet-clock tests still run: `tools/gen_testrom.py` builds `testclock.bin`, a tiny E0C6S46 program of our own that keeps the P1's clock at the same RAM addresses, and CTest runs `test_core` and `test_clock` on it too (`test_core_testrom`, `test_clock_testrom`). Tests that need the real game (the pet's stats, the P2, the saves) are skipped without the dumps.
+No test needs the ROM dumps: `tools/gen_testrom.py` builds `testclock.bin`, a tiny E0C6S46 program of our own that keeps the P1's clock at the same RAM addresses, and the emulator, clock and catch-up tests use it whenever `roms/` has no dump (so CI runs every test). With the dumps present they run on the real P1 instead, and CTest also runs `test_core` and `test_clock` on the test ROM (`test_core_testrom`, `test_clock_testrom`).
 
 The parsers that take input from the network or the cable are fuzzed under ASan and UBSan:
 

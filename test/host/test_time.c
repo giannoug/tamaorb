@@ -156,7 +156,7 @@ static void test_catchup_matches_realtime(void)
 int main(void)
 {
     static uint8_t rom[TC_ROM_BYTES];
-    have_rom = test_load_file("tama.bin", rom, sizeof rom);
+    have_rom = test_require_rom(test_load_file(test_rom_name("tama.bin"), rom, sizeof rom));
     if (have_rom) tc_rom_decode(rom, sizeof rom, program);
     inited = tc_init(program, &plat);
 

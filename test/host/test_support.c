@@ -2,12 +2,18 @@
 #include "test_support.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+static void rom_path(const char *name, char *path, size_t cap)
+{
+    const char *dir = getenv("TAMAORB_ROM_DIR");
+    snprintf(path, cap, "%s/%s", dir ? dir : TAMAORB_ROM_DIR_DEFAULT, name);
+}
 
 bool test_load_file(const char *name, uint8_t *buf, size_t size)
 {
-    const char *dir = getenv("TAMAORB_ROM_DIR");
     char path[512];
-    snprintf(path, sizeof path, "%s/%s", dir ? dir : TAMAORB_ROM_DIR_DEFAULT, name);
+    rom_path(name, path, sizeof path);
     FILE *f = fopen(path, "rb");
     if (!f) return false;
     size_t n = fread(buf, 1, size, f);
@@ -19,18 +25,20 @@ bool test_load_file(const char *name, uint8_t *buf, size_t size)
 const char *test_rom_name(const char *real)
 {
     const char *t = getenv("TAMAORB_TEST_ROM");
-    return t && *t ? t : real;
+    if (t && *t) return t;
+    char path[512];
+    rom_path(real, path, sizeof path);
+    FILE *f = fopen(path, "rb");
+    if (f) { fclose(f); return real; }
+    return "testclock.bin";
 }
 
-bool test_homebrew_rom(void)
-{
-    const char *t = getenv("TAMAORB_TEST_ROM");
-    return t && *t;
-}
+bool test_homebrew_rom(void) { return strcmp(test_rom_name("tama.bin"), "tama.bin") != 0; }
 
 bool test_require_rom(bool loaded)
 {
-    if (!loaded && test_homebrew_rom()) {
+    const char *t = getenv("TAMAORB_TEST_ROM");
+    if (!loaded && t && *t) {
         fprintf(stderr, "TAMAORB_TEST_ROM=%s set but not loaded\n", getenv("TAMAORB_TEST_ROM"));
         exit(1);
     }

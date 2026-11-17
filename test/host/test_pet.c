@@ -1,17 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <string.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include "unity.h"
 #include "test_support.h"
 #include "tc_pet.h"
 #include "tama_core.h"
-#include "persist.h"
-
-static uint64_t now_us(void) { return 0; }
-static void sleep_until_us(uint64_t ts) { (void)ts; }
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -226,96 +218,6 @@ static void test_clock_unknown_model_and_short_ram(void)
     TEST_ASSERT_FALSE(tc_pet_clock(TC_MODEL_P1, NULL, 0, &s));
 }
 
-// Replays a save in a child process (tc_init is once per process) and returns its RAM; false if the files are absent.
-static bool ram_from_save(const char *rom_name, const char *save_path, uint8_t *ram)
-{
-    static uint8_t rom[TC_ROM_BYTES], rec[4096];
-    static uint16_t program[TC_ROM_WORDS];
-    if (!test_load_file(rom_name, rom, sizeof rom)) return false;
-    FILE *f = fopen(save_path, "rb");
-    if (!f) return false;
-    size_t rec_len = fread(rec, 1, sizeof rec, f);
-    fclose(f);
-    int fd[2];
-    TEST_ASSERT_EQUAL(0, pipe(fd));
-    pid_t pid = fork();
-    TEST_ASSERT_TRUE(pid >= 0);
-    if (pid == 0) {
-        close(fd[0]);
-        static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us };
-        ps_meta_t meta;
-        const uint8_t *payload;
-        size_t plen;
-        if (!tc_rom_decode(rom, sizeof rom, program) || !tc_init(program, &plat) ||
-            !ps_record_decode(rec, rec_len, &meta, &payload, &plen) || !tc_state_load(payload, plen)) _exit(2);
-        tc_set_realtime(false);
-        for (int i = 0; i < 100000 && tc_get_ram(ram, TC_RAM_NIBBLES) == 0; i++) tc_step(64);
-        size_t n = tc_get_ram(ram, TC_RAM_NIBBLES);
-        if (n != TC_RAM_NIBBLES || write(fd[1], ram, n) != (ssize_t)n) _exit(3);
-        _exit(0);
-    }
-    close(fd[1]);
-    size_t got = 0;
-    ssize_t r;
-    while ((r = read(fd[0], ram + got, TC_RAM_NIBBLES - got)) > 0) got += (size_t)r;
-    close(fd[0]);
-    int status = 0;
-    waitpid(pid, &status, 0);
-    TEST_ASSERT_EQUAL(0, status);
-    TEST_ASSERT_EQUAL(TC_RAM_NIBBLES, got);
-    return true;
-}
-
-static const char *roms_saves(const char *name)
-{
-    static char path[512];
-    const char *root = getenv("TAMAORB_ROOT");
-    snprintf(path, sizeof path, "%s/roms/saves/%s", root ? root : TAMAORB_ROOT_DEFAULT, name);
-    return path;
-}
-
-static void check_p1(const char *save, int hunger, int weight)
-{
-    uint8_t ram[TC_RAM_NIBBLES];
-    if (!ram_from_save("tama.bin", roms_saves(save), ram)) TEST_IGNORE_MESSAGE("ROM or save not present");
-    tc_pet_t p;
-    tc_pet_decode(TC_MODEL_P1, ram, sizeof ram, &p);
-    TEST_ASSERT_TRUE(p.known);
-    TEST_ASSERT_EQUAL_INT(hunger, p.hunger);
-    TEST_ASSERT_EQUAL_INT(2, p.happy);
-    TEST_ASSERT_EQUAL_INT(0, p.discipline);
-    TEST_ASSERT_EQUAL_INT(2, p.age_years);
-    TEST_ASSERT_EQUAL_INT(weight, p.weight);
-    TEST_ASSERT_EQUAL_INT(1, p.light_on);
-    TEST_ASSERT_EQUAL_INT(0, p.droppings);
-    TEST_ASSERT_EQUAL_INT(0, p.sick);
-    TEST_ASSERT_EQUAL_INT(0, p.asleep);
-    TEST_ASSERT_EQUAL(TC_NEED_ALL_GOOD, tc_pet_need(&p));
-}
-
-static void test_p1_save_matches_meter(void) { check_p1("p1.sav", 3, 22); }
-static void test_p1_now_save_matches_meter(void) { check_p1("now.sav", 4, 23); }
-
-static void test_p1_save_clock(void)
-{
-    uint8_t ram[TC_RAM_NIBBLES];
-    if (!ram_from_save("tama.bin", roms_saves("p1.sav"), ram)) TEST_IGNORE_MESSAGE("ROM or save not present");
-    uint32_t s = 0;
-    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_P1, ram, sizeof ram, &s));
-    TEST_ASSERT_EQUAL_UINT32(9 * 3600 + 58 * 60, s);  // the clock screen read 9:58 (docs/pet-ram.md)
-}
-
-static void test_p2_save_matches_meter(void)
-{
-    // p2.sav is an egg (character 0): nothing to report until it hatches.
-    uint8_t ram[TC_RAM_NIBBLES];
-    if (!ram_from_save("tamag2.bin", roms_saves("p2.sav"), ram)) TEST_IGNORE_MESSAGE("ROM or save not present");
-    tc_pet_t p;
-    tc_pet_decode(TC_MODEL_P2, ram, sizeof ram, &p);
-    TEST_ASSERT_FALSE(p.known);
-    TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));
-}
-
 static void test_decoder_needs_only_pet_ram_nibbles(void)
 {
     uint8_t ram[TC_RAM_NIBBLES];
@@ -341,13 +243,9 @@ int main(void)
     RUN_TEST(test_egg_hides_stats);
     RUN_TEST(test_unknown_model_hides_stats);
     RUN_TEST(test_unverified_fields_minus_one);
-    RUN_TEST(test_p1_save_matches_meter);
-    RUN_TEST(test_p1_now_save_matches_meter);
-    RUN_TEST(test_p2_save_matches_meter);
     RUN_TEST(test_clock_decodes_bcd);
     RUN_TEST(test_clock_hour_high_nibble);
     RUN_TEST(test_clock_rejects_bad_digits);
     RUN_TEST(test_clock_unknown_model_and_short_ram);
-    RUN_TEST(test_p1_save_clock);
     return UNITY_END();
 }

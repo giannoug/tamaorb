@@ -19,6 +19,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "settings.h"
+#include "tc_rom.h"
 
 #define HL_MAX_LINE   1100
 #define HL_MAX_CHUNK  768
@@ -38,6 +39,9 @@ typedef struct {
     void (*get_settings)(void *ctx, st_settings_t *out);
     void (*put_settings)(void *ctx, const st_settings_t *s, bool display_changed);
     hl_clock_t (*clock)(void *ctx, int32_t *written_s);   // may block a few seconds; NULL: @TO ERR cmd
+    // The model of an uploaded ROM; NULL (the device): tc_rom_identify's, from the known hashes. Tests set it to run
+    // the upload path on made-up bytes. The SHA-1 the PUT line announced is checked either way.
+    tc_model_t (*identify)(void *ctx, const uint8_t *data, size_t len);
     void *ctx;
 } hl_ops_t;
 

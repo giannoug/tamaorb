@@ -68,16 +68,6 @@ static void test_model_names(void)
     TEST_ASSERT_EQUAL_STRING("test ROM", tc_model_name(TC_MODEL_TEST_ROM));
 }
 
-static void identify_file(const char *file, tc_model_t want, const char *hex)
-{
-    if (!test_load_file(file, rom, sizeof rom)) TEST_IGNORE_MESSAGE("ROM not present");
-    uint8_t h[20];
-    TEST_ASSERT_EQUAL(want, tc_rom_identify(rom, sizeof rom, h));
-    assert_sha1(hex, h);
-}
-
-static void test_identify_p1(void) { identify_file("tama.bin", TC_MODEL_P1, "4b4979cf92dc9d2fb6d7295a38f209f3da144f72"); }
-static void test_identify_p2(void) { identify_file("tamag2.bin", TC_MODEL_P2, "09e5101b37636a314fc599d5d69b4846721b3c88"); }
 
 static tc_rom_entry_t entry(const char *name, tc_model_t m, uint8_t tag)
 {
@@ -143,12 +133,30 @@ static void test_distinct_valid_dedups_and_filters(void)
     TEST_ASSERT_EQUAL(1, tc_rom_distinct_valid(sd, 5, idx, 1));  // respects max
 }
 
+// The known dumps by their SHA-1 (MAME's hh_e0c6200.cpp); the dumps themselves never enter the repo or CI.
 static void test_model_from_sha1(void)
 {
     uint8_t h[20], z[20] = {0};
     test_hex20("4b4979cf92dc9d2fb6d7295a38f209f3da144f72", h);
     TEST_ASSERT_EQUAL(TC_MODEL_P1, tc_model_from_sha1(h));
+    test_hex20("09e5101b37636a314fc599d5d69b4846721b3c88", h);
+    TEST_ASSERT_EQUAL(TC_MODEL_P2, tc_model_from_sha1(h));
+    test_hex20("6e13d015113e16198c0059b9d0c38d7027ae7324", h);
+    TEST_ASSERT_EQUAL(TC_MODEL_TEST_ROM, tc_model_from_sha1(h));
+    h[19] ^= 1;  // one bit off: not a known dump
+    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_model_from_sha1(h));
     TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_model_from_sha1(z));
+}
+
+// identify = the SHA-1 of the bytes, looked up in that table.
+static void test_identify_reports_sha1_of_the_bytes(void)
+{
+    for (size_t i = 0; i < TC_ROM_BYTES; i++) rom[i] = (uint8_t)(i * 31 + 5);
+    uint8_t got[20], want[20];
+    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_rom_identify(rom, TC_ROM_BYTES, got));
+    tc_sha1(rom, TC_ROM_BYTES, want);
+    TEST_ASSERT_EQUAL_MEMORY(want, got, 20);
+    memset(rom, 0, TC_ROM_BYTES);
 }
 
 int main(void)
@@ -161,8 +169,6 @@ int main(void)
     RUN_TEST(test_identify_zero_rom_unknown);
     RUN_TEST(test_decode_big_endian);
     RUN_TEST(test_model_names);
-    RUN_TEST(test_identify_p1);
-    RUN_TEST(test_identify_p2);
     RUN_TEST(test_select_cached_wins);
     RUN_TEST(test_select_single_sd);
     RUN_TEST(test_select_two_sd_picker);
@@ -171,5 +177,6 @@ int main(void)
     RUN_TEST(test_select_nothing);
     RUN_TEST(test_distinct_valid_dedups_and_filters);
     RUN_TEST(test_model_from_sha1);
+    RUN_TEST(test_identify_reports_sha1_of_the_bytes);
     return UNITY_END();
 }
