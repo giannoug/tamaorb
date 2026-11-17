@@ -26,8 +26,9 @@ static uint8_t g_applied;
 static uint8_t g_boot[1024];
 static size_t g_boot_len;
 
-static void lock(void)   { if (g_plat->lock) g_plat->lock(); }
-static void unlock(void) { if (g_plat->unlock) g_plat->unlock(); }
+// Safe before tc_init (no platform yet): the any-task calls (tc_clock_poll, tc_post_buttons, ...) may come early.
+static void lock(void)   { if (g_plat && g_plat->lock) g_plat->lock(); }
+static void unlock(void) { if (g_plat && g_plat->unlock) g_plat->unlock(); }
 
 /* ---- tamalib HAL ---- */
 
