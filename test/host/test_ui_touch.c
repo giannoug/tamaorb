@@ -11,10 +11,10 @@ void tearDown(void) {}
 
 static void test_strip_split(void)
 {
-    TEST_ASSERT_EQUAL_INT(TC_BTN_A, ui_button_at(98, 190));
-    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(99, 190));
-    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(140, 190));
-    TEST_ASSERT_EQUAL_INT(TC_BTN_C, ui_button_at(141, 190));
+    TEST_ASSERT_EQUAL_INT(TC_BTN_A, ui_button_at(91, 190));
+    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(92, 190));
+    TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(147, 190));
+    TEST_ASSERT_EQUAL_INT(TC_BTN_C, ui_button_at(148, 190));
     TEST_ASSERT_EQUAL_INT(-1, ui_button_at(120, 167));  // the LCD's last row
     TEST_ASSERT_EQUAL_INT(-1, ui_button_at(120, 169));
     TEST_ASSERT_EQUAL_INT(TC_BTN_B, ui_button_at(120, 170));
@@ -25,8 +25,8 @@ static void test_strip_split(void)
 
 static void test_button_centres(void)
 {
-    // on an arc concentric with the screen (radius 85 from (120,120)): B at the bottom, A and C 42 px out
-    static const int want[3][2] = { { 78, 194 }, { 120, 205 }, { 162, 194 } };
+    // on an arc concentric with the screen (radius 85 from (120,120)): B at the bottom, A and C 56 px out
+    static const int want[3][2] = { { 64, 184 }, { 120, 205 }, { 176, 184 } };
     static const int btn[3] = { TC_BTN_A, TC_BTN_B, TC_BTN_C };
     for (int i = 0; i < 3; i++) {
         int x = -1, y = -1;

@@ -65,14 +65,14 @@ static void test_last_pixel_position(void)
 
 static void test_icon_lit(void)
 {
-    frame.icons = 1u << 7;  // Attention: bottom row, centre (183,182), top-left (171,170)
+    frame.icons = 1u << 7;  // Attention: second row, centre (174,57), top-left (162,45)
     render(0);
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 2, 170 + 2));
-    TEST_ASSERT_EQUAL_HEX16(INK, PX(171 + 3, 170 + 3));
-    TEST_ASSERT_EQUAL_HEX16(BG, PX(171, 170));     // cell (0,0) is off
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(162 + 2, 45 + 2));
+    TEST_ASSERT_EQUAL_HEX16(INK, PX(162 + 3, 45 + 3));
+    TEST_ASSERT_EQUAL_HEX16(BG, PX(162, 45));     // cell (0,0) is off
     frame.icons = 0;
     render(0);
-    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(171 + 2, 170 + 2));
+    TEST_ASSERT_EQUAL_HEX16(GHOST, PX(162 + 2, 45 + 2));
 }
 
 static void test_p2_medicine_differs(void)
@@ -84,7 +84,7 @@ static void test_p2_medicine_differs(void)
     for (int y = 0; y < UI_H; y++)
         for (int x = 0; x < UI_W; x++)
             if (fb[y * UI_W + x] != fb2[y * UI_W + x]) {
-                TEST_ASSERT_TRUE_MESSAGE(x >= 171 && x <= 194 && y >= 36 && y <= 59, "diff outside Medicine icon");
+                TEST_ASSERT_TRUE_MESSAGE(x >= 153 && x <= 176 && y >= 18 && y <= 41, "diff outside Medicine icon");
                 diffs++;
             }
     TEST_ASSERT_GREATER_THAN(0, diffs);
@@ -97,20 +97,22 @@ static void test_pet_layout(void)
     TEST_ASSERT_EQUAL_HEX16(GHOST, PX(UI_LCD_X, UI_LCD_Y));   // first dot, unlit
     TEST_ASSERT_EQUAL_HEX16(BG, PX(UI_LCD_X, UI_LCD_Y - 1));
     TEST_ASSERT_EQUAL_HEX16(BG, PX(UI_LCD_X, UI_LCD_Y + 96));  // just under the LCD's last dot row
-    // LCD centred on the screen; icon boxes: 24 px centred at y 48 (top) and 182 (bottom), x centres 57, 97, 143, 183
+    // LCD centred on the screen; both icon rows above it (Alt 4): row 1 at y 30, x 75/105/135/165;
+    // row 2 at y 57, x 66/102/138/174 (24 px boxes)
     TEST_ASSERT_EQUAL_INT(UI_H / 2, UI_LCD_Y + 16 * UI_LCD_PITCH / 2);
-    static const int cx[4] = { 57, 97, 143, 183 }, cy[2] = { 48, 182 };
-    for (int r = 0; r < 2; r++)
-        for (int i = 0; i < 4; i++) {
-            int ink = 0;
-            for (int y = cy[r] - 12; y < cy[r] + 12; y++)
-                for (int x = cx[i] - 12; x < cx[i] + 12; x++) ink += PX(x, y) == INK;
-            TEST_ASSERT_GREATER_THAN_MESSAGE(10, ink, "icon missing at its new place");
-        }
-    // nothing ink between the top icons and the LCD, or between the LCD and the bottom icons
-    for (int x = 30; x < 210; x++) {
-        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 66));
-        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 168));
+    static const int c[8][2] = { { 75, 30 }, { 105, 30 }, { 135, 30 }, { 165, 30 },
+                                 { 66, 57 }, { 102, 57 }, { 138, 57 }, { 174, 57 } };
+    for (int i = 0; i < 8; i++) {
+        int ink = 0;
+        for (int y = c[i][1] - 12; y < c[i][1] + 12; y++)
+            for (int x = c[i][0] - 12; x < c[i][0] + 12; x++) ink += PX(x, y) == INK;
+        TEST_ASSERT_GREATER_THAN_MESSAGE(10, ink, "icon missing at its new place");
+    }
+    // nothing ink between the rows, between row 2 and the LCD, or anywhere under the LCD when no key is held
+    for (int x = 0; x < UI_W; x++) {
+        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 43));
+        TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, 70));
+        for (int y = UI_LCD_Y + 96; y < UI_H; y++) TEST_ASSERT_NOT_EQUAL_HEX16(INK, PX(x, y));
     }
 }
 
@@ -127,16 +129,21 @@ static int ink_near(int cx, int cy, int r)
 
 static void test_buttons_drawn(void)
 {
+    // idle key: a recessed well, a ghost disc whose top 2 px crescent is shadow; no letter, no outline
     render(0);
+    const uint16_t shadow = ui_rgb565(ui_mix(UI_PALETTE_CLASSIC.bg, (ui_rgb_t){ 0, 0, 0 }, 22));
+    TEST_ASSERT_EQUAL_INT(10, UI_BTN_R);  // 20 px across (owner's pick)
     for (int i = 0; i < 3; i++) {
         int cx, cy;
         ui_button_centre(BTN[i], &cx, &cy);
-        TEST_ASSERT_EQUAL_INT(10, UI_BTN_R);                        // 20 px across (owner's pick)
-        TEST_ASSERT_EQUAL_HEX16(INK, PX(cx, cy - (UI_BTN_R - 1)));  // outline
-        TEST_ASSERT_EQUAL_HEX16(INK, PX(cx - (UI_BTN_R - 1), cy));
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, ink_near(cx, cy, UI_BTN_R - 4), "the face has no letter");
-        uint16_t shadow = ui_rgb565(ui_mix(UI_PALETTE_CLASSIC.bg, (ui_rgb_t){ 0, 0, 0 }, 22));
-        TEST_ASSERT_EQUAL_HEX16(shadow, PX(cx, cy + UI_BTN_R + 1));  // 2 px shadow under the key
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, ink_near(cx, cy, UI_BTN_R), "an idle key has no ink");
+        TEST_ASSERT_EQUAL_HEX16(GHOST, PX(cx, cy));
+        TEST_ASSERT_EQUAL_HEX16(GHOST, PX(cx, cy + UI_BTN_R - 1));
+        TEST_ASSERT_EQUAL_HEX16(shadow, PX(cx, cy - UI_BTN_R));      // the well's top lip
+        TEST_ASSERT_EQUAL_HEX16(shadow, PX(cx, cy - UI_BTN_R + 1));
+        TEST_ASSERT_EQUAL_HEX16(GHOST, PX(cx, cy - UI_BTN_R + 2));
+        TEST_ASSERT_EQUAL_HEX16(BG, PX(cx, cy + UI_BTN_R + 1));       // nothing under the key
+        TEST_ASSERT_EQUAL_HEX16(BG, PX(cx, cy - UI_BTN_R - 1));
     }
 }
 
@@ -146,7 +153,7 @@ static void test_held_fills(void)
     for (int i = 0; i < 3; i++) {
         int cx, cy;
         ui_button_centre(BTN[i], &cx, &cy);
-        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? INK : BG, PX(cx, cy));
+        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? INK : GHOST, PX(cx, cy));
     }
     int bx, by;
     ui_button_centre(TC_BTN_B, &bx, &by);
@@ -158,7 +165,7 @@ static void test_held_fills(void)
     for (int i = 0; i < 3; i++) {
         int cx, cy;
         ui_button_centre(BTN[i], &cx, &cy);
-        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? BG : INK, PX(cx, cy));
+        TEST_ASSERT_EQUAL_HEX16(BTN[i] == TC_BTN_B ? GHOST : INK, PX(cx, cy));
     }
 }
 

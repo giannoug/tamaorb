@@ -3,8 +3,9 @@
 #include "ui.h"
 #include "ui_internal.h"
 
-static const int ICON_CX[4] = { 57, 97, 143, 183 };
-static const int ICON_CY[2] = { 48, 182 };  // bottom row sits in the button strip, just above A and C
+// Both icon rows sit above the LCD (the owner's Alt 4); the second row is wider to follow the round edge.
+static const int ICON_C[8][2] = { { 75, 30 }, { 105, 30 }, { 135, 30 }, { 165, 30 },
+                                  { 66, 57 }, { 102, 57 }, { 138, 57 }, { 174, 57 } };
 
 static void fill(uint16_t *fb, int x, int y, int w, int h, uint16_t c)
 {
@@ -12,15 +13,19 @@ static void fill(uint16_t *fb, int x, int y, int w, int h, uint16_t c)
         for (int i = x; i < x + w; i++) fb[j * UI_W + i] = c;
 }
 
-// A raised key, no letter (like the real P1): shadow 2 px lower, ink outline 2 px, face bg (ink when held).
-static void draw_button(uint16_t *fb, int btn, bool held, uint16_t bg, uint16_t ink, uint16_t shadow)
+// A recessed key, no letter (like the real P1): a ghost well whose top 2 px crescent is shadow; ink when held.
+static void draw_button(uint16_t *fb, int btn, bool held, uint16_t ink, uint16_t ghost, uint16_t shadow)
 {
     int cx, cy;
     ui_button_centre(btn, &cx, &cy);
-    const int d = 2 * UI_BTN_R, x = cx - UI_BTN_R, y = cy - UI_BTN_R;
-    ui_fill_disc(fb, x, y + 2, d, shadow);
-    ui_fill_disc(fb, x, y, d, ink);
-    ui_fill_disc(fb, x + 2, y + 2, d - 4, held ? ink : bg);
+    const int r2 = UI_BTN_R * UI_BTN_R + UI_BTN_R;  // + r: a round edge, no 1 px nubs at the four extremes
+    for (int y = cy - UI_BTN_R; y <= cy + UI_BTN_R; y++)
+        for (int x = cx - UI_BTN_R; x <= cx + UI_BTN_R; x++) {
+            const int dx = x - cx, dy = y - cy;
+            if (dx * dx + dy * dy > r2) continue;
+            const bool lip = dx * dx + (dy - 2) * (dy - 2) > r2;  // outside the disc moved 2 px down
+            fb[y * UI_W + x] = held ? ink : lip ? shadow : ghost;
+        }
 }
 
 void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model, uint8_t held_mask, const ui_palette_t *p)
@@ -34,7 +39,7 @@ void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model, uint8_t 
     for (int i = 0; i < 8; i++) {
         const char *const *rows = (i == 3 && model == TC_MODEL_P2) ? UI_ICON_P2_MEDICINE : UI_ICONS[i];
         const uint16_t on = (f->icons & (1u << i)) ? ink : ghost;
-        const int x0 = ICON_CX[i % 4] - 12, y0 = ICON_CY[i / 4] - 12;
+        const int x0 = ICON_C[i][0] - 12, y0 = ICON_C[i][1] - 12;
         for (int cy = 0; cy < 12; cy++)
             for (int cx = 0; cx < 12; cx++)
                 if (rows[cy][cx] == '#') fill(fb, x0 + 2 * cx, y0 + 2 * cy, 2, 2, on);
@@ -46,7 +51,7 @@ void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model, uint8_t 
                  (f->rows[py] & (1u << px)) ? ink : ghost);
 
     for (int b = TC_BTN_A; b <= TC_BTN_C; b++)
-        draw_button(fb, b, held_mask & TC_BTN_MASK(b), bg, ink, shadow);
+        draw_button(fb, b, held_mask & TC_BTN_MASK(b), ink, ghost, shadow);
 }
 
 void ui_draw_lcd(uint16_t *fb, int x, int y, int scale, const tc_frame_t *f, const ui_palette_t *p)

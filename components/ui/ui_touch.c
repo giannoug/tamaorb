@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ui.h"
 
-#define BTN_DX 42   // A and C sit this far left and right of B, on B's arc
+#define BTN_DX 56   // A and C sit this far left and right of B, on B's arc
 
 static int strip_top(void) { return UI_LCD_Y + 16 * UI_LCD_PITCH + 2; }
 static int strip_bottom(void) { return UI_H - UI_EDGE_BAND - 1; }
@@ -22,7 +22,7 @@ void ui_button_centre(int btn, int *x, int *y)
     *y = cy + isqrt(ra * ra - dx * dx);
 }
 
-// Split halfway between the button centres: x < 99 A, 99..140 B, >= 141 C on 240 px.
+// Split halfway between the button centres: x < 92 A, 92..147 B, >= 148 C on 240 px.
 static int button_for_x(int x)
 {
     if (x < UI_W / 2 - BTN_DX / 2) return TC_BTN_A;
