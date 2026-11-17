@@ -47,8 +47,9 @@ typedef struct {
     tc_irq_t irq[6];       // tamalib's slot order: prog timer, serial, K10-K13, K00-K03, stopwatch, clock timer
     uint8_t buttons;       // the mask applied to tamalib (touch | remote)
 } tc_cpu_t;
-// Any task. One instant: the CPU, frame and up to n RAM nibbles from the same publish. Returns the nibbles
-// copied (0 before the first publish; cpu and frame untouched then). cpu, frame or ram may be NULL.
+// Any task. One instant: the CPU, frame and up to n RAM nibbles from the same publish. Returns 0 before the
+// first publish (cpu and frame untouched then); after it, the nibbles copied, or the RAM size when no RAM was asked
+// for (ram NULL or n 0), so the return always says whether a snapshot exists. cpu, frame or ram may be NULL.
 size_t   tc_get_snapshot(tc_cpu_t *cpu, tc_frame_t *frame, uint8_t *ram, size_t n);
 void     tc_get_tone(tc_tone_t *out);
 uint32_t tc_tick_counter(void);

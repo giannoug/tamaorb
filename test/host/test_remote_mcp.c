@@ -440,7 +440,9 @@ static void test_read_ram_range(void)
 static void test_read_ram_bad_range(void)
 {
     static const char *const bad[][2] = { { "{\"from\":768}", "from" }, { "{\"count\":0}", "count" },
-                                           { "{\"from\":-1}", "from" }, { "{\"from\":\"x\"}", "from" } };
+                                           { "{\"from\":-1}", "from" }, { "{\"from\":\"x\"}", "from" },
+                                           { "{\"from\":1e12}", "from" }, { "{\"count\":-1e12}", "count" },
+                                           { "{\"from\":2.5}", "from" } };
     for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
         cJSON *r = tool("read_ram", bad[i][0]);
         TEST_ASSERT_TRUE_MESSAGE(is_error(r), bad[i][0]);

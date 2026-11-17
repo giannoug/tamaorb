@@ -228,6 +228,7 @@ static esp_err_t slow_post(httpd_req_t *req)
 #define WS_CLIENTS 2
 #define WS_PERIOD_MS 50
 static httpd_handle_t s_httpd;
+static TaskHandle_t s_push_task;  // sleeps until a debugger connects
 static int s_ws_fd[WS_CLIENTS] = { -1, -1 };
 static SemaphoreHandle_t s_ws_mutex;
 
@@ -269,6 +270,7 @@ static esp_err_t ws_connected(httpd_req_t *req)
         return ESP_FAIL;
     }
     ESP_LOGI(TAG, "debugger %d connected", slot);
+    if (s_push_task) xTaskNotifyGive(s_push_task);
     return ESP_OK;
 }
 
@@ -322,7 +324,7 @@ static void ws_send_all(const char *text)
 static void ws_push_task(void *arg)
 {
     uint32_t seq = 0;
-    int quiet = 0;  // push periods since the last frame sent
+    int quiet = -1;  // push periods since the last frame sent; -1: asleep (no debugger)
     rm_debug_t *d = ps_malloc(sizeof *d);
     if (!d) {
         ESP_LOGE(TAG, "debugger push: no memory");
@@ -335,7 +337,13 @@ static void ws_push_task(void *arg)
         xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
         for (int i = 0; i < WS_CLIENTS; i++) n += s_ws_fd[i] >= 0;
         xSemaphoreGive(s_ws_mutex);
-        if (!n) { quiet = 0; continue; }
+        if (!n) {  // nobody watching: sleep until a debugger connects (no 50 ms wakeups meanwhile)
+            if (quiet >= 0) ESP_LOGI(TAG, "debugger push: %u bytes of stack never used", (unsigned)uxTaskGetStackHighWaterMark(NULL));
+            quiet = -1;
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            quiet = 0;
+            continue;
+        }
         if (!tc_frame_changed(&seq)) {
             // Nothing new (no ROM, catching up): once a second say "alive", so the page can tell a quiet ball
             // from a dead socket (it reconnects after 3 s of silence).
@@ -415,7 +423,7 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
     }
     s_httpd = h;
     xTaskCreatePinnedToCore(slow_worker, "web_slow", 8192, NULL, cfg.task_priority, NULL, 0);
-    xTaskCreatePinnedToCore(ws_push_task, "web_ws", 4096, NULL, tskIDLE_PRIORITY + 2, NULL, 0);
+    xTaskCreatePinnedToCore(ws_push_task, "web_ws", 4096, NULL, tskIDLE_PRIORITY + 2, &s_push_task, 0);
     static const httpd_uri_t uris[] = {
         { .uri = "/", .method = HTTP_GET, .handler = page_get },
         { .uri = "/debug", .method = HTTP_GET, .handler = debug_page_get },

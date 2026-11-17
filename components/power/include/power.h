@@ -17,6 +17,7 @@ void    power_start(void (*save_now)(void), void (*show_low)(void));
 void    power_screen_on(bool on);
 uint8_t power_battery_pct(uint32_t mv);
 // Any task: no light sleep from now until ms from now; each call moves the end out (a debugger extends it with
-// every snapshot). Ignored before power_start. The hook, if set, runs when the hold starts (true) and ends (false).
+// every snapshot). Ignored before power_start. The hook, if set, runs when the hold starts (true) and ends (false),
+// with power's lock held: keep it short and don't call power_keep_awake from it.
 void    power_keep_awake(uint32_t ms);
 void    power_set_awake_hook(void (*hook)(bool awake));

@@ -331,6 +331,17 @@ static void test_snapshot_matches_frame_and_ram_calls(void)
     TEST_ASSERT_EQUAL_UINT32(seq, cpu.seq);
 }
 
+// With no RAM asked for (NULL, or n == 0) the return still says a snapshot exists: the RAM size.
+static void test_snapshot_return_without_ram(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    run_seconds(1);
+    uint8_t ram[4];
+    TEST_ASSERT_EQUAL(MEM_RAM_SIZE, tc_get_snapshot(NULL, NULL, NULL, 0));
+    TEST_ASSERT_EQUAL(MEM_RAM_SIZE, tc_get_snapshot(NULL, NULL, ram, 0));
+    TEST_ASSERT_EQUAL(4, tc_get_snapshot(NULL, NULL, ram, sizeof ram));
+}
+
 static void test_snapshot_buttons_and_flags(void)
 {
     if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
@@ -362,6 +373,7 @@ int main(void)
     uint8_t early[4];
     TEST_ASSERT_EQUAL(0, tc_get_ram(early, sizeof early));  // nothing published yet
     TEST_ASSERT_EQUAL(0, tc_get_snapshot(NULL, NULL, early, sizeof early));
+    TEST_ASSERT_EQUAL(0, tc_get_snapshot(NULL, NULL, early, 0));
     inited = tc_init(program, &plat);
     TEST_ASSERT_TRUE(inited);
     RUN_TEST(test_post_buttons_mask);
@@ -381,5 +393,6 @@ int main(void)
     RUN_TEST(test_snapshot_is_one_instant);
     RUN_TEST(test_snapshot_matches_frame_and_ram_calls);
     RUN_TEST(test_snapshot_buttons_and_flags);
+    RUN_TEST(test_snapshot_return_without_ram);
     return UNITY_END();
 }

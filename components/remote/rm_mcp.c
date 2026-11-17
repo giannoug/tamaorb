@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // MCP (Streamable HTTP, JSON-RPC 2.0) dispatcher over an rm_ops_t. Portable. Spec §8.1.
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -214,7 +215,9 @@ static bool int_arg(const cJSON *args, const char *key, int dflt, int min, int *
 {
     const cJSON *v = cJSON_GetObjectItemCaseSensitive(args, key);
     if (!v) { *out = dflt; return true; }
-    if (!cJSON_IsNumber(v) || v->valuedouble != (double)(int)v->valuedouble || (int)v->valuedouble < min) return false;
+    // Range first: converting a double outside int's range is undefined behaviour.
+    if (!cJSON_IsNumber(v) || !(v->valuedouble >= min && v->valuedouble <= INT_MAX)) return false;
+    if (v->valuedouble != (double)(int)v->valuedouble) return false;  // 2.5 is not an address
     *out = (int)v->valuedouble;
     return true;
 }

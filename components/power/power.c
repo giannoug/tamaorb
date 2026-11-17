@@ -85,10 +85,11 @@ static void awake_end(void *arg)
     if (was) {
         esp_pm_lock_release(s_awake_lock);
         s_awake_held = false;
+        // Under the mutex, so it can't land after a new hold's hook(true) and leave that hold without its effect.
+        if (s_awake_hook) s_awake_hook(false);
+        ESP_LOGI(TAG, "keep-awake ended");
     }
     xSemaphoreGive(s_awake_mutex);
-    if (was && s_awake_hook) s_awake_hook(false);
-    if (was) ESP_LOGI(TAG, "keep-awake ended");
 }
 
 void power_set_awake_hook(void (*hook)(bool awake)) { s_awake_hook = hook; }
@@ -101,13 +102,13 @@ void power_keep_awake(uint32_t ms)
     if (started) {
         esp_pm_lock_acquire(s_awake_lock);
         s_awake_held = true;
+        if (s_awake_hook) s_awake_hook(true);  // under the mutex: ordered with awake_end's hook(false)
+        ESP_LOGI(TAG, "keep-awake started");
     }
     s_awake_until = esp_timer_get_time() + (int64_t)ms * 1000;
     esp_timer_stop(s_awake_timer);  // not running is fine
     esp_timer_start_once(s_awake_timer, (uint64_t)ms * 1000);
     xSemaphoreGive(s_awake_mutex);
-    if (started && s_awake_hook) s_awake_hook(true);
-    if (started) ESP_LOGI(TAG, "keep-awake started");
 }
 
 void power_start(void (*save_now)(void), void (*show_low)(void))
