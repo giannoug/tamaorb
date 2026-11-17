@@ -4,8 +4,16 @@
 #include "ui_internal.h"
 
 // Both icon rows sit above the LCD (the owner's Alt 4); the second row is wider to follow the round edge.
-static const int ICON_C[8][2] = { { 75, 30 }, { 105, 30 }, { 135, 30 }, { 165, 30 },
-                                  { 66, 57 }, { 102, 57 }, { 138, 57 }, { 174, 57 } };
+// Centres relative to the screen's middle and the LCD's top: (75,30) ... (174,57) on 240x240 with the LCD at y 72.
+#define ICON_ROW1_DY 42   // row 1 centre: this far above the LCD, icons 30 px apart
+#define ICON_ROW2_DY 15   // row 2 centre: icons 36 px apart
+static const int ICON_DX[8] = { -45, -15, 15, 45, -54, -18, 18, 54 };
+
+static void icon_centre(int i, int *x, int *y)
+{
+    *x = UI_W / 2 + ICON_DX[i];
+    *y = UI_LCD_Y - (i < 4 ? ICON_ROW1_DY : ICON_ROW2_DY);
+}
 
 static void fill(uint16_t *fb, int x, int y, int w, int h, uint16_t c)
 {
@@ -41,7 +49,9 @@ void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model, uint8_t 
     for (int i = 0; i < 8; i++) {
         const char *const *rows = (i == 3 && model == TC_MODEL_P2) ? UI_ICON_P2_MEDICINE : UI_ICONS[i];
         const uint16_t on = (f->icons & (1u << i)) ? ink : ghost;
-        const int x0 = ICON_C[i][0] - 12, y0 = ICON_C[i][1] - 12;
+        int icx, icy;
+        icon_centre(i, &icx, &icy);
+        const int x0 = icx - 12, y0 = icy - 12;
         for (int cy = 0; cy < 12; cy++)
             for (int cx = 0; cx < 12; cx++)
                 if (rows[cy][cx] == '#') fill(fb, x0 + 2 * cx, y0 + 2 * cy, 2, 2, on);
