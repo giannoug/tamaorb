@@ -5,7 +5,8 @@
 //        frame.txt (pet only): 16 lines of 32 '#'/'.' then "icons <hex>"; default: a sample face, Attention lit
 //        render_preview out.ppm <screen> [palette 0-2] [scroll px] [t_ms]
 //        screens: glance, glance-asleep, glance-unknown, settings, sound, brightness, dimming, palette,
-//                 tzregion, tzcity, panel, panel-nowifi, rom, rom-confirm, rom-first (sample values from the design canvas),
+//                 tzregion, tzcity, panel, panel-nowifi, rom-first (sample values from the design canvas),
+//                 pets, pet-sheet, pet-sheet-running, pet-delete, new-pet, new-confirm (canvas row "Pets"),
 //                 clock, clock-busy, clock-notime, clock-confirm (Pet clock: pet 09:58:00, ball 14:32:05)
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,12 +89,24 @@ int main(int argc, char **argv)
         ui_render_glance(fb, &g, ui_palette_by_id(pal));
     } else if (!strcmp(mode, "catchup")) ui_render_catchup(fb, 8040, 29100, 760, p);
     else if (!strcmp(mode, "battery")) ui_render_low_battery(fb, p);
-    else if (!strncmp(mode, "rom", 3)) {
-        static const ui_rom_row_t roms[] = { { "P1", "Gen 1 - tama.bin" }, { "P2", "Gen 2 - tamag2.bin" } };
-        ui_menu_view_t v = { .page = strcmp(mode, "rom-confirm") ? UI_PAGE_ROM : UI_PAGE_ROM_CONFIRM, .pressed = -1,
-                             .cfg = &cfg, .roms = roms, .rom_count = 2, .rom_current = 0, .rom_pick = 1,
-                             .rom_first = !strcmp(mode, "rom-first") };
-        if (v.rom_first) v.rom_current = -1;
+    else if (!strcmp(mode, "rom-first") || !strcmp(mode, "new-pet") || !strcmp(mode, "new-confirm")) {
+        static const ui_rom_row_t roms[] = { { "P1", "Gen 1 - tama.bin", "tama.bin", true },
+                                             { "P2", "Gen 2 - tamag2.bin", "tamag2.bin", true },
+                                             { "Angel", "tamaang.bin", "tamaang.bin", true },
+                                             { "Mothra", "not on the SD card", NULL, false } };
+        ui_menu_view_t v = { .page = strcmp(mode, "new-confirm") ? UI_PAGE_ROM : UI_PAGE_ROM_CONFIRM, .pressed = -1,
+                             .cfg = &cfg, .roms = roms, .rom_count = 4, .rom_pick = 2,
+                             .rom_first = !strcmp(mode, "rom-first"), .new_name = "Angel #2", .running_name = "P1 #1" };
+        if (v.rom_first) v.rom_count = 2;
+        ui_render_menu(fb, &v, ui_palette_by_id(pal));
+    } else if (!strcmp(mode, "pets") || !strcmp(mode, "pet-sheet") || !strcmp(mode, "pet-sheet-running") ||
+               !strcmp(mode, "pet-delete")) {
+        static const ui_pet_row_t pets[] = { { "P1 #1", "Gen 1 - 3 yr - now", "Gen 1 - 3 yr", "running now", true },
+                                             { "Angel #1", "Angel - 1 yr - 5h", "Angel - 1 yr", "away 5h 2m", true },
+                                             { "P2 #1", "Gen 2 - egg - 3d", "Gen 2 - egg", "away 3d 4h", true } };
+        ui_page_t page = !strcmp(mode, "pets") ? UI_PAGE_PETS : !strcmp(mode, "pet-delete") ? UI_PAGE_PET_DELETE : UI_PAGE_PET_SHEET;
+        ui_menu_view_t v = { .page = page, .pressed = -1, .cfg = &cfg, .pets = pets, .pet_count = 3, .pet_current = 0,
+                             .pet_pick = !strcmp(mode, "pet-sheet-running") ? 0 : 2, .running_name = "P1 #1" };
         ui_render_menu(fb, &v, ui_palette_by_id(pal));
     } else if (!strcmp(mode, "message")) ui_render_message(fb, "No ROM found", "Put a P1 or P2 dump in\n/tamaorb/roms/ on the SD card,\nor push one over USB.", p);
     else if (!strncmp(mode, "pet-", 4)) {

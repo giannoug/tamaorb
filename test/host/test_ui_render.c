@@ -736,92 +736,158 @@ static void test_hit_test_matches_render_deep_scroll(void)
     }
 }
 
-// ---- ROM picker pages ----
-static const ui_rom_row_t ROMS[2] = { { "P1", "Gen 1 - tama.bin" }, { "P2", "Gen 2 - tamag2.bin" } };
+// ---- Pets, New pet and the first-start picker (canvas rows "Pets"; PickerFirst) ----
+static const ui_rom_row_t ROMS[3] = { { "P1", "Gen 1 - tama.bin", "tama.bin", true },
+                                      { "Angel", "tamaang.bin", "tamaang.bin", true },
+                                      { "Mothra", "not on the SD card", "tamamot.bin", false } };
+static const ui_pet_row_t PETS[3] = { { "P1 #1", "Gen 1 - 3 yr - now", "Gen 1 - 3 yr", "running now", true },
+                                      { "Angel #1", "Angel - 1 yr - 5h", "Angel - 1 yr", "away 5h 2m", true },
+                                      { "P2 #1", "Gen 2 - egg - 3d", "Gen 2 - egg", "away 3d 4h", false } };
 
-static ui_menu_view_t rom_view(ui_page_t page, int count, int current, bool first)
+static ui_menu_view_t rom_view(ui_page_t page, int count, bool first)
 {
     sample_cfg();
     ui_menu_view_t v = view(page);
     v.roms = ROMS;
     v.rom_count = count;
-    v.rom_current = current;
     v.rom_pick = 1;
     v.rom_first = first;
+    v.new_name = "Angel #2";
+    v.running_name = "P1 #1";
     return v;
 }
 
-static void test_rom_list_render(void)
+static ui_menu_view_t pet_view(ui_page_t page, int pick)
 {
-    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 2, 0, false);
-    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
-    TEST_ASSERT_TRUE(find_text("< back", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
-    TEST_ASSERT_TRUE(find_text("Pet ROM", 2, INK, NULL, NULL));
-    int x, y1, y2;
-    TEST_ASSERT_TRUE(find_text("P1", 2, BG, &x, &y1));          // current row: filled ink, text in bg
-    TEST_ASSERT_TRUE(find_text("Gen 1 - tama.bin", 1, BG, NULL, NULL));
-    TEST_ASSERT_TRUE(find_text("P2", 2, INK, &x, &y2));
-    TEST_ASSERT_TRUE(find_text("Gen 2 - tamag2.bin", 1, INK, NULL, NULL));
-    TEST_ASSERT_TRUE(y2 > y1);
-    // the check mark: bg pixels on the right end of the current row (rows 0's fill is ink)
-    int r0 = ui_menu_row_at(&v, 120, y1), bgs = 0;
-    TEST_ASSERT_EQUAL(0, r0);
-    for (int yy = y1; yy < y1 + 30; yy++)
-        for (int xx = 170; xx < 215; xx++) bgs += PX(xx, yy) == BG && ui_menu_row_at(&v, xx, yy) == 0;
-    TEST_ASSERT_GREATER_THAN(10, bgs);
-    TEST_ASSERT_TRUE(find_text("tap a pet to switch", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
-    assert_nothing_outside_circle("rom list");
+    sample_cfg();
+    ui_menu_view_t v = view(page);
+    v.pets = PETS;
+    v.pet_count = 3;
+    v.pet_current = 0;
+    v.pet_pick = pick;
+    return v;
 }
 
-static void test_rom_confirm_render(void)
+static void test_pets_list_render(void)
 {
-    ui_menu_view_t v = rom_view(UI_PAGE_ROM_CONFIRM, 2, 0, false);
+    ui_menu_view_t v = pet_view(UI_PAGE_PETS, -1);
     ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
-    TEST_ASSERT_TRUE(find_text("Switch to P2?", 2, INK, NULL, NULL));
-    TEST_ASSERT_TRUE(find_text("Your P1 pet is saved", 1, INK, NULL, NULL));
-    TEST_ASSERT_TRUE(find_text("and waits for you.", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("< back", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Pets", 2, INK, NULL, NULL));
+    int x, y1, y2;
+    TEST_ASSERT_TRUE(find_text("P1 #1", 2, BG, &x, &y1));        // the running pet: filled, text in bg
+    TEST_ASSERT_TRUE(find_text("Gen 1 - 3 yr - now", 1, BG, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Angel #1", 2, INK, &x, &y2));
+    TEST_ASSERT_TRUE(y2 > y1);
+    TEST_ASSERT_TRUE(find_text("+ New pet", 1, INK, NULL, NULL));
+    assert_nothing_outside_circle("pets list");
+}
+
+static void test_pet_sheet_render(void)
+{
+    ui_menu_view_t v = pet_view(UI_PAGE_PET_SHEET, 1);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("Angel #1", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Angel - 1 yr", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("away 5h 2m", 1, INK, NULL, NULL));
+    int cx, cy, sx, sy, dx, dy;
+    TEST_ASSERT_TRUE(find_text("Cancel", 1, INK, &cx, &cy));
+    TEST_ASSERT_TRUE(find_text("Switch", 1, BG, &sx, &sy));      // filled
+    TEST_ASSERT_TRUE(find_text("Delete...", 1, INK, &dx, &dy));
+    TEST_ASSERT_EQUAL(UI_CTL_PET_CANCEL, ui_menu_control_at(&v, cx + 4, cy + 4, NULL));
+    TEST_ASSERT_EQUAL(UI_CTL_PET_SWITCH, ui_menu_control_at(&v, sx + 4, sy + 4, NULL));
+    TEST_ASSERT_EQUAL(UI_CTL_PET_DELETE, ui_menu_control_at(&v, dx + 4, dy + 4, NULL));
+    assert_nothing_outside_circle("pet sheet");
+    v.pet_pick = 2;  // its ROM isn't on the card
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("ROM not on", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    TEST_ASSERT_FALSE(find_text("Switch", 1, BG, NULL, NULL));
+}
+
+static void test_pet_sheet_running_render(void)
+{
+    ui_menu_view_t v = pet_view(UI_PAGE_PET_SHEET, 0);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("running now", 1, INK, NULL, NULL));
+    int x, y;
+    TEST_ASSERT_TRUE(find_text("Close", 1, BG, &x, &y));
+    TEST_ASSERT_EQUAL(UI_CTL_PET_CANCEL, ui_menu_control_at(&v, x + 4, y + 4, NULL));
+    TEST_ASSERT_FALSE(find_text("Delete...", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("to delete it", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+}
+
+static void test_pet_delete_render(void)
+{
+    ui_menu_view_t v = pet_view(UI_PAGE_PET_DELETE, 1);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("Delete", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Angel #1?", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Its save is gone", 1, INK, NULL, NULL));
+    int kx, ky, dx, dy;
+    TEST_ASSERT_TRUE(find_text("Keep", 1, BG, &kx, &ky));        // the safe choice is the filled one
+    TEST_ASSERT_TRUE(find_text("Delete", 1, INK, &dx, &dy));
+    TEST_ASSERT_EQUAL(UI_CTL_DEL_KEEP, ui_menu_control_at(&v, kx + 4, ky + 4, NULL));
+    TEST_ASSERT_EQUAL(UI_CTL_DEL_DELETE, ui_menu_control_at(&v, dx + 4, dy + 4, NULL));
+    TEST_ASSERT_FALSE(find_text("< back", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+}
+
+static void test_new_pet_list_render(void)
+{
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 3, false);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("New pet", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("P1", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Gen 1 - tama.bin", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Mothra", 2, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));  // greyed
+    TEST_ASSERT_TRUE(find_text("not on the SD card", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    assert_nothing_outside_circle("new pet");
+}
+
+static void test_new_confirm_render(void)
+{
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM_CONFIRM, 3, false);
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("New egg?", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Angel #2 hatches", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("from tamaang.bin.", 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("P1 #1 is saved and", 1, INK, NULL, NULL));
     TEST_ASSERT_TRUE(find_text("The ball restarts.", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
     int cx, cy, sx, sy;
     TEST_ASSERT_TRUE(find_text("Cancel", 1, INK, &cx, &cy));
-    TEST_ASSERT_TRUE(find_text("Switch", 1, BG, &sx, &sy));   // the filled pill
-    TEST_ASSERT_EQUAL(UI_CTL_ROM_CANCEL, ui_menu_control_at(&v, cx + 4, cy + 4, NULL));
-    TEST_ASSERT_EQUAL(UI_CTL_ROM_SWITCH, ui_menu_control_at(&v, sx + 4, sy + 4, NULL));
-    TEST_ASSERT_FALSE(find_text("< back", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
-    v.rom_current = -1;
-    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
-    TEST_ASSERT_TRUE(find_text("Your pet is saved", 1, INK, NULL, NULL));
-    assert_nothing_outside_circle("rom confirm");
+    TEST_ASSERT_TRUE(find_text("Start", 1, BG, &sx, &sy));
+    TEST_ASSERT_EQUAL(UI_CTL_NEW_CANCEL, ui_menu_control_at(&v, cx + 4, cy + 4, NULL));
+    TEST_ASSERT_EQUAL(UI_CTL_NEW_START, ui_menu_control_at(&v, sx + 4, sy + 4, NULL));
+    assert_nothing_outside_circle("new confirm");
 }
 
 static void test_rom_first_render(void)
 {
-    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 2, -1, true);
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 2, true);
     ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
     TEST_ASSERT_TRUE(find_text("Pick a pet", 2, INK, NULL, NULL));
     TEST_ASSERT_FALSE(find_text("< back", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
-    TEST_ASSERT_TRUE(find_text("P1", 2, INK, NULL, NULL));      // no row is the current one
-    TEST_ASSERT_TRUE(find_text("P2", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("P1", 2, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Angel", 2, INK, NULL, NULL));
     TEST_ASSERT_TRUE(find_text("tap one to start", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
     TEST_ASSERT_FALSE(ui_menu_back_at(&v, 120, 5));
 }
 
 static void test_rom_page_empty_render(void)
 {
-    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 0, -1, false);
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 0, false);
     ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
-    TEST_ASSERT_TRUE(find_text("No pets on the SD card", 1, INK, NULL, NULL));
-    TEST_ASSERT_FALSE(find_text("tap a pet to switch", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("No ROMs on the SD card", 1, INK, NULL, NULL));
     TEST_ASSERT_TRUE(ui_menu_back_at(&v, 120, 5));
 }
 
 static void test_rom_long_sub_ellipsis(void)
 {
-    static const ui_rom_row_t LONG[1] = { { "P2", "Gen 2 - averyveryverylongname.bin" } };
-    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 1, 0, false);
+    static const ui_rom_row_t LONG[1] = { { "P2", "Gen 2 - averyveryverylongname.bin", "x.bin", true } };
+    ui_menu_view_t v = rom_view(UI_PAGE_ROM, 1, false);
     v.roms = LONG;
     ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
-    TEST_ASSERT_FALSE(find_text(LONG[0].sub, 1, BG, NULL, NULL));
-    TEST_ASSERT_TRUE(find_text("Gen 2 - avery", 1, BG, NULL, NULL));
+    TEST_ASSERT_FALSE(find_text(LONG[0].sub, 1, INK, NULL, NULL));
+    TEST_ASSERT_TRUE(find_text("Gen 2 - avery", 1, INK, NULL, NULL));
     assert_nothing_outside_circle("rom long sub");
 }
 
@@ -955,8 +1021,12 @@ int main(void)
     RUN_TEST(test_dimming_label_line_is_no_control);
     RUN_TEST(test_long_centred_text_is_ellipsized);
     RUN_TEST(test_hit_test_matches_render_deep_scroll);
-    RUN_TEST(test_rom_list_render);
-    RUN_TEST(test_rom_confirm_render);
+    RUN_TEST(test_pets_list_render);
+    RUN_TEST(test_pet_sheet_render);
+    RUN_TEST(test_pet_sheet_running_render);
+    RUN_TEST(test_pet_delete_render);
+    RUN_TEST(test_new_pet_list_render);
+    RUN_TEST(test_new_confirm_render);
     RUN_TEST(test_rom_first_render);
     RUN_TEST(test_rom_page_empty_render);
     RUN_TEST(test_rom_long_sub_ellipsis);

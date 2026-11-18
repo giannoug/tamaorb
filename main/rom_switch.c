@@ -157,15 +157,3 @@ esp_err_t pet_delete(const pet_ref_t *p)
     if (app_restart_pending()) return ESP_ERR_NOT_ALLOWED;
     return pet_store_delete(p);
 }
-
-esp_err_t rom_switch_to(const char *sd_name)
-{
-    static tc_rom_entry_t roms[16];
-    int n = rom_store_scan(roms, 16), found = -1;
-    for (int i = 0; i < n; i++)
-        if (!strcmp(roms[i].name, sd_name) && tc_model_playable(roms[i].model)) found = i;
-    if (found < 0) return ESP_ERR_NOT_FOUND;
-    pet_ref_t p;
-    esp_err_t err = pet_for_rom(roms[found].sha1, roms[found].model, &p);
-    return err == ESP_OK ? pet_switch_to(&p) : err;
-}

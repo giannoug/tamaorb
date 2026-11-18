@@ -28,5 +28,3 @@ esp_err_t pet_switch_to(const pet_ref_t *p);
 esp_err_t pet_new(const uint8_t sha1[20], pet_ref_t *created);
 // Not the running pet (ESP_ERR_INVALID_STATE); no restart. ESP_ERR_NOT_FOUND: no such pet.
 esp_err_t pet_delete(const pet_ref_t *p);
-// Until the screens and the remote API name pets: the pet pet_for_rom picks for that SD file, then pet_switch_to.
-esp_err_t rom_switch_to(const char *sd_name);

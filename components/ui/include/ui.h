@@ -95,6 +95,8 @@ int  ui_draw_text(uint16_t *fb, int x, int y, const char *s, uint8_t scale, uint
 int  ui_text_width(const char *line, uint8_t scale);  // first line only; the trailing blank column is excluded
 void ui_render_message(uint16_t *fb, const char *title, const char *body, const ui_palette_t *p);
 void ui_render_catchup(uint16_t *fb, uint64_t done_s, uint64_t total_s, uint32_t eta_s, const ui_palette_t *p);
+// "40s", "12m", "5h 12m", "3d 4h": the two largest units, the second left out when 0; largest_only: "3d".
+void ui_fmt_away(uint64_t s, bool largest_only, char *out, size_t cap);
 void ui_render_low_battery(uint16_t *fb, const ui_palette_t *p);
 
 // ---- Geometry and text helpers (layouts take positions from these, never from round-screen literals) ----
@@ -183,11 +185,13 @@ typedef struct {
 // Rows whose data is -1 are left out and the rest close up around the screen's middle.
 void ui_render_glance(uint16_t *fb, const ui_glance_t *g, const ui_palette_t *p);
 
+// UI_PAGE_ROM: the New pet list (a ROM per row), and the first-start picker (rom_first).
+// UI_PAGE_ROM_CONFIRM: "New egg?". UI_PAGE_PETS: the pets, then "+ New pet"; PET_SHEET: one pet; PET_DELETE: confirm.
 typedef enum { UI_PAGE_LIST, UI_PAGE_SOUND, UI_PAGE_BRIGHTNESS, UI_PAGE_DIMMING, UI_PAGE_PALETTE,
                UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL, UI_PAGE_ROM, UI_PAGE_ROM_CONFIRM,
-               UI_PAGE_CLOCK, UI_PAGE_CLOCK_CONFIRM } ui_page_t;
+               UI_PAGE_CLOCK, UI_PAGE_CLOCK_CONFIRM, UI_PAGE_PETS, UI_PAGE_PET_SHEET, UI_PAGE_PET_DELETE } ui_page_t;
 // Rows of UI_PAGE_LIST, top to bottom (ui_menu_row_at's result on that page).
-typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, UI_ROW_TZ, UI_ROW_CLOCK, UI_ROW_ROM,
+typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, UI_ROW_TZ, UI_ROW_CLOCK, UI_ROW_PETS,
                UI_ROW_PANEL, UI_ROW_COUNT } ui_row_t;
 // Controls reported by ui_menu_control_at, with the settings key each value is for. Values are already legal:
 //   MUTE        "muted"          0/1: the value a tap switches to (the opposite of cfg->muted)
@@ -198,19 +202,27 @@ typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, 
 //   DIM_BATTERY "dim_battery_s"  same steps as DIM_USB
 //   OFF_BATTERY "off_battery_s"  10, 15, 30, 60, 120, 300, 600, 1800, 3600
 //   PALETTE     "palette"        st_palette_t id
-//   ROM_CANCEL, ROM_SWITCH       the confirm page's pills (no setting; value 0)
+//   NEW_CANCEL, NEW_START        the New pet confirm's pills (no setting; value 0)
+//   PET_CANCEL, PET_SWITCH       the pet sheet's pills (PET_CANCEL is Close on the running pet's sheet)
+//   PET_DELETE                   the pet sheet's small "Delete..." pill
+//   DEL_KEEP, DEL_DELETE         the delete confirm's pills
 //   CLOCK_SET                    the Pet clock page's pill, only while clock_why is UI_CLOCK_OK (value 0)
 //   CLOCK_CANCEL, CLOCK_OK       the Pet clock confirm's pills (value 0)
 // A slider reports a value for any x on its track band (clamped at the ends), so a drag can keep feeding it.
 typedef enum { UI_CTL_MUTE, UI_CTL_VOLUME, UI_CTL_BRIGHTNESS, UI_CTL_DIM_LEVEL, UI_CTL_DIM_USB, UI_CTL_DIM_BATTERY,
-               UI_CTL_OFF_BATTERY, UI_CTL_PALETTE, UI_CTL_ROM_CANCEL, UI_CTL_ROM_SWITCH, UI_CTL_CLOCK_SET,
-               UI_CTL_CLOCK_CANCEL, UI_CTL_CLOCK_OK } ui_ctl_t;
+               UI_CTL_OFF_BATTERY, UI_CTL_PALETTE, UI_CTL_NEW_CANCEL, UI_CTL_NEW_START, UI_CTL_CLOCK_SET,
+               UI_CTL_CLOCK_CANCEL, UI_CTL_CLOCK_OK, UI_CTL_PET_CANCEL, UI_CTL_PET_SWITCH, UI_CTL_PET_DELETE,
+               UI_CTL_DEL_KEEP, UI_CTL_DEL_DELETE } ui_ctl_t;
 
 // Why the Pet clock page offers no Set pill (UI_CLOCK_OK: it does). PENDING: a request is out.
 typedef enum { UI_CLOCK_OK, UI_CLOCK_UNSUPPORTED, UI_CLOCK_NO_TIME, UI_CLOCK_CATCHUP, UI_CLOCK_PENDING } ui_clock_why_t;
 
-// One row of the ROM picker: the model name ("P1") and a line under it ("Gen 1 - tama.bin").
-typedef struct { const char *name, *sub; } ui_rom_row_t;
+// One row of the ROM picker: the model name ("P1"), a line under it ("Gen 1 - tama.bin"), the file for the confirm,
+// and whether it can be picked (false: greyed, "not on the SD card").
+typedef struct { const char *name, *sub, *file; bool enabled; } ui_rom_row_t;
+// One pet: its name, the list's line ("Gen 2 - egg - 3d"), the sheet's two lines ("Gen 2 - egg", "away 3d 4h" or
+// "running now"), and whether it can be switched to (false: its ROM is not on the SD card).
+typedef struct { const char *name, *sub, *model_age, *away; bool can_switch; } ui_pet_row_t;
 
 typedef struct {
     ui_page_t page;
@@ -222,13 +234,20 @@ typedef struct {
     const char *panel_url, *panel_name;  // PANEL: the panel's URL (NULL = no Wi-Fi), mDNS name
     const ui_qr_t *panel_qr;     // PANEL: panel_url encoded; NULL or size 0: the address only
     uint32_t t_ms;               // now: drives marquees and the confirm guard; set it before ui_nav_step and rendering
-    // ROM and ROM_CONFIRM. The caller fills roms/rom_count/rom_current while roms is NULL (ui_nav_open_roms
+    // ROM and ROM_CONFIRM. The caller fills roms/rom_count while roms is NULL (ui_nav_open_roms
     // leaves it NULL; ui_nav_to_pet clears it); the rows must stay valid while the page shows.
     const ui_rom_row_t *roms;    // NULL: not loaded yet (nothing listed)
     int rom_count;
-    int rom_current;             // row of the running ROM, -1 if it isn't listed
-    int rom_pick;                // the row tapped, shown on the confirm page (UI_ACT_ROM_SWITCH switches to it)
+    int rom_pick;                // the row tapped: first start's pick, or the New pet confirm's ROM
     bool rom_first;              // first start: "Pick a pet", no back, no confirm: a tap picks
+    const char *new_name;        // ROM_CONFIRM: the new pet's name ("Angel #2"), filled by the caller
+    const char *running_name;    // ROM_CONFIRM: the running pet's name
+    // PETS, PET_SHEET, PET_DELETE. The caller fills pets/pet_count/pet_current while pets is NULL (ui_nav_open_pets
+    // leaves it NULL); the rows must stay valid while those pages show.
+    const ui_pet_row_t *pets;
+    int pet_count;
+    int pet_current;             // row of the running pet, -1 if not listed
+    int pet_pick;                // the pet the sheet and the delete confirm are about
     // The settings list's Pet clock row and the CLOCK pages. The caller fills pet_s, ball_s, clock_why and
     // clock_busy every loop while they show. Seconds of the day; -1 unknown (row "-", page "--:--").
     int32_t pet_s, ball_s;
@@ -263,16 +282,19 @@ typedef struct {
     ui_screen_kind_t screen;
     ui_menu_view_t view;   // valid while screen == UI_SCREEN_MENU; view.cfg is set on every ui_nav_step
     int active_ctl;        // private: the control under the current drag's start point, -1 none
-    bool rom_from_pet;     // "< back" on the ROM list returns to the pet (else to the settings list)
+    bool pets_from_pet;    // "< back" on the Pets list returns to the pet (else to the settings list)
     uint32_t confirm_ms;   // private: view.t_ms when the confirm page opened
-    int rom_scroll;        // private: the ROM list's scroll when its Switch page opened (restored on the way back)
+    int rom_scroll;        // private: the ROM list's scroll when its confirm opened (restored on the way back)
+    int pets_scroll;       // private: the Pets list's scroll when a pet's sheet opened
 } ui_nav_t;
 // The confirm page's pills ignore taps for this long after it opens (by view.t_ms), so the second half of a
 // double tap on a list row that lies where a pill appears can't switch pets.
 #define UI_CONFIRM_GUARD_MS 500
-// ROM_SWITCH: switch to view.roms[view.rom_pick] (confirmed, or picked on first start).
+// ROM_SWITCH: first start picked view.roms[view.rom_pick].
 // CLOCK_SYNC: the Pet clock confirm's Set was tapped; nav is back on UI_PAGE_CLOCK. Post the request.
-typedef enum { UI_ACT_NONE, UI_ACT_REDRAW, UI_ACT_SETTINGS, UI_ACT_ROM_SWITCH, UI_ACT_CLOCK_SYNC } ui_act_t;
+// PET_SWITCH, PET_DELETE: about view.pets[view.pet_pick] (confirmed). PET_NEW: a new pet of view.roms[view.rom_pick].
+typedef enum { UI_ACT_NONE, UI_ACT_REDRAW, UI_ACT_SETTINGS, UI_ACT_ROM_SWITCH, UI_ACT_CLOCK_SYNC, UI_ACT_PET_SWITCH,
+               UI_ACT_PET_DELETE, UI_ACT_PET_NEW } ui_act_t;
 void ui_nav_init(ui_nav_t *n);
 // ev comes from ui_gesture_feed (MENU mode on GLANCE and MENU, PET mode on PET); cur is the latest settings and
 // must stay valid until the next call (the view points at it). On UI_ACT_SETTINGS, *out is cur with exactly one
@@ -280,9 +302,12 @@ void ui_nav_init(ui_nav_t *n);
 ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const st_settings_t *cur,
                      st_settings_t *out, bool *display_changed);
 void ui_nav_to_pet(ui_nav_t *n);   // screen off/timeout and picker close land here
-// The ROM list (MENU, page ROM, roms NULL, rom_current/rom_pick -1, rom_first false). from_pet: a BOOT long
-// press opened it, so back returns to the pet. The caller then fills the rows (and sets rom_first if wanted).
-void ui_nav_open_roms(ui_nav_t *n, bool from_pet);
+// The ROM list (MENU, page ROM, roms NULL, rom_pick -1, rom_first false): the New pet list, whose back
+// returns to the Pets list; first start sets rom_first. The caller then fills the rows.
+void ui_nav_open_roms(ui_nav_t *n);
+// The Pets list (MENU, page PETS, pets NULL, pet_current/pet_pick -1). from_pet: a BOOT long press opened it, so
+// back returns to the pet. The caller then fills the rows.
+void ui_nav_open_pets(ui_nav_t *n, bool from_pet);
 
 // ---- Sending frames: only the rows that changed ----
 // Remembers a hash of each row the panel shows. Every frame for the panel must go through ui_send_changed, or

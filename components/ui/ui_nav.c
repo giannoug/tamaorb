@@ -27,6 +27,12 @@ static void roms_clear(ui_menu_view_t *v)
     v->rom_first = false;
 }
 
+static void pets_clear(ui_menu_view_t *v)
+{
+    v->pets = NULL;
+    v->pet_count = 0;
+}
+
 void ui_nav_to_pet(ui_nav_t *n)
 {
     n->screen = UI_SCREEN_PET;
@@ -35,17 +41,26 @@ void ui_nav_to_pet(ui_nav_t *n)
     n->view.pressed = -1;
     n->view.region = NULL;
     roms_clear(&n->view);
+    pets_clear(&n->view);
     n->active_ctl = -1;
 }
 
-void ui_nav_open_roms(ui_nav_t *n, bool from_pet)
+void ui_nav_open_roms(ui_nav_t *n)
 {
     menu_open(n, UI_PAGE_ROM);
     n->view.region = NULL;
     roms_clear(&n->view);
-    n->view.rom_current = -1;
     n->view.rom_pick = -1;
-    n->rom_from_pet = from_pet;
+}
+
+void ui_nav_open_pets(ui_nav_t *n, bool from_pet)
+{
+    menu_open(n, UI_PAGE_PETS);
+    n->view.region = NULL;
+    pets_clear(&n->view);
+    n->view.pet_current = -1;
+    n->view.pet_pick = -1;
+    n->pets_from_pet = from_pet;
 }
 
 static const char *CTL_KEY[] = {
@@ -73,16 +88,37 @@ static ui_act_t edit_ctl(const st_settings_t *cur, st_settings_t *out, bool *dis
     return edit(cur, out, display_changed, CTL_KEY[ctl], buf);
 }
 
-// From the Switch page back to the ROM list, scrolled where it was.
+// From the New pet confirm back to the ROM list, scrolled where it was.
 static void rom_list_again(ui_nav_t *n)
 {
     menu_open(n, UI_PAGE_ROM);
     n->view.scroll = n->rom_scroll;
 }
 
+// From a pet's sheet back to the Pets list, scrolled where it was.
+static void pets_again(ui_nav_t *n)
+{
+    menu_open(n, UI_PAGE_PETS);
+    n->view.scroll = n->pets_scroll;
+}
+
+// A page whose pills ignore taps for UI_CONFIRM_GUARD_MS after it opens.
+static void open_guarded(ui_nav_t *n, ui_page_t page)
+{
+    menu_open(n, page);
+    n->confirm_ms = n->view.t_ms;
+}
+
 static bool is_list(ui_page_t p)
 {
-    return p == UI_PAGE_LIST || p == UI_PAGE_TZ_REGION || p == UI_PAGE_TZ_CITY || p == UI_PAGE_ROM;
+    return p == UI_PAGE_LIST || p == UI_PAGE_TZ_REGION || p == UI_PAGE_TZ_CITY || p == UI_PAGE_ROM ||
+           p == UI_PAGE_PETS;
+}
+
+static bool is_pill(int ctl)
+{
+    return ctl == UI_CTL_NEW_CANCEL || ctl == UI_CTL_NEW_START || ctl == UI_CTL_CLOCK_CANCEL || ctl == UI_CTL_CLOCK_OK ||
+           (ctl >= UI_CTL_PET_CANCEL && ctl <= UI_CTL_DEL_DELETE);
 }
 
 // Sliders follow a drag; switches, tiles and the ROM pills take taps only.
@@ -100,18 +136,25 @@ static ui_act_t tap_row(ui_nav_t *n, int row, const st_settings_t *cur, st_setti
             [UI_ROW_PALETTE] = UI_PAGE_PALETTE, [UI_ROW_TZ] = UI_PAGE_TZ_REGION, [UI_ROW_CLOCK] = UI_PAGE_CLOCK,
             [UI_ROW_PANEL] = UI_PAGE_PANEL,
         };
-        if (row == UI_ROW_ROM) { ui_nav_open_roms(n, false); return UI_ACT_REDRAW; }
+        if (row == UI_ROW_PETS) { ui_nav_open_pets(n, false); return UI_ACT_REDRAW; }
         if (row < 0 || row >= UI_ROW_COUNT) return UI_ACT_NONE;
         menu_open(n, PAGES[row]);
         return UI_ACT_REDRAW;
     }
     if (v->page == UI_PAGE_ROM) {
         if (v->rom_first) { v->rom_pick = row; return UI_ACT_ROM_SWITCH; }
-        if (row == v->rom_current) { ui_nav_to_pet(n); return UI_ACT_REDRAW; }  // the running pet: nothing changes
+        if (!v->roms || row >= v->rom_count || !v->roms[row].enabled) return UI_ACT_NONE;  // not on the card
         n->rom_scroll = v->scroll;
-        menu_open(n, UI_PAGE_ROM_CONFIRM);
+        open_guarded(n, UI_PAGE_ROM_CONFIRM);
         v->rom_pick = row;
-        n->confirm_ms = v->t_ms;
+        return UI_ACT_REDRAW;
+    }
+    if (v->page == UI_PAGE_PETS) {
+        if (!v->pets) return UI_ACT_NONE;
+        if (row == v->pet_count) { ui_nav_open_roms(n); return UI_ACT_REDRAW; }  // "+ New pet"
+        n->pets_scroll = v->scroll;
+        open_guarded(n, UI_PAGE_PET_SHEET);
+        v->pet_pick = row;
         return UI_ACT_REDRAW;
     }
     if (v->page == UI_PAGE_TZ_REGION) {
@@ -147,6 +190,8 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
     if (boot_short || ev->kind == UI_G_SWIPE_DOWN) {
         if (v->page == UI_PAGE_ROM && v->rom_first) return UI_ACT_NONE;             // nothing to go back to
         if (v->page == UI_PAGE_ROM_CONFIRM) { rom_list_again(n); return UI_ACT_REDRAW; }  // cancel
+        if (v->page == UI_PAGE_PET_SHEET) { pets_again(n); return UI_ACT_REDRAW; }
+        if (v->page == UI_PAGE_PET_DELETE) { open_guarded(n, UI_PAGE_PET_SHEET); return UI_ACT_REDRAW; }  // keep
         if (v->page == UI_PAGE_CLOCK_CONFIRM) { menu_open(n, UI_PAGE_CLOCK); return UI_ACT_REDRAW; }
         ui_nav_to_pet(n);
         return UI_ACT_REDRAW;
@@ -163,8 +208,10 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
         v->pressed = -1;
         if (ui_menu_back_at(v, ev->x, ev->y)) {
             if (v->page == UI_PAGE_TZ_CITY) { menu_open(n, UI_PAGE_TZ_REGION); v->region = NULL; }
-            else if (v->page == UI_PAGE_ROM && n->rom_from_pet) ui_nav_to_pet(n);
-            else { roms_clear(v); menu_open(n, UI_PAGE_LIST); }
+            else if (v->page == UI_PAGE_ROM) { roms_clear(v); pets_again(n); }
+            else if (v->page == UI_PAGE_PET_SHEET) pets_again(n);
+            else if (v->page == UI_PAGE_PETS && n->pets_from_pet) ui_nav_to_pet(n);
+            else { roms_clear(v); pets_clear(v); menu_open(n, UI_PAGE_LIST); }
             return UI_ACT_REDRAW;
         }
         if (is_list(v->page)) {
@@ -172,14 +219,17 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
             return row < 0 ? UI_ACT_NONE : tap_row(n, row, cur, out, display_changed);
         }
         int val, ctl = ui_menu_control_at(v, ev->x, ev->y, &val);
-        bool pill = ctl == UI_CTL_ROM_CANCEL || ctl == UI_CTL_ROM_SWITCH || ctl == UI_CTL_CLOCK_CANCEL || ctl == UI_CTL_CLOCK_OK;
-        if (pill && v->t_ms - n->confirm_ms < UI_CONFIRM_GUARD_MS)
+        if (is_pill(ctl) && v->t_ms - n->confirm_ms < UI_CONFIRM_GUARD_MS)
             return UI_ACT_NONE;  // too soon: the rest of a double tap on what opened this page
-        if (ctl == UI_CTL_ROM_CANCEL) { rom_list_again(n); return UI_ACT_REDRAW; }
-        if (ctl == UI_CTL_ROM_SWITCH) return UI_ACT_ROM_SWITCH;
+        if (ctl == UI_CTL_NEW_CANCEL) { rom_list_again(n); return UI_ACT_REDRAW; }
+        if (ctl == UI_CTL_NEW_START) return UI_ACT_PET_NEW;
+        if (ctl == UI_CTL_PET_CANCEL) { pets_again(n); return UI_ACT_REDRAW; }
+        if (ctl == UI_CTL_PET_SWITCH) return UI_ACT_PET_SWITCH;
+        if (ctl == UI_CTL_PET_DELETE) { open_guarded(n, UI_PAGE_PET_DELETE); return UI_ACT_REDRAW; }
+        if (ctl == UI_CTL_DEL_KEEP) { open_guarded(n, UI_PAGE_PET_SHEET); return UI_ACT_REDRAW; }
+        if (ctl == UI_CTL_DEL_DELETE) return UI_ACT_PET_DELETE;
         if (ctl == UI_CTL_CLOCK_SET) {
-            menu_open(n, UI_PAGE_CLOCK_CONFIRM);
-            n->confirm_ms = v->t_ms;
+            open_guarded(n, UI_PAGE_CLOCK_CONFIRM);
             v->confirm_s = v->ball_s;
             return UI_ACT_REDRAW;
         }

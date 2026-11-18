@@ -22,6 +22,7 @@
 #include "rom_switch.h"
 #include "qr_encode.h"
 #include "pet_clock.h"
+#include "saver.h"
 
 #define LOOP_MS        30
 #define FRAME_MS       16   // while a finger is on the glance or settings: ~60 frames a second
@@ -29,6 +30,7 @@
 static const char *TAG = "ui";
 static tc_model_t s_model;
 static uint16_t *s_fb;
+static char s_running_name[PS_NAME_MAX + 1], s_new_name[PS_NAME_MAX + 1];
 static ui_sent_t s_sent;  // row hashes of what the panel shows (internal RAM, 1.9 KB), so a frame sends only the rows that changed
 static volatile bool s_low_battery;
 
@@ -52,7 +54,9 @@ static void show(void) { ui_send_changed(&s_sent, s_fb, send_rows, NULL); }  // 
 
 static void read_touch(ui_touch_t *t);
 static void load_rom_rows(ui_menu_view_t *v);
-static void switch_rom(int row, int rows);
+static void load_pet_rows(ui_menu_view_t *v);
+static void prepare_new_name(const ui_menu_view_t *v);
+static bool pet_action(ui_act_t act, ui_nav_t *nav);
 static void render_glance(const ui_palette_t *pal, int8_t batt_pct);
 static void resume_on_pet(ui_screen_t *screen, ui_gesture_t *gest, ui_nav_t *nav);
 
@@ -145,7 +149,11 @@ static void ui_task(void *arg)
     resume_on_pet(&screen, &gest, &nav);
     screen_lit(false);
     backlight = false;  // force a fresh pet frame and backlight on
-    ESP_LOGI(TAG, "showing the pet");
+    {
+        pet_ref_t run;
+        if (saver_running(run.sha1, &run.id) && pet_store_name(&run, s_running_name) != ESP_OK) s_running_name[0] = 0;
+    }
+    ESP_LOGI(TAG, "showing the pet (%s)", s_running_name);
 
     // The QR page: mDNS answers to the boot name until a restart.
     st_settings_t boot;
@@ -225,16 +233,24 @@ static void ui_task(void *arg)
         }
 
         if (!was_menu && nav.screen == UI_SCREEN_MENU) clock_refresh(&nav.view);  // just opened: no stale clock in its first frame
-        if (ui_screen_long_press(&screen)) {  // from any screen, lit or not: the ROM list
+        if (ui_screen_long_press(&screen)) {  // from any screen, lit or not: the Pets list
             tc_post_buttons(0);  // ui_screen_update already woke the screen when the long press fired
-            ui_nav_open_roms(&nav, true);
+            ui_nav_open_pets(&nav, true);
             ui_gesture_reset(&gest);  // a touch held now belongs to no row
             act = UI_ACT_REDRAW;
         }
+        nav.view.running_name = s_running_name;
+        nav.view.new_name = s_new_name;
         if (nav.screen == UI_SCREEN_MENU && nav.view.page == UI_PAGE_ROM && !nav.view.roms) {
             load_rom_rows(&nav.view);  // the SD scan, once per opening
             act = UI_ACT_REDRAW;
         }
+        if (nav.screen == UI_SCREEN_MENU && !nav.view.pets &&
+            (nav.view.page == UI_PAGE_PETS || nav.view.page == UI_PAGE_ROM)) {
+            load_pet_rows(&nav.view);  // NVS and the SD card, once per opening (the New pet list needs the names)
+            act = UI_ACT_REDRAW;
+        }
+        if (nav.screen == UI_SCREEN_MENU && nav.view.page == UI_PAGE_ROM_CONFIRM) prepare_new_name(&nav.view);
         if (act == UI_ACT_CLOCK_SYNC) {
             nav.view.clock_busy = false;
             pet_clock_status_t st = pet_clock_start(&s_clock_id);  // re-checked now: time or the phase may have gone
@@ -243,13 +259,16 @@ static void ui_task(void *arg)
             nav.view.clock_why = clock_why();
             act = UI_ACT_REDRAW;
         }
-        if (act == UI_ACT_ROM_SWITCH) {
+        if (act == UI_ACT_PET_SWITCH || act == UI_ACT_PET_NEW || act == UI_ACT_PET_DELETE) {
             tc_post_buttons(0);
-            switch_rom(nav.view.rom_pick, nav.view.rom_count);  // restarts the ball, or returns after saying why it didn't
-            resume_on_pet(&screen, &gest, &nav);
-            screen_lit(false);
-            backlight = false;  // force a fresh pet frame
-            continue;
+            if (pet_action(act, &nav)) {  // restarts the ball, or returns after saying why it didn't
+                resume_on_pet(&screen, &gest, &nav);
+                screen_lit(false);
+                backlight = false;  // force a fresh pet frame
+                continue;
+            }
+            ui_gesture_reset(&gest);
+            act = UI_ACT_REDRAW;
         }
 
         if (s_low_battery) {
@@ -392,44 +411,106 @@ static void read_touch(ui_touch_t *t)
     for (int i = 0; i < bt.count && i < 2; i++) { t->pt[i].x = bt.pt[i].x; t->pt[i].y = bt.pt[i].y; }
 }
 
-// The ROM picker's rows: one per distinct P1/P2 dump (first start, or the list opened during play; never both
-// at once). s_row_entry[k] is row k's index into the scanned entries.
+// ---- ROM rows: the first-start picker (one per distinct playable dump) and the New pet list (one per model) ----
 #define MAX_ROMS 16
 static tc_rom_entry_t s_scan[MAX_ROMS];
-static int s_row_entry[MAX_ROMS];
+static int s_row_entry[MAX_ROMS];       // first start: row k's index into the scanned entries
 static ui_rom_row_t s_rows[MAX_ROMS];
-static char s_row_sub[MAX_ROMS][80];  // "Gen N - <file>"; the list cuts long names with the ellipsis
+static char s_row_sub[MAX_ROMS][80];    // "Gen N - <file>"; the list cuts long names with the ellipsis
+static uint8_t s_row_sha[MAX_ROMS][20]; // New pet: row k's ROM (unset for a model not on the card)
+
+static void rom_sub(const tc_rom_entry_t *r, char *out, size_t cap)
+{
+    const char *longname = tc_model_long_name(r->model);
+    if (longname && strcmp(longname, tc_model_name(r->model)) != 0) snprintf(out, cap, "%s - %s", longname, r->name);
+    else snprintf(out, cap, "%s", r->name);
+}
 
 static int rom_rows(const tc_rom_entry_t *roms, int n)
 {
     int m = tc_rom_distinct_valid(roms, n, s_row_entry, MAX_ROMS);
     for (int k = 0; k < m; k++) {
         const tc_rom_entry_t *r = &roms[s_row_entry[k]];
-        const char *longname = tc_model_long_name(r->model);
-        if (longname && strcmp(longname, tc_model_name(r->model)) != 0)
-            snprintf(s_row_sub[k], sizeof s_row_sub[k], "%s - %s", longname, r->name);
-        else
-            snprintf(s_row_sub[k], sizeof s_row_sub[k], "%s", r->name);
-        s_rows[k] = (ui_rom_row_t){ tc_model_name(r->model), s_row_sub[k] };
+        rom_sub(r, s_row_sub[k], sizeof s_row_sub[k]);
+        s_rows[k] = (ui_rom_row_t){ tc_model_name(r->model), s_row_sub[k], r->name, true };
     }
     return m;
 }
 
-// During play: scan the SD card and mark the running ROM's row (by the cached copy's SHA-1).
+// The New pet list: P1, P2, Angel, Mothra, each from its dump on the card, greyed when there is none.
 static void load_rom_rows(ui_menu_view_t *v)
 {
-    int n = rom_store_scan(s_scan, MAX_ROMS), m = rom_rows(s_scan, n);
-    v->rom_current = -1;
-    uint8_t active[20];
-    uint8_t *rom = malloc(TC_ROM_MAX_BYTES);  // only to learn the active SHA-1
-    size_t rom_len;
-    if (rom && rom_store_cached(rom, &rom_len, active))
-        for (int k = 0; k < m; k++)
-            if (!memcmp(s_scan[s_row_entry[k]].sha1, active, 20)) v->rom_current = k;
-    free(rom);
+    static const tc_model_t MODELS[] = { TC_MODEL_P1, TC_MODEL_P2, TC_MODEL_ANGEL, TC_MODEL_MOTHRA };
+    int n = rom_store_scan(s_scan, MAX_ROMS), k = 0;
+    for (size_t mi = 0; mi < sizeof MODELS / sizeof MODELS[0]; mi++, k++) {
+        int found = -1;
+        for (int i = 0; i < n && found < 0; i++)
+            if (s_scan[i].model == MODELS[mi]) found = i;
+        if (found >= 0) {
+            rom_sub(&s_scan[found], s_row_sub[k], sizeof s_row_sub[k]);
+            memcpy(s_row_sha[k], s_scan[found].sha1, 20);
+            s_rows[k] = (ui_rom_row_t){ tc_model_name(MODELS[mi]), s_row_sub[k], s_scan[found].name, true };
+        } else {
+            s_rows[k] = (ui_rom_row_t){ tc_model_name(MODELS[mi]), "not on the SD card", NULL, false };
+        }
+    }
     v->roms = s_rows;
-    v->rom_count = m;
-    ESP_LOGI(TAG, "ROM list: %d pets, current row %d", m, v->rom_current);
+    v->rom_count = k;
+}
+
+// ---- Pet rows ----
+static pet_info_t s_pets[PET_STORE_MAX];
+static ui_pet_row_t s_pet_rows[PET_STORE_MAX];
+static char s_pet_sub[PET_STORE_MAX][40], s_pet_age[PET_STORE_MAX][32], s_pet_away[PET_STORE_MAX][24];
+static int s_pet_n;
+
+static bool is_running_pet(const pet_ref_t *p)
+{
+    uint8_t sha[20], id;
+    return saver_running(sha, &id) && id == p->id && !memcmp(sha, p->sha1, 20);
+}
+
+static void load_pet_rows(ui_menu_view_t *v)
+{
+    s_pet_n = pet_store_list(s_pets, PET_STORE_MAX);
+    int64_t now = 0;
+    bool trusted = net_now(&now);
+    v->pet_current = -1;
+    for (int i = 0; i < s_pet_n; i++) {
+        const pet_info_t *p = &s_pets[i];
+        bool running = is_running_pet(&p->ref);
+        const char *longname = tc_model_long_name(p->model);
+        char age[12] = "", short_away[12] = "";
+        if (p->egg) snprintf(age, sizeof age, "egg");
+        else if (p->age_years >= 0) snprintf(age, sizeof age, "%d yr", p->age_years);
+        snprintf(s_pet_age[i], sizeof s_pet_age[i], "%s%s%s", longname ? longname : "", age[0] ? " - " : "", age);
+        if (running) {
+            snprintf(s_pet_away[i], sizeof s_pet_away[i], "running now");
+            snprintf(short_away, sizeof short_away, "now");
+            v->pet_current = i;
+        } else if (trusted && p->has_save && p->save_trusted && now > p->save_unix) {
+            char d[16];
+            ui_fmt_away((uint64_t)(now - p->save_unix), false, d, sizeof d);
+            snprintf(s_pet_away[i], sizeof s_pet_away[i], "away %s", d);
+            ui_fmt_away((uint64_t)(now - p->save_unix), true, short_away, sizeof short_away);
+        } else {
+            snprintf(s_pet_away[i], sizeof s_pet_away[i], "%s", p->has_save ? "away" : "not started yet");
+        }
+        snprintf(s_pet_sub[i], sizeof s_pet_sub[i], "%s%s%s", s_pet_age[i], short_away[0] ? " - " : "", short_away);
+        s_pet_rows[i] = (ui_pet_row_t){ p->name, s_pet_sub[i], s_pet_age[i], s_pet_away[i], p->rom_on_card };
+    }
+    v->pets = s_pet_rows;
+    v->pet_count = s_pet_n;
+    ESP_LOGI(TAG, "pets: %d, running row %d", s_pet_n, v->pet_current);
+}
+
+// The name a new pet of rows[pick] would get, for the confirm (pet_store_create picks the same).
+static void prepare_new_name(const ui_menu_view_t *v)
+{
+    const char *names[PET_STORE_MAX];
+    for (int i = 0; i < s_pet_n; i++) names[i] = s_pets[i].name;
+    const char *model = v->roms && v->rom_pick >= 0 && v->rom_pick < v->rom_count ? v->roms[v->rom_pick].name : "Pet";
+    ps_name_auto(model, names, s_pet_n, s_new_name);
 }
 
 int ui_pick_rom(const tc_rom_entry_t *roms, int n)
@@ -438,7 +519,7 @@ int ui_pick_rom(const tc_rom_entry_t *roms, int n)
     if (!m || !s_fb) return -1;
     ui_nav_t nav;
     ui_nav_init(&nav);
-    ui_nav_open_roms(&nav, false);
+    ui_nav_open_roms(&nav);
     nav.view.rom_first = true;
     nav.view.roms = s_rows;
     nav.view.rom_count = m;
@@ -473,25 +554,48 @@ int ui_pick_rom(const tc_rom_entry_t *roms, int n)
     }
 }
 
-// Switch confirmed on the ROM list (row of s_rows): save the pet, store the new ROM and restart. The switch
-// itself is shared with the remote API (rom_switch_to); the messages stay here.
-static void switch_rom(int row, int rows)
+// A switch or a new pet: the ball saves and restarts (this keeps the message up until then), or says why not.
+static void after_switch(esp_err_t err)
 {
-    if (row < 0 || row >= rows || row >= MAX_ROMS) return;  // rows: this scan's count (older rows may linger)
-    const char *name = s_scan[s_row_entry[row]].name;
-    ESP_LOGI(TAG, "switching to %s", name);
-    ui_message("Switching", "Saving your pet...");
-    esp_err_t err = rom_switch_to(name);
     if (err == ESP_OK) {
-        for (;;) vTaskDelay(pdMS_TO_TICKS(1000));  // keep this message up until the restart
+        for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    if (err == ESP_FAIL) {
-        ui_message("Not switching", "Couldn't save your\npet, so it stays.");
-        vTaskDelay(pdMS_TO_TICKS(2500));
-        return;
+    if (err == ESP_FAIL) ui_message("Not switching", "Couldn't save your\npet, so it stays.");
+    else if (err == ESP_ERR_NOT_FOUND) ui_message("Not switching", "That ROM is not on\nthe SD card.");
+    else if (err == ESP_ERR_NO_MEM) ui_message("No room", "Ten pets of this ROM\nalready, or storage\nis full.");
+    else ui_message("Switch failed", "Try again in a\nmoment.");
+    vTaskDelay(pdMS_TO_TICKS(2500));
+}
+
+// What a confirmed pet action does. Returns true when the pet screen should show next (a message was shown).
+static bool pet_action(ui_act_t act, ui_nav_t *nav)
+{
+    ui_menu_view_t *v = &nav->view;
+    if (act == UI_ACT_PET_SWITCH && v->pet_pick >= 0 && v->pet_pick < s_pet_n) {
+        ESP_LOGI(TAG, "switching to %s", s_pets[v->pet_pick].name);
+        ui_message("Switching", "Saving your pet...");
+        after_switch(pet_switch_to(&s_pets[v->pet_pick].ref));
+        return true;
     }
-    ui_message("Switch failed", "Could not read\nthat ROM.");
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    if (act == UI_ACT_PET_NEW && v->roms && v->rom_pick >= 0 && v->rom_pick < v->rom_count && v->roms[v->rom_pick].enabled) {
+        ESP_LOGI(TAG, "new pet of %s", v->roms[v->rom_pick].file);
+        ui_message("New pet", "Saving your pet...");
+        pet_ref_t created;
+        after_switch(pet_new(s_row_sha[v->rom_pick], &created));
+        return true;
+    }
+    if (act == UI_ACT_PET_DELETE && v->pet_pick >= 0 && v->pet_pick < s_pet_n) {
+        esp_err_t err = pet_delete(&s_pets[v->pet_pick].ref);
+        ESP_LOGI(TAG, "delete %s: %s", s_pets[v->pet_pick].name, esp_err_to_name(err));
+        if (err != ESP_OK) {
+            ui_message("Not deleted", err == ESP_ERR_INVALID_STATE ? "That pet is running." : "Try again in a\nmoment.");
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            return true;
+        }
+        ui_nav_open_pets(nav, nav->pets_from_pet);  // the list again, reloaded
+        return false;
+    }
+    return false;
 }
 
 void ui_task_start(tc_model_t model)

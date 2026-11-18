@@ -69,6 +69,25 @@ static void test_low_battery_has_title(void)
     TEST_ASSERT_GREATER_THAN(50, n);
 }
 
+static void test_fmt_away(void)
+{
+    char b[16];
+    ui_fmt_away(39, false, b, sizeof b);
+    TEST_ASSERT_EQUAL_STRING("39s", b);
+    ui_fmt_away(60, false, b, sizeof b);
+    TEST_ASSERT_EQUAL_STRING("1m", b);
+    ui_fmt_away(3 * 3600 + 5 * 60, false, b, sizeof b);
+    TEST_ASSERT_EQUAL_STRING("3h 5m", b);
+    ui_fmt_away(3 * 86400 + 4 * 3600 + 59, false, b, sizeof b);
+    TEST_ASSERT_EQUAL_STRING("3d 4h", b);
+    ui_fmt_away(86400, false, b, sizeof b);
+    TEST_ASSERT_EQUAL_STRING("1d", b);
+    ui_fmt_away(3 * 86400 + 4 * 3600, true, b, sizeof b);
+    TEST_ASSERT_EQUAL_STRING("3d", b);
+    ui_fmt_away(0, false, b, sizeof b);
+    TEST_ASSERT_EQUAL_STRING("0s", b);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -78,5 +97,6 @@ int main(void)
     RUN_TEST(test_catchup_zero_total);
     RUN_TEST(test_message_centred);
     RUN_TEST(test_low_battery_has_title);
+    RUN_TEST(test_fmt_away);
     return UNITY_END();
 }

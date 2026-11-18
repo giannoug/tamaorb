@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Settings screens (design canvas "Settings", "Sound", "Brightness", "Dimming", "Palette", "ZoneRegion",
-// "ZoneCity", "Panel", "PickerList", "PickerConfirm", "PickerFirst") and their hit testing. Vertical positions are the canvas's at device scale; every
+// "ZoneCity", "Panel", "PickerFirst", and the "Pets" row: PetsList, PetSheet, PetSheetRunning, PetDelete, NewPet,
+// NewPetConfirm) and their hit testing. Vertical positions are the canvas's at device scale; every
 // horizontal extent comes from the screen geometry (ui_span / ui_geom_safe).
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +24,7 @@
 typedef struct { int top, row_h; } list_layout_t;
 static const list_layout_t LIST_LAYOUT[] = {
     [UI_PAGE_LIST] = { 50, 38 }, [UI_PAGE_TZ_REGION] = { 66, 28 }, [UI_PAGE_TZ_CITY] = { 52, 28 },
-    [UI_PAGE_ROM] = { 50, 34 },
+    [UI_PAGE_ROM] = { 50, 34 }, [UI_PAGE_PETS] = { 50, 34 },
 };
 #define REGION_NOW_Y 51   // "now: Isle of Man" under the Time zone title
 
@@ -32,21 +33,22 @@ static const list_layout_t LIST_LAYOUT[] = {
 #define ROM_FIRST_TOP 66      // its list starts lower, under the title
 #define ROM_HINT_Y 176        // "tap a pet to switch"; the list ends above it
 #define ROM_HINT_GAP 15       // first start: the hint follows the rows this far below, up to ROM_HINT_Y
-#define ROM_EMPTY_Y 100       // "No pets on the SD card"
+#define ROM_EMPTY_Y 100       // "No ROMs on the SD card"
 
 static bool is_list(ui_page_t p)
 {
-    return p == UI_PAGE_LIST || p == UI_PAGE_TZ_REGION || p == UI_PAGE_TZ_CITY || p == UI_PAGE_ROM;
+    return p == UI_PAGE_LIST || p == UI_PAGE_TZ_REGION || p == UI_PAGE_TZ_CITY || p == UI_PAGE_ROM ||
+           p == UI_PAGE_PETS;
 }
 static bool is_tz(ui_page_t p) { return p == UI_PAGE_TZ_REGION || p == UI_PAGE_TZ_CITY; }
 static int list_top(const ui_menu_view_t *v)
 {
     return v->page == UI_PAGE_ROM && v->rom_first ? ROM_FIRST_TOP : LIST_LAYOUT[v->page].top;
 }
-// Last row of the list area: the ROM list stops above its hint line.
+// Last row of the list area: the first-start list stops above its hint line.
 static int list_bottom(const ui_menu_view_t *v)
 {
-    return v->page == UI_PAGE_ROM ? ROM_HINT_Y - 5 : UI_GEOM.h - UI_GEOM.h / 6 - 1;
+    return v->page == UI_PAGE_ROM && v->rom_first ? ROM_HINT_Y - 5 : UI_GEOM.h - UI_GEOM.h / 6 - 1;
 }
 
 // The list area and the x range of its rows: inside the visible span of every row of the area (first start's
@@ -179,12 +181,13 @@ static void list_value(const ui_menu_view_t *v, int row, char *out, size_t cap)
     case UI_ROW_TZ: tz_label(c->tz, out, cap); break;
     case UI_ROW_CLOCK: hm_or_dash(v->pet_s, out, cap); break;
     case UI_ROW_PANEL: snprintf(out, cap, "QR code"); break;
-    default: break;  // ROM: the picker shows the choices
+    case UI_ROW_PETS: snprintf(out, cap, "%s", v->running_name ? v->running_name : ""); break;
+    default: break;
     }
 }
 
 static const char *const LIST_NAMES[UI_ROW_COUNT] = { "Sound", "Brightness", "Dimming", "Palette", "Time zone",
-                                                      "Pet clock", "ROM", "Web panel" };
+                                                      "Pet clock", "Pets", "Web panel" };
 
 // ---- Rows of the list pages ----
 int ui_menu_row_count(const ui_menu_view_t *v)
@@ -194,6 +197,7 @@ int ui_menu_row_count(const ui_menu_view_t *v)
     case UI_PAGE_TZ_REGION: return ui_menu_region_at(0) ? s_region_n : 0;
     case UI_PAGE_TZ_CITY: return city_count(v->region);
     case UI_PAGE_ROM: return v->roms && v->rom_count > 0 ? v->rom_count : 0;
+    case UI_PAGE_PETS: return v->pets ? v->pet_count + 1 : 0;  // the pets, then "+ New pet"
     default: return 0;
     }
 }
@@ -237,6 +241,7 @@ int ui_menu_row_at(const ui_menu_view_t *v, int x, int y)
 bool ui_menu_back_at(const ui_menu_view_t *v, int x, int y)
 {
     return v->page != UI_PAGE_LIST && v->page != UI_PAGE_ROM_CONFIRM && v->page != UI_PAGE_CLOCK_CONFIRM &&
+           v->page != UI_PAGE_PET_DELETE &&
            !(v->page == UI_PAGE_ROM && v->rom_first) &&
            y >= 0 && y < TITLE_Y && x >= 0 && x < UI_W;
 }
@@ -245,8 +250,9 @@ bool ui_menu_back_at(const ui_menu_view_t *v, int x, int y)
 static int current_row(const ui_menu_view_t *v)
 {
     char r[32];
-    if (v->page == UI_PAGE_ROM)
-        return !v->rom_first && v->rom_current >= 0 && v->rom_current < ui_menu_row_count(v) ? v->rom_current : -1;
+    if (v->page == UI_PAGE_ROM) return -1;
+    if (v->page == UI_PAGE_PETS)
+        return v->pets && v->pet_current >= 0 && v->pet_current < v->pet_count ? v->pet_current : -1;
     if (v->page == UI_PAGE_TZ_REGION) {
         tz_region(v->cfg->tz, r, sizeof r);
         for (int i = 0; ui_menu_region_at(i); i++)
@@ -275,8 +281,11 @@ static const char *page_title(const ui_menu_view_t *v)
     case UI_PAGE_TZ_REGION: return "Time zone";
     case UI_PAGE_TZ_CITY: return v->region ? v->region : "";
     case UI_PAGE_PANEL: return "Web panel";
-    case UI_PAGE_ROM: return v->rom_first ? "Pick a pet" : "Pet ROM";
-    case UI_PAGE_ROM_CONFIRM: return "";  // drawn by draw_rom_confirm
+    case UI_PAGE_ROM: return v->rom_first ? "Pick a pet" : "New pet";
+    case UI_PAGE_ROM_CONFIRM: return "";  // drawn by draw_new_confirm
+    case UI_PAGE_PETS: return "Pets";
+    case UI_PAGE_PET_SHEET: return "";    // drawn by draw_pet_sheet
+    case UI_PAGE_PET_DELETE: return "";
     case UI_PAGE_CLOCK: return "Pet clock";
     case UI_PAGE_CLOCK_CONFIRM: return "";  // drawn by draw_clock_confirm
     }
@@ -421,10 +430,23 @@ static void draw_list(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
             ui_draw_text(fb, tx1 - 7, y + 25, ">", 1, fg);
             continue;
         }
-        if (v->page == UI_PAGE_ROM) {  // name over "Gen N - file", the running pet checked
+        if (v->page == UI_PAGE_PETS && i == v->pet_count) {  // "+ New pet": an outline, no fill
+            ui_fill_rrect(fb, x0, y, x1 - x0 + 1, rh, ROW_RADIUS, c->ink);
+            if (!hi) ui_fill_rrect(fb, x0 + 2, y + 2, x1 - x0 - 3, rh - 4, ROW_RADIUS - 1, c->bg);
+            const char *t = "+ New pet";
+            ui_draw_text(fb, x0 + (x1 - x0 + 1 - ui_text_width(t, 1)) / 2, y + (rh - 8) / 2, t, 1, hi ? c->bg : c->ink);
+            continue;
+        }
+        if (v->page == UI_PAGE_ROM || v->page == UI_PAGE_PETS) {  // name over its line, the running pet checked
+            const char *nm = v->page == UI_PAGE_ROM ? v->roms[i].name : v->pets[i].name;
+            const char *sb = v->page == UI_PAGE_ROM ? v->roms[i].sub : v->pets[i].sub;
+            if (v->page == UI_PAGE_ROM && !v->roms[i].enabled && !v->rom_first) {  // greyed: not on the card
+                ui_fill_rrect(fb, x0, y, x1 - x0 + 1, rh, ROW_RADIUS, c->bg);
+                fg = c->soft;
+            }
             int t1 = i == cur ? tx1 - 14 - 4 : tx1;
-            ui_draw_text_ellipsis(fb, tx0, t1, y + 4, v->roms[i].name ? v->roms[i].name : "", 2, fg);
-            ui_draw_text_ellipsis(fb, tx0, t1, y + 23, v->roms[i].sub ? v->roms[i].sub : "", 1, fg);
+            ui_draw_text_ellipsis(fb, tx0, t1, y + 4, nm ? nm : "", 2, fg);
+            ui_draw_text_ellipsis(fb, tx0, t1, y + 23, sb ? sb : "", 1, fg);
             if (i == cur) ui_draw_bits(fb, tx1 - 14, y + 11, CHECK, 7, 6, 2, fg);
             continue;
         }
@@ -641,10 +663,6 @@ static void draw_panel(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
 }
 
 // ---- ROM picker ----
-#define CONFIRM_TITLE_Y 66
-#define CONFIRM_BODY_Y 101   // two lines, 14 px apart
-#define CONFIRM_NOTE_Y 131
-#define PILL_Y 150
 #define PILL_W 84
 #define PILL_H 36
 #define PILL_GAP 4
@@ -655,47 +673,125 @@ static void draw_rom_list(uint16_t *fb, const ui_menu_view_t *v, const colors_t 
     if (!v->roms) return;  // not loaded yet
     int n = ui_menu_row_count(v);
     if (n == 0) {
-        ui_text_centred_at(fb, ROM_EMPTY_Y, "No pets on the SD card", 1, c->ink);
+        ui_text_centred_at(fb, ROM_EMPTY_Y, "No ROMs on the SD card", 1, c->ink);
         return;
     }
-    int hint_y = ROM_HINT_Y;
-    if (v->rom_first) {  // the hint sits under the rows (canvas PickerFirst), never lower than the list's own
-        int end = row_top(v, n - 1, clamp_scroll(v)) + LIST_LAYOUT[UI_PAGE_ROM].row_h - 1 + ROM_HINT_GAP;
-        if (end < hint_y) hint_y = end;
-    }
-    ui_text_centred_at(fb, hint_y, v->rom_first ? "tap one to start" : "tap a pet to switch", 1, c->soft);
+    if (!v->rom_first) return;  // the New pet list has no hint (canvas NewPet)
+    // The hint sits under the rows (canvas PickerFirst), never lower than the list's own.
+    int hint_y = ROM_HINT_Y, end = row_top(v, n - 1, clamp_scroll(v)) + LIST_LAYOUT[UI_PAGE_ROM].row_h - 1 + ROM_HINT_GAP;
+    if (end < hint_y) hint_y = end;
+    ui_text_centred_at(fb, hint_y, "tap one to start", 1, c->soft);
 }
 
 // The two pills, centred side by side: i 0 Cancel, 1 Switch.
 static int pill_x(int i) { return UI_W / 2 - PILL_W - PILL_GAP / 2 + i * (PILL_W + PILL_GAP); }
 
-static const char *rom_name(const ui_menu_view_t *v, int i)
+// A pill button of height h: filled (ink, label in bg) or outlined (border b px, label in ink).
+static void draw_pill_hb(uint16_t *fb, int x, int y, int w, int h, int b, const char *label, bool filled,
+                         const colors_t *c)
 {
-    return v->roms && i >= 0 && i < v->rom_count && v->roms[i].name ? v->roms[i].name : NULL;
+    ui_fill_rrect(fb, x, y, w, h, h / 2, c->ink);
+    if (!filled) ui_fill_rrect(fb, x + b, y + b, w - 2 * b, h - 2 * b, h / 2 - b, c->bg);
+    ui_draw_text(fb, x + (w - ui_text_width(label, 1)) / 2, y + (h - 8) / 2, label, 1, filled ? c->bg : c->ink);
 }
-
-// A pill button: filled (ink, label in bg) or outlined (label in ink).
 static void draw_pill(uint16_t *fb, int x, int y, int w, const char *label, bool filled, const colors_t *c)
 {
-    ui_fill_rrect(fb, x, y, w, PILL_H, PILL_H / 2, c->ink);
-    if (!filled) ui_fill_rrect(fb, x + 2, y + 2, w - 4, PILL_H - 4, PILL_H / 2 - 2, c->bg);
-    ui_draw_text(fb, x + (w - ui_text_width(label, 1)) / 2, y + (PILL_H - 8) / 2, label, 1, filled ? c->bg : c->ink);
+    draw_pill_hb(fb, x, y, w, PILL_H, 2, label, filled, c);
 }
 
-static void draw_rom_confirm(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
+// ---- New pet confirm (canvas NewPetConfirm) ----
+#define NEW_TITLE_Y 48       // "New egg?", scale 2
+#define NEW_BODY_Y 75        // four lines, 14 px apart
+#define NEW_NOTE_Y 139       // "The ball restarts."
+#define NEW_PILL_Y 158
+
+static void draw_new_confirm(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
 {
-    char line[48];
-    const char *to = rom_name(v, v->rom_pick), *from = rom_name(v, v->rom_current);
-    snprintf(line, sizeof line, "Switch to %s?", to ? to : "it");
-    ui_text_centred_at(fb, CONFIRM_TITLE_Y, line, 2, c->ink);
-    if (from) snprintf(line, sizeof line, "Your %s pet is saved", from);
-    else snprintf(line, sizeof line, "Your pet is saved");
-    ui_text_centred_at(fb, CONFIRM_BODY_Y, line, 1, c->ink);
-    ui_text_centred_at(fb, CONFIRM_BODY_Y + 14, "and waits for you.", 1, c->ink);
-    ui_text_centred_at(fb, CONFIRM_NOTE_Y, "The ball restarts.", 1, c->soft);
-    draw_pill(fb, pill_x(0), PILL_Y, PILL_W, "Cancel", false, c);
-    draw_pill(fb, pill_x(1), PILL_Y, PILL_W, "Switch", true, c);
+    const ui_rom_row_t *r = v->roms && v->rom_pick >= 0 && v->rom_pick < v->rom_count ? &v->roms[v->rom_pick] : NULL;
+    char line[4][48];
+    snprintf(line[0], sizeof line[0], "%s hatches", v->new_name ? v->new_name : "A new pet");
+    snprintf(line[1], sizeof line[1], "from %s.", r && r->file ? r->file : "its ROM");
+    snprintf(line[2], sizeof line[2], "%s is saved and", v->running_name ? v->running_name : "Your pet");
+    snprintf(line[3], sizeof line[3], "waits for you.");
+    ui_text_centred_at(fb, NEW_TITLE_Y, "New egg?", 2, c->ink);
+    for (int i = 0; i < 4; i++) ui_text_centred_at(fb, NEW_BODY_Y + 14 * i, line[i], 1, c->ink);
+    ui_text_centred_at(fb, NEW_NOTE_Y, "The ball restarts.", 1, c->soft);
+    draw_pill(fb, pill_x(0), NEW_PILL_Y, PILL_W, "Cancel", false, c);
+    draw_pill(fb, pill_x(1), NEW_PILL_Y, PILL_W, "Start", true, c);
 }
+
+// ---- A pet's sheet and its delete confirm (canvas PetSheet, PetSheetRunning, PetDelete) ----
+#define SHEET_NAME_Y 56      // scale 2
+#define SHEET_LINE_Y 88      // two lines, 14 px apart
+#define SHEET_PILL_Y 130     // Cancel / Switch
+#define SHEET_OFF_Y 122      // "ROM not on" / "the SD card"
+#define SHEET_OFF_PILL_Y 146 // Cancel alone (the ROM isn't on the card)
+#define SHEET_CLOSE_Y 140    // the running pet's Close
+#define SHEET_CLOSE_W 88
+#define SHEET_HINT_Y 188     // "switch away" / "to delete it"
+#define DEL_PILL_Y 186       // the small "Delete..." pill
+#define DEL_PILL_W 90
+#define DEL_PILL_H 24
+#define DELETE_TITLE_Y 56    // "Delete" / "<name>?", scale 2, 22 px apart
+#define DELETE_BODY_Y 109
+#define DELETE_PILL_Y 150
+
+static const ui_pet_row_t *picked(const ui_menu_view_t *v)
+{
+    return v->pets && v->pet_pick >= 0 && v->pet_pick < v->pet_count ? &v->pets[v->pet_pick] : NULL;
+}
+static bool picked_running(const ui_menu_view_t *v) { return v->pet_pick >= 0 && v->pet_pick == v->pet_current; }
+static int centred_x(int w) { return (UI_W - w) / 2; }
+
+static void draw_centred_name(uint16_t *fb, int y, const char *s, const colors_t *c)
+{
+    int x0, x1;
+    ui_span(y, y + 15, &x0, &x1);
+    x0 += TITLE_MARGIN;
+    x1 -= TITLE_MARGIN;
+    int tw = ui_text_width(s, 2), box = x1 - x0 + 1;
+    if (tw <= box) ui_draw_text(fb, x0 + (box - tw) / 2, y, s, 2, c->ink);
+    else ui_draw_text_ellipsis(fb, x0, x1 + 1, y, s, 2, c->ink);
+}
+
+static void draw_pet_sheet(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
+{
+    const ui_pet_row_t *p = picked(v);
+    if (!p) return;
+    draw_centred_name(fb, SHEET_NAME_Y, p->name ? p->name : "", c);
+    ui_text_centred_at(fb, SHEET_LINE_Y, p->model_age ? p->model_age : "", 1, c->ink);
+    ui_text_centred_at(fb, SHEET_LINE_Y + 14, p->away ? p->away : "", 1, c->ink);
+    if (picked_running(v)) {
+        draw_pill(fb, centred_x(SHEET_CLOSE_W), SHEET_CLOSE_Y, SHEET_CLOSE_W, "Close", true, c);
+        ui_text_centred_at(fb, SHEET_HINT_Y, "switch away", 1, c->soft);
+        ui_text_centred_at(fb, SHEET_HINT_Y + 12, "to delete it", 1, c->soft);
+        return;
+    }
+    if (p->can_switch) {
+        draw_pill(fb, pill_x(0), SHEET_PILL_Y, PILL_W, "Cancel", false, c);
+        draw_pill(fb, pill_x(1), SHEET_PILL_Y, PILL_W, "Switch", true, c);
+    } else {
+        ui_text_centred_at(fb, SHEET_OFF_Y, "ROM not on", 1, c->soft);
+        ui_text_centred_at(fb, SHEET_OFF_Y + 12, "the SD card", 1, c->soft);
+        draw_pill(fb, centred_x(SHEET_CLOSE_W), SHEET_OFF_PILL_Y, SHEET_CLOSE_W, "Cancel", false, c);
+    }
+    draw_pill_hb(fb, centred_x(DEL_PILL_W), DEL_PILL_Y, DEL_PILL_W, DEL_PILL_H, 1, "Delete...", false, c);
+}
+
+static void draw_pet_delete(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
+{
+    const ui_pet_row_t *p = picked(v);
+    char q[24];
+    snprintf(q, sizeof q, "%s?", p && p->name ? p->name : "this pet");
+    ui_text_centred_at(fb, DELETE_TITLE_Y, "Delete", 2, c->ink);
+    draw_centred_name(fb, DELETE_TITLE_Y + 22, q, c);
+    ui_text_centred_at(fb, DELETE_BODY_Y, "Its save is gone", 1, c->ink);
+    ui_text_centred_at(fb, DELETE_BODY_Y + 14, "for good.", 1, c->ink);
+    draw_pill(fb, pill_x(0), DELETE_PILL_Y, PILL_W, "Keep", true, c);
+    draw_pill(fb, pill_x(1), DELETE_PILL_Y, PILL_W, "Delete", false, c);
+}
+
+static bool in_box(int x, int y, int bx, int by, int bw, int bh) { return x >= bx && x < bx + bw && y >= by && y < by + bh; }
 
 // ---- Pet clock ----
 #define CLOCK_PET_Y 62        // "Pet 09:58:00", scale 2
@@ -783,7 +879,10 @@ void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p
     case UI_PAGE_PALETTE: draw_palette(fb, v, p, &c); break;
     case UI_PAGE_PANEL: draw_panel(fb, v, &c); break;
     case UI_PAGE_ROM: draw_rom_list(fb, v, &c); break;
-    case UI_PAGE_ROM_CONFIRM: draw_rom_confirm(fb, v, &c); break;
+    case UI_PAGE_ROM_CONFIRM: draw_new_confirm(fb, v, &c); break;
+    case UI_PAGE_PETS: draw_list(fb, v, &c); break;
+    case UI_PAGE_PET_SHEET: draw_pet_sheet(fb, v, &c); break;
+    case UI_PAGE_PET_DELETE: draw_pet_delete(fb, v, &c); break;
     case UI_PAGE_CLOCK: draw_clock(fb, v, &c); break;
     case UI_PAGE_CLOCK_CONFIRM: draw_clock_confirm(fb, v, &c); break;
     }
@@ -835,8 +934,27 @@ int ui_menu_control_at(const ui_menu_view_t *v, int x, int y, int *value_out)
         break;
     case UI_PAGE_ROM_CONFIRM:
         for (int i = 0; i < 2; i++)
-            if (x >= pill_x(i) && x < pill_x(i) + PILL_W && y >= PILL_Y && y < PILL_Y + PILL_H)
-                ctl = i ? UI_CTL_ROM_SWITCH : UI_CTL_ROM_CANCEL;
+            if (in_box(x, y, pill_x(i), NEW_PILL_Y, PILL_W, PILL_H)) ctl = i ? UI_CTL_NEW_START : UI_CTL_NEW_CANCEL;
+        break;
+    case UI_PAGE_PET_SHEET: {
+        const ui_pet_row_t *p = picked(v);
+        if (!p) break;
+        if (picked_running(v)) {
+            if (in_box(x, y, centred_x(SHEET_CLOSE_W), SHEET_CLOSE_Y, SHEET_CLOSE_W, PILL_H)) ctl = UI_CTL_PET_CANCEL;
+            break;
+        }
+        if (p->can_switch) {
+            for (int i = 0; i < 2; i++)
+                if (in_box(x, y, pill_x(i), SHEET_PILL_Y, PILL_W, PILL_H)) ctl = i ? UI_CTL_PET_SWITCH : UI_CTL_PET_CANCEL;
+        } else if (in_box(x, y, centred_x(SHEET_CLOSE_W), SHEET_OFF_PILL_Y, SHEET_CLOSE_W, PILL_H)) {
+            ctl = UI_CTL_PET_CANCEL;
+        }
+        if (in_box(x, y, centred_x(DEL_PILL_W), DEL_PILL_Y, DEL_PILL_W, DEL_PILL_H)) ctl = UI_CTL_PET_DELETE;
+        break;
+    }
+    case UI_PAGE_PET_DELETE:
+        for (int i = 0; i < 2; i++)
+            if (in_box(x, y, pill_x(i), DELETE_PILL_Y, PILL_W, PILL_H)) ctl = i ? UI_CTL_DEL_DELETE : UI_CTL_DEL_KEEP;
         break;
     case UI_PAGE_CLOCK:
         if (v->clock_why == UI_CLOCK_OK && x >= CLOCK_PILL_X && x < CLOCK_PILL_X + CLOCK_PILL_W && y >= CLOCK_PILL_Y &&

@@ -8,6 +8,16 @@
 
 #define LINE_H 11
 
+void ui_fmt_away(uint64_t s, bool largest_only, char *out, size_t cap)
+{
+    static const struct { uint64_t secs; char unit; } U[] = { { 86400, 'd' }, { 3600, 'h' }, { 60, 'm' }, { 1, 's' } };
+    int i = 0;
+    while (i < 3 && s < U[i].secs) i++;
+    unsigned long long a = s / U[i].secs, b = i < 3 ? s % U[i].secs / U[i + 1].secs : 0;
+    if (largest_only || b == 0) snprintf(out, cap, "%llu%c", a, U[i].unit);
+    else snprintf(out, cap, "%llu%c %llu%c", a, U[i].unit, b, U[i + 1].unit);
+}
+
 typedef struct { uint16_t bg, ink, ghost, soft; } colors_t;
 
 static colors_t colors(const ui_palette_t *p)

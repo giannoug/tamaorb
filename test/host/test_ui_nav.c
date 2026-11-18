@@ -195,21 +195,31 @@ static void test_pages_and_back(void)
     TEST_ASSERT_EQUAL(UI_PAGE_TZ_REGION, nav.view.page);
 }
 
-// ---- ROM picker pages ----
-static const ui_rom_row_t ROMS[2] = { { "P1", "Gen 1 - tama.bin" }, { "P2", "Gen 2 - tamag2.bin" } };
+// ---- Pets, the New pet list and the first-start picker ----
+static const ui_rom_row_t ROMS[3] = { { "P1", "Gen 1 - tama.bin", "tama.bin", true },
+                                      { "Angel", "tamaang.bin", "tamaang.bin", true },
+                                      { "Mothra", "not on the SD card", "tamamot.bin", false } };
+static const ui_pet_row_t PETS[3] = { { "P1 #1", "Gen 1 - 3 yr - now", "Gen 1 - 3 yr", "running now", true },
+                                      { "Angel #1", "Angel - 1 yr - 5h", "Angel - 1 yr", "away 5h 2m", true },
+                                      { "P2 #1", "Gen 2 - egg - 3d", "Gen 2 - egg", "away 3d 4h", false } };
 
-// What ui_task does when the ROM page opens: fill the rows.
-static void load_roms(int count, int current)
+// What ui_task does when the pages open: fill the rows.
+static void load_roms(int count)
 {
     nav.view.roms = ROMS;
     nav.view.rom_count = count;
-    nav.view.rom_current = current;
 }
-static void open_roms(bool from_pet, int current)
+static void load_pets(int count, int current)
 {
-    if (from_pet) ui_nav_open_roms(&nav, true);
-    else open_page(UI_ROW_ROM);
-    load_roms(2, current);
+    nav.view.pets = PETS;
+    nav.view.pet_count = count;
+    nav.view.pet_current = current;
+}
+static void open_pets(bool from_pet)
+{
+    if (from_pet) ui_nav_open_pets(&nav, true);
+    else open_page(UI_ROW_PETS);
+    load_pets(3, 0);
 }
 static bool find_any_ctl(int ctl, int *x, int *y)
 {
@@ -218,75 +228,144 @@ static bool find_any_ctl(int ctl, int *x, int *y)
             if (ui_menu_control_at(&nav.view, xx, yy, NULL) == ctl) { *x = xx + 4; *y = yy + 4; return true; }
     return false;
 }
+static ui_act_t tap_ctl(int ctl)
+{
+    int x, y;
+    TEST_ASSERT_TRUE_MESSAGE(find_any_ctl(ctl, &x, &y), "control not on this page");
+    return tap(x, y);
+}
+// Pets list -> "+ New pet" (the row after the pets) -> the ROM list, loaded.
+static void open_new_pet(void)
+{
+    open_pets(false);
+    tap_row(3);
+    load_roms(3);
+}
 
-static void test_settings_rom_row_opens_page(void)
+static void test_settings_pets_row_opens_pets(void)
 {
     to_menu();
-    int y = row_y(UI_ROW_ROM);
-    TEST_ASSERT_TRUE(y >= 0);
-    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, y));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(UI_ROW_PETS)));
     TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
+    TEST_ASSERT_EQUAL(UI_PAGE_PETS, nav.view.page);
+    TEST_ASSERT_NULL(nav.view.pets);
+    TEST_ASSERT_FALSE(nav.pets_from_pet);
+    load_pets(3, 0);
+    TEST_ASSERT_EQUAL(4, ui_menu_row_count(&nav.view));  // three pets and "+ New pet"
+}
+
+static void test_pets_tap_opens_sheet(void)
+{
+    open_pets(false);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(1)));
+    TEST_ASSERT_EQUAL(UI_PAGE_PET_SHEET, nav.view.page);
+    TEST_ASSERT_EQUAL(1, nav.view.pet_pick);
+    TEST_ASSERT_TRUE(nav.view.pets == PETS);
+}
+
+static void test_sheet_switch_acts(void)
+{
+    open_pets(false);
+    tap(120, row_y(1));
+    TEST_ASSERT_EQUAL(UI_ACT_PET_SWITCH, tap_ctl(UI_CTL_PET_SWITCH));
+    TEST_ASSERT_EQUAL(1, nav.view.pet_pick);
+}
+
+static void test_sheet_rom_missing_has_no_switch(void)
+{
+    open_pets(false);
+    tap(120, row_y(2));  // P2 #1: its ROM is not on the card
+    int x, y;
+    TEST_ASSERT_FALSE(find_any_ctl(UI_CTL_PET_SWITCH, &x, &y));
+    TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_PET_CANCEL, &x, &y));
+    TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_PET_DELETE, &x, &y));
+}
+
+static void test_sheet_running_has_no_switch_or_delete(void)
+{
+    open_pets(false);
+    tap(120, row_y(0));
+    TEST_ASSERT_EQUAL(UI_PAGE_PET_SHEET, nav.view.page);
+    int x, y;
+    TEST_ASSERT_FALSE(find_any_ctl(UI_CTL_PET_SWITCH, &x, &y));
+    TEST_ASSERT_FALSE(find_any_ctl(UI_CTL_PET_DELETE, &x, &y));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap_ctl(UI_CTL_PET_CANCEL));  // Close
+    TEST_ASSERT_EQUAL(UI_PAGE_PETS, nav.view.page);
+}
+
+static void test_sheet_delete_then_keep_returns_to_sheet(void)
+{
+    open_pets(false);
+    tap(120, row_y(1));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap_ctl(UI_CTL_PET_DELETE));
+    TEST_ASSERT_EQUAL(UI_PAGE_PET_DELETE, nav.view.page);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap_ctl(UI_CTL_DEL_KEEP));
+    TEST_ASSERT_EQUAL(UI_PAGE_PET_SHEET, nav.view.page);
+    TEST_ASSERT_EQUAL(1, nav.view.pet_pick);
+    tap_ctl(UI_CTL_PET_DELETE);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, step(UI_G_NONE, 0, 0, 0, 0, true));  // BOOT: back to the sheet too
+    TEST_ASSERT_EQUAL(UI_PAGE_PET_SHEET, nav.view.page);
+}
+
+static void test_delete_confirm_acts(void)
+{
+    open_pets(false);
+    tap(120, row_y(2));
+    tap_ctl(UI_CTL_PET_DELETE);
+    TEST_ASSERT_EQUAL(UI_ACT_PET_DELETE, tap_ctl(UI_CTL_DEL_DELETE));
+    TEST_ASSERT_EQUAL(2, nav.view.pet_pick);
+}
+
+static void test_new_pet_row_opens_rom_list(void)
+{
+    open_pets(false);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(3)));
     TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
     TEST_ASSERT_NULL(nav.view.roms);
-    TEST_ASSERT_FALSE(nav.rom_from_pet);
     TEST_ASSERT_FALSE(nav.view.rom_first);
+    TEST_ASSERT_TRUE(nav.view.pets == PETS);  // still there for the way back
 }
 
-static void test_tap_current_closes(void)
+static void test_rom_disabled_row_ignored(void)
 {
-    open_roms(false, 0);
-    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(0)));
-    TEST_ASSERT_EQUAL(UI_SCREEN_PET, nav.screen);
-    TEST_ASSERT_NULL(nav.view.roms);
+    open_new_pet();
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(120, row_y(2)));  // Mothra: not on the card
+    TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
 }
 
-static void test_tap_other_confirms(void)
+static void test_new_confirm_start_acts(void)
 {
-    open_roms(false, 0);
+    open_new_pet();
     TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(1)));
-    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
     TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
     TEST_ASSERT_EQUAL(1, nav.view.rom_pick);
-    TEST_ASSERT_TRUE(nav.view.roms == ROMS);
-    TEST_ASSERT_EQUAL(2, nav.view.rom_count);
-}
-
-static void test_confirm_cancel_and_switch(void)
-{
-    open_roms(false, 0);
-    tap(120, row_y(1));
-    int x, y;
-    TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_ROM_CANCEL, &x, &y));
-    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(x, y));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap_ctl(UI_CTL_NEW_CANCEL));
     TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
     tap(120, row_y(1));
-    TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_ROM_SWITCH, &x, &y));
-    TEST_ASSERT_EQUAL(UI_ACT_ROM_SWITCH, tap(x, y));
+    TEST_ASSERT_EQUAL(UI_ACT_PET_NEW, tap_ctl(UI_CTL_NEW_START));
     TEST_ASSERT_EQUAL(1, nav.view.rom_pick);
 }
 
-static void test_confirm_boot_and_swipe_return_to_list(void)
+static void test_new_confirm_boot_and_swipe_return_to_list(void)
 {
-    open_roms(true, 0);
+    open_new_pet();
     tap(120, row_y(1));
     TEST_ASSERT_EQUAL(UI_ACT_REDRAW, step(UI_G_NONE, 0, 0, 0, 0, true));
-    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
     TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
     tap(120, row_y(1));
     TEST_ASSERT_EQUAL(UI_ACT_REDRAW, step(UI_G_SWIPE_DOWN, 120, 0, 0, 80, false));
-    TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
     TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
-    // a drag across the Switch pill neither switches nor edits a setting
+    // a drag across the Start pill starts nothing
     tap(120, row_y(1));
     int x, y;
-    TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_ROM_SWITCH, &x, &y));
+    TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_NEW_START, &x, &y));
     TEST_ASSERT_EQUAL(UI_ACT_NONE, drag_from(x, y, x + 2, y, 0, true));
     TEST_ASSERT_EQUAL(UI_ACT_NONE, drag_from(x, y, x + 6, y, 0, false));
     TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
 }
 
-// Review finding: the Switch pill overlaps where a lower list row sat, so a double tap on that row must not
-// switch pets: the confirm page ignores its pills for UI_CONFIRM_GUARD_MS after it opens.
+// Review finding (kept): a confirm's pills ignore taps for UI_CONFIRM_GUARD_MS after it opens, so the second
+// half of a double tap on a list row that lies where a pill appears can't act.
 static ui_act_t tap_at_ms(int x, int y, uint32_t t_ms)
 {
     ui_gevent_t ev = { UI_G_TAP, (int16_t)x, (int16_t)y, 0, 0, false, (int16_t)x, (int16_t)y, true };
@@ -296,54 +375,89 @@ static ui_act_t tap_at_ms(int x, int y, uint32_t t_ms)
 
 static void test_confirm_ignores_quick_second_tap(void)
 {
-    static const ui_rom_row_t THREE[3] = { { "P1", "Gen 1 - a.bin" }, { "P2", "Gen 2 - b.bin" }, { "P2", "Gen 2 - c.bin" } };
-    ui_nav_open_roms(&nav, true);
-    nav.view.roms = THREE;
-    nav.view.rom_count = 3;
-    nav.view.rom_current = 0;
-    // a point that is on row 2 of the list and on the Switch pill of the confirm page
-    int px = -1, py = -1;
+    static const ui_pet_row_t FOUR[4] = { { "A", "s", "m", "now", true }, { "B", "s", "m", "a", true },
+                                          { "C", "s", "m", "a", true }, { "D", "s", "m", "a", true } };
+    ui_nav_open_pets(&nav, true);
+    nav.view.pets = FOUR;
+    nav.view.pet_count = 4;
+    nav.view.pet_current = 0;
+    // a point that is on a list row and on the sheet's Switch pill
+    int px = -1, py = -1, row = -1;
     for (int y = 0; y < UI_H && px < 0; y++)
         for (int x = 0; x < UI_W && px < 0; x++) {
-            nav.view.page = UI_PAGE_ROM_CONFIRM;
-            bool on_pill = ui_menu_control_at(&nav.view, x, y, NULL) == UI_CTL_ROM_SWITCH;
-            nav.view.page = UI_PAGE_ROM;
-            if (on_pill && ui_menu_row_at(&nav.view, x, y) == 2) { px = x; py = y; }
+            int r;
+            nav.view.page = UI_PAGE_PETS;
+            r = ui_menu_row_at(&nav.view, x, y);
+            if (r < 1 || r > 3) continue;
+            nav.view.page = UI_PAGE_PET_SHEET;
+            nav.view.pet_pick = r;
+            if (ui_menu_control_at(&nav.view, x, y, NULL) == UI_CTL_PET_SWITCH) { px = x; py = y; row = r; }
         }
-    TEST_ASSERT_TRUE_MESSAGE(px >= 0, "row 2 and the Switch pill no longer overlap");
+    nav.view.page = UI_PAGE_PETS;
+    TEST_ASSERT_TRUE_MESSAGE(px >= 0, "no list row lies under the Switch pill");
     const uint32_t t0 = 50000;
-    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap_at_ms(px, py, t0));          // first tap: the confirm page
-    TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap_at_ms(px, py, t0));          // first tap: the sheet
+    TEST_ASSERT_EQUAL(UI_PAGE_PET_SHEET, nav.view.page);
+    TEST_ASSERT_EQUAL(row, nav.view.pet_pick);
     TEST_ASSERT_EQUAL(UI_ACT_NONE, tap_at_ms(px, py, t0 + 250));      // the double tap's second half
     TEST_ASSERT_EQUAL(UI_ACT_NONE, tap_at_ms(px, py, t0 + UI_CONFIRM_GUARD_MS - 1));
-    TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
-    TEST_ASSERT_EQUAL(UI_ACT_ROM_SWITCH, tap_at_ms(px, py, t0 + UI_CONFIRM_GUARD_MS));  // a deliberate tap
+    TEST_ASSERT_EQUAL(UI_ACT_PET_SWITCH, tap_at_ms(px, py, t0 + UI_CONFIRM_GUARD_MS));
 }
 
-static void test_rom_back(void)
+static void test_pets_back(void)
 {
-    open_roms(false, 0);
+    open_pets(false);
     TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));
     TEST_ASSERT_EQUAL(UI_SCREEN_MENU, nav.screen);
     TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
     ui_nav_init(&nav);
-    open_roms(true, 0);
-    TEST_ASSERT_TRUE(nav.rom_from_pet);
+    open_pets(true);
+    TEST_ASSERT_TRUE(nav.pets_from_pet);
     TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));
     TEST_ASSERT_EQUAL(UI_SCREEN_PET, nav.screen);
-    open_roms(false, 0);
+    open_pets(false);
     step(UI_G_NONE, 0, 0, 0, 0, true);
     TEST_ASSERT_EQUAL(UI_SCREEN_PET, nav.screen);
-    open_roms(false, 0);
-    step(UI_G_SWIPE_DOWN, 120, 0, 0, 80, false);
-    TEST_ASSERT_EQUAL(UI_SCREEN_PET, nav.screen);
+    // the New pet list's back returns to the Pets list; the sheet's too
+    open_new_pet();
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));
+    TEST_ASSERT_EQUAL(UI_PAGE_PETS, nav.view.page);
+    tap(120, row_y(1));
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));
+    TEST_ASSERT_EQUAL(UI_PAGE_PETS, nav.view.page);
 }
 
-static void test_rom_first_start(void)
+static void test_back_from_sheet_keeps_scroll(void)
 {
-    ui_nav_open_roms(&nav, false);
+    static const ui_pet_row_t MANY[8] = { { "A", "s", "m", "now", true }, { "B", "s", "m", "a", true },
+                                          { "C", "s", "m", "a", true }, { "D", "s", "m", "a", true },
+                                          { "E", "s", "m", "a", true }, { "F", "s", "m", "a", true },
+                                          { "G", "s", "m", "a", true }, { "H", "s", "m", "a", true } };
+    for (int how = 0; how < 3; how++) {
+        ui_nav_init(&nav);
+        ui_nav_open_pets(&nav, true);
+        nav.view.pets = MANY;
+        nav.view.pet_count = 8;
+        nav.view.pet_current = 0;
+        int y = row_y(7);
+        TEST_ASSERT_TRUE(y >= 0);
+        const int scrolled = nav.view.scroll;
+        TEST_ASSERT_GREATER_THAN(0, scrolled);
+        tap(120, y);
+        TEST_ASSERT_EQUAL(UI_PAGE_PET_SHEET, nav.view.page);
+        if (how == 0) tap_ctl(UI_CTL_PET_CANCEL);
+        else if (how == 1) step(UI_G_NONE, 0, 0, 0, 0, true);
+        else step(UI_G_SWIPE_DOWN, 120, 10, 0, 80, false);
+        TEST_ASSERT_EQUAL(UI_PAGE_PETS, nav.view.page);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(scrolled, nav.view.scroll, how == 0 ? "Cancel" : how == 1 ? "BOOT" : "swipe");
+    }
+}
+
+static void test_first_start_picker_unchanged(void)
+{
+    ui_nav_open_roms(&nav);
     nav.view.rom_first = true;
-    load_roms(2, -1);
+    load_roms(2);
     TEST_ASSERT_EQUAL(UI_ACT_NONE, step(UI_G_NONE, 0, 0, 0, 0, true));
     TEST_ASSERT_EQUAL(UI_ACT_NONE, step(UI_G_SWIPE_DOWN, 120, 0, 0, 80, false));
     TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(120, 5));
@@ -354,22 +468,11 @@ static void test_rom_first_start(void)
     TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);  // no confirm page
 }
 
-static void test_rom_current_unlisted(void)
+static void test_pets_page_empty(void)
 {
-    open_roms(false, -1);
-    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(0)));
-    TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
-    TEST_ASSERT_EQUAL(0, nav.view.rom_pick);
-}
-
-static void test_rom_page_empty(void)
-{
-    open_page(UI_ROW_ROM);
-    for (int y = 0; y < UI_H; y += 4)  // not loaded yet: nothing to tap below the header
-        if (y >= 30) TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(120, y));
-    load_roms(0, -1);
-    for (int y = 30; y < UI_H; y += 4) TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(120, y));
-    TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
+    open_page(UI_ROW_PETS);
+    for (int y = 30; y < UI_H; y += 4) TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(120, y));  // not loaded yet
+    TEST_ASSERT_EQUAL(UI_PAGE_PETS, nav.view.page);
     TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));
     TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
 }
@@ -487,6 +590,7 @@ static void test_drag_never_taps(void)
     ui_act_t a = drag(120, 120, 30);
     TEST_ASSERT_NOT_EQUAL(UI_ACT_SETTINGS, a);
     TEST_ASSERT_NOT_EQUAL(UI_ACT_ROM_SWITCH, a);
+    TEST_ASSERT_NOT_EQUAL(UI_ACT_PET_SWITCH, a);
     TEST_ASSERT_NOT_EQUAL(UI_PAGE_ROM, nav.view.page);
 }
 
@@ -608,42 +712,10 @@ static void test_clock_screen_off_lands_on_pet(void)
     TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
 }
 
-// Review finding: leaving the Switch page (Cancel, BOOT, swipe down) returns to the list where it was scrolled.
-static void test_rom_confirm_cancel_keeps_scroll(void)
-{
-    static const ui_rom_row_t MANY[8] = { { "P1", "Gen 1 - a.bin" }, { "P2", "Gen 2 - b.bin" }, { "P1", "Gen 1 - c.bin" },
-                                          { "P2", "Gen 2 - d.bin" }, { "P1", "Gen 1 - e.bin" }, { "P2", "Gen 2 - f.bin" },
-                                          { "P1", "Gen 1 - g.bin" }, { "P2", "Gen 2 - h.bin" } };
-    for (int how = 0; how < 3; how++) {
-        ui_nav_init(&nav);
-        ui_nav_open_roms(&nav, true);
-        nav.view.roms = MANY;
-        nav.view.rom_count = 8;
-        nav.view.rom_current = 0;
-        int y = row_y(7);  // scrolls the list down to the last row
-        TEST_ASSERT_TRUE(y >= 0);
-        const int scrolled = nav.view.scroll;
-        TEST_ASSERT_GREATER_THAN(0, scrolled);
-        tap(120, y);
-        TEST_ASSERT_EQUAL(UI_PAGE_ROM_CONFIRM, nav.view.page);
-        if (how == 0) {
-            int x, py;
-            TEST_ASSERT_TRUE(find_any_ctl(UI_CTL_ROM_CANCEL, &x, &py));
-            tap(x, py);
-        } else if (how == 1) {
-            step(UI_G_NONE, 0, 0, 0, 0, true);                // BOOT short press
-        } else {
-            step(UI_G_SWIPE_DOWN, 120, 10, 0, 80, false);
-        }
-        TEST_ASSERT_EQUAL(UI_PAGE_ROM, nav.view.page);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(scrolled, nav.view.scroll, how == 0 ? "Cancel" : how == 1 ? "BOOT" : "swipe");
-    }
-}
 
 int main(void)
 {
     UNITY_BEGIN();
-    RUN_TEST(test_rom_confirm_cancel_keeps_scroll);
     RUN_TEST(test_clock_row_opens_page);
     RUN_TEST(test_clock_back_returns_to_list);
     RUN_TEST(test_clock_set_opens_confirm_with_ball_time);
@@ -653,16 +725,22 @@ int main(void)
     RUN_TEST(test_clock_screen_off_lands_on_pet);
     RUN_TEST(test_transitions);
     RUN_TEST(test_pages_and_back);
-    RUN_TEST(test_settings_rom_row_opens_page);
-    RUN_TEST(test_tap_current_closes);
-    RUN_TEST(test_tap_other_confirms);
-    RUN_TEST(test_confirm_cancel_and_switch);
-    RUN_TEST(test_confirm_boot_and_swipe_return_to_list);
+    RUN_TEST(test_settings_pets_row_opens_pets);
+    RUN_TEST(test_pets_tap_opens_sheet);
+    RUN_TEST(test_sheet_switch_acts);
+    RUN_TEST(test_sheet_rom_missing_has_no_switch);
+    RUN_TEST(test_sheet_running_has_no_switch_or_delete);
+    RUN_TEST(test_sheet_delete_then_keep_returns_to_sheet);
+    RUN_TEST(test_delete_confirm_acts);
+    RUN_TEST(test_new_pet_row_opens_rom_list);
+    RUN_TEST(test_rom_disabled_row_ignored);
+    RUN_TEST(test_new_confirm_start_acts);
+    RUN_TEST(test_new_confirm_boot_and_swipe_return_to_list);
     RUN_TEST(test_confirm_ignores_quick_second_tap);
-    RUN_TEST(test_rom_back);
-    RUN_TEST(test_rom_first_start);
-    RUN_TEST(test_rom_current_unlisted);
-    RUN_TEST(test_rom_page_empty);
+    RUN_TEST(test_pets_back);
+    RUN_TEST(test_back_from_sheet_keeps_scroll);
+    RUN_TEST(test_first_start_picker_unchanged);
+    RUN_TEST(test_pets_page_empty);
     RUN_TEST(test_edit_changes_only_touched_key);
     RUN_TEST(test_mute_toggle_keeps_volume);
     RUN_TEST(test_dim_slider_snaps);
