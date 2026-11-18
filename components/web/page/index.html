@@ -159,7 +159,7 @@ dialog h2{font-size:19px}
 </section>
 
 <section class="card" aria-labelledby="h-pets">
-  <div class="cardhead"><h2 id="h-pets">Pets</h2><div class="hint">ROMs on the SD card. Add or remove them over USB.</div></div>
+  <div class="cardhead"><h2 id="h-pets">Pets</h2><div class="hint">Pets on this ball. Add ROMs to the SD card over USB.</div></div>
   <div id="pets" style="display:flex;flex-direction:column;gap:12px"><div class="muted">Loading…</div></div>
   <input type="file" id="file" accept=".sav,application/octet-stream" hidden>
 </section>
@@ -312,7 +312,7 @@ var MSG={
   palette:'Not a known palette',tz:'Not a known time zone or POSIX string',muted:'Must be on or off',agent_feedback:'Not a known choice',ssid:'Enter a network name (up to 32 characters)',password:'8 to 63 characters, or empty'
 };
 var ZONES=[];
-var runName='',S=null,good=null,st=null,pets=[],confirmSha=null,restartPending=false;
+var runName='',S=null,good=null,st=null,pets=[],roms=[],confirmId=null,deleteId=null,renameId=null,renameVal='',newOpen=false,petErr='',restartPending=false;
 var polls=0,fails=0,lost=false,petsAt=0,petsSig='',lastPhase='',cu=null,overlay=false,gerrT=0;
 
 /* ---------- formatting ---------- */
@@ -551,48 +551,106 @@ function loadPets(){
 /* ---------- pets ---------- */
 function icon(d){var s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('width',16);s.setAttribute('height',16);s.setAttribute('viewBox','0 0 16 16');s.setAttribute('fill','none');s.setAttribute('stroke','currentColor');s.setAttribute('stroke-width','1.6');s.setAttribute('aria-hidden','true');var p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',d);s.append(p);return s}
 function renderPets(){
-  var busy=st&&st.phase==='catch-up',act=pets.filter(function(p){return p.active})[0];
+  var busy=st&&st.phase!=='run',act=pets.filter(function(p){return p.active})[0];
   var vm=pets.map(function(p){
     var saved=p.has_save?(clockOk()&&p.save_trusted?'saved '+ago(p.save_unix):'saved, time unknown'):'no save yet';
-    return{p:p,meta:'SHA-1 '+p.sha1.slice(0,8)+'… · '+saved,open:confirmSha===p.sha1,text:confirmText(p,act)};
+    var bits=[p.model];
+    if(p.egg)bits.push('egg');else if(p.age!==null&&p.age!==undefined)bits.push(p.age+' yr');
+    if(!p.active)bits.push(p.has_save&&p.save_trusted&&clockOk()?'away '+span(Math.max(0,nowU()-p.save_unix)):saved);
+    else bits.push('running');
+    if(!p.rom_on_card)bits.push('ROM not on the SD card');
+    return{p:p,meta:bits.join(' · '),open:confirmId===p.id,del:deleteId===p.id,ren:renameId===p.id,text:confirmText(p,act)};
   });
-  var sig=JSON.stringify([vm.map(function(v){return[v.p.sha1,v.p.name,v.p.model,v.p.active,v.p.has_save,v.meta,v.open,v.text]}),busy]);
+  var sig=JSON.stringify([vm.map(function(v){return[v.p.id,v.p.name,v.p.active,v.p.has_save,v.meta,v.open,v.del,v.ren]}),busy,newOpen,roms.length,petErr]);
   if(sig===petsSig)return;
   petsSig=sig;
   var box=$('pets'),focus=document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.f;
   box.replaceChildren();
-  if(!vm.length)box.append(h('div',{class:'muted'},'No ROMs found on the SD card.'));
+  if(!vm.length)box.append(h('div',{class:'muted'},'No pets yet.'));
   vm.forEach(function(v){
     var p=v.p;
-    box.append(h('div',{class:'petrow'+(v.open?' open':'')},
-      h('div',{class:'pettop'},
-        h('div',{class:'petid'},h('div',{class:'disc'},p.model==='unknown'?'?':p.model),
-          h('div',null,h('div',{class:'petname'},h('b',null,p.name),p.active&&h('span',{class:'badge'},'On the ball')),h('div',{class:'hint'},v.meta))),
-        h('div',{class:'btns'},
-          !p.active&&h('button',{type:'button',class:'btn primary','data-f':'sw'+p.sha1,disabled:busy,onclick:function(){confirmSha=p.sha1;petsSig='';renderPets()}},'Switch'),
-          p.has_save&&h('a',{class:'btn',href:'/api/pets/'+p.sha1+'/save',download:''},icon('M8 2v8M4.5 7 8 10.5 11.5 7M3 13.5h10'),'Back up save'),
-          h('button',{type:'button',class:'btn',disabled:busy,'data-f':'rs'+p.sha1,onclick:function(){pickRestore(p)}},icon('M8 11V3M4.5 6 8 2.5 11.5 6M3 13.5h10'),'Restore…'))),
-      v.open&&h('div',{class:'banner busy'},h('div',null,v.text),
-        h('div',{class:'btns end',style:'margin-top:10px'},
-          h('button',{type:'button',class:'btn',onclick:function(){confirmSha=null;petsSig='';renderPets()}},'Cancel'),
-          h('button',{type:'button',class:'btn primary',onclick:function(){doSwitch(p)}},'Switch and restart')))));
+    var top=h('div',{class:'pettop'},
+      h('div',{class:'petid'},h('div',{class:'disc'},p.model==='unknown'?'?':p.model.slice(0,2)),
+        h('div',null,h('div',{class:'petname'},h('b',null,p.name),p.active&&h('span',{class:'badge'},'On the ball')),h('div',{class:'hint'},v.meta))),
+      h('div',{class:'btns'},
+        !p.active&&p.rom_on_card&&h('button',{type:'button',class:'btn primary','data-f':'sw'+p.id,disabled:busy,onclick:function(){confirmId=p.id;deleteId=null;petsSig='';renderPets()}},'Switch'),
+        h('button',{type:'button',class:'btn','data-f':'rn'+p.id,onclick:function(){renameId=p.id;renameVal=p.name;petErr='';petsSig='';renderPets();var i=$('rn-in');if(i){i.focus();i.select()}}},'Rename'),
+        p.has_save&&h('a',{class:'btn',href:'/api/pets/'+p.id+'/save',download:''},icon('M8 2v8M4.5 7 8 10.5 11.5 7M3 13.5h10'),'Back up save'),
+        h('button',{type:'button',class:'btn',disabled:busy,'data-f':'rs'+p.id,onclick:function(){pickRestore(p)}},icon('M8 11V3M4.5 6 8 2.5 11.5 6M3 13.5h10'),'Restore…'),
+        !p.active&&h('button',{type:'button',class:'btn','data-f':'dl'+p.id,onclick:function(){deleteId=p.id;confirmId=null;petsSig='';renderPets()}},'Delete…')));
+    var row=h('div',{class:'petrow'+(v.open||v.del||v.ren?' open':'')},top);
+    if(v.ren){
+      var inp=h('input',{type:'text',class:'in',style:'font-family:inherit;flex:1 1 160px',id:'rn-in','data-f':'rni',maxlength:'16',spellcheck:'false',value:renameVal,'aria-label':'New name for '+p.name,oninput:function(e){renameVal=e.target.value},
+        onkeydown:function(e){if(e.key==='Enter')doRename(p);if(e.key==='Escape'){renameId=null;petsSig='';renderPets()}}});
+      row.append(h('div',{class:'btns',style:'align-items:center'},inp,
+        h('button',{type:'button',class:'btn primary',onclick:function(){doRename(p)}},'Save'),
+        h('button',{type:'button',class:'btn',onclick:function(){renameId=null;petErr='';petsSig='';renderPets()}},'Cancel')),
+        h('div',{class:'hint'},'1–16 letters, digits, spaces or punctuation (no accents).'));
+    }
+    if(v.open)row.append(h('div',{class:'banner busy'},h('div',null,v.text),
+      h('div',{class:'btns end',style:'margin-top:10px'},
+        h('button',{type:'button',class:'btn',onclick:function(){confirmId=null;petsSig='';renderPets()}},'Cancel'),
+        h('button',{type:'button',class:'btn primary',onclick:function(){doSwitch(p)}},'Switch and restart'))));
+    if(v.del)row.append(h('div',{class:'banner busy'},h('div',null,'Delete '+p.name+'? Its save is gone for good.'),
+      h('div',{class:'btns end',style:'margin-top:10px'},
+        h('button',{type:'button',class:'btn primary',onclick:function(){deleteId=null;petsSig='';renderPets()}},'Keep'),
+        h('button',{type:'button',class:'btn',onclick:function(){doDelete(p)}},'Delete'))));
+    if((v.ren||v.del)&&petErr)row.append(h('div',{class:'banner err'},petErr));
+    box.append(row);
   });
+  // New pet: a ROM on the card, then a fresh egg; the ball saves the running pet and restarts into it.
+  if(newOpen){
+    var sel=h('select',{class:'in',style:'flex:1 1 200px',id:'np-rom','aria-label':'ROM for the new pet'});
+    roms.forEach(function(r){sel.append(h('option',{value:r.sha1},r.model+' · '+r.file))});
+    box.append(h('div',{class:'petrow open'},
+      h('div',null,h('b',null,'New pet'),h('div',{class:'hint'},roms.length?'Starts as an egg. The ball saves '+(act?act.name:'the running pet')+' and restarts.':'No ROMs on the SD card.')),
+      roms.length>0&&h('div',{class:'btns',style:'align-items:center'},sel,
+        h('button',{type:'button',class:'btn primary',disabled:busy,onclick:function(){doNew($('np-rom').value)}},'Start'),
+        h('button',{type:'button',class:'btn',onclick:function(){newOpen=false;petsSig='';renderPets()}},'Cancel')),
+      petErr&&h('div',{class:'banner err'},petErr)));
+  }else{
+    box.append(h('div',{class:'btns'},h('button',{type:'button',class:'btn','data-f':'np',disabled:busy,onclick:function(){newOpen=true;petErr='';petsSig='';loadRoms()}},'+ New pet')));
+  }
   if(focus){var f=box.querySelector('[data-f="'+focus+'"]');if(f)f.focus()}
 }
+function loadRoms(){
+  return api('GET','/api/roms').then(function(r){if(r.ok&&Array.isArray(r.j))roms=r.j;petsSig='';renderPets()},function(){petsSig='';renderPets()});
+}
 function confirmText(p,act){
-  var m=p.model==='unknown'?p.name:p.model;
-  var t='Switch to '+m+'? The ball saves '+(act?(act.model==='unknown'?act.name:act.model):'the current pet')+' and restarts';
+  var t='Switch to '+p.name+'? The ball saves '+(act?act.name:'the current pet')+' and restarts';
   if(p.has_save&&p.save_trusted&&clockOk()){
     var age=Math.max(0,nowU()-p.save_unix);
-    return t+', then catches '+m+' up on the '+span(age)+' since its last save. That takes '+est(age)+', and the ball can’t be played meanwhile.';
+    if(age>=60)return t+'. '+p.name+' was away '+span(age)+': on the ball you then choose whether it lives through that time (about '+est(age).replace('about ','')+') or picks up where it left off.';
   }
-  return t+' into '+m+'.';
+  return t+' into '+p.name+'.';
 }
 function doSwitch(p){
-  confirmSha=null;petsSig='';renderPets();
-  api('POST','/api/pets/switch',{name:p.name}).then(function(r){
+  confirmId=null;petsSig='';renderPets();
+  api('POST','/api/pets/switch',{id:p.id}).then(function(r){
     if(r.ok)restarting();else gerr('Couldn’t switch pets: '+whyText(r)+'.');
   },function(){gerr('Couldn’t reach the ball to switch pets.')});
+}
+function doRename(p){
+  var name=renameVal.trim();
+  api('PATCH','/api/pets/'+p.id,{name:name}).then(function(r){
+    if(r.ok){renameId=null;petErr='';loadPets();return}
+    petErr=r.status===409&&r.j&&r.j.error==='taken'?'Another pet already has that name.':r.j&&r.j.key==='name'?'Use 1–16 plain characters, without spaces at the ends.':'Couldn’t rename: '+whyText(r)+'.';
+    petsSig='';renderPets();
+  },function(){petErr='Couldn’t reach the ball.';petsSig='';renderPets()});
+}
+function doDelete(p){
+  api('DELETE','/api/pets/'+p.id).then(function(r){
+    if(r.ok){deleteId=null;petErr='';loadPets();return}
+    petErr=r.status===409?'That pet is running; switch away first.':'Couldn’t delete: '+whyText(r)+'.';
+    petsSig='';renderPets();
+  },function(){petErr='Couldn’t reach the ball.';petsSig='';renderPets()});
+}
+function doNew(sha){
+  api('POST','/api/pets',{rom:sha}).then(function(r){
+    if(r.ok){newOpen=false;restarting();return}
+    petErr=r.status===409&&r.j&&r.j.error==='full'?'Ten pets of that ROM already, or the ball’s storage is full.':'Couldn’t start a new pet: '+whyText(r)+'.';
+    petsSig='';renderPets();
+  },function(){petErr='Couldn’t reach the ball.';petsSig='';renderPets()});
 }
 
 /* ---------- restore ---------- */
@@ -610,9 +668,9 @@ $('file').addEventListener('change',function(){
   },function(){gerr('Couldn’t read that file.')});
 });
 function openRestore(p,f,t,trusted){
-  var m=p.model==='unknown'?p.name:p.model,mode='frozen',known=clockOk()&&trusted&&t>0,age=known?Math.max(0,nowU()-t):0;
+  var m=p.name,mode='frozen',known=clockOk()&&trusted&&t>0,age=known?Math.max(0,nowU()-t):0;
   $('rd-t').textContent='Restore '+m+'’s save';
-  $('rd-s').textContent=p.active?'This replaces the '+m+' pet on the ball. The ball restarts into it.':'This replaces the saved '+m+' pet. The ball keeps running its current pet.';
+  $('rd-s').textContent=p.active?'This replaces '+m+' on the ball. The ball restarts into it.':'This replaces '+m+'’s save. The ball keeps running its current pet.';
   $('rd-f').textContent=f.name;
   $('rd-m').textContent=t>0?'Saved '+dateStr(t)+(known?' · '+ago(t):trusted?'':' · clock was not synced'):'No save time';
   $('rd-l').textContent=known?'What about the '+span(age)+' since this save?':'What about the time since this save?';
@@ -632,7 +690,7 @@ function openRestore(p,f,t,trusted){
   var ok=$('rd-ok');ok.disabled=false;
   ok.onclick=function(){
     ok.disabled=true;
-    f.arrayBuffer().then(function(buf){return api('PUT','/api/pets/'+p.sha1+'/save?mode='+mode,buf,true)}).then(function(r){
+    f.arrayBuffer().then(function(buf){return api('PUT','/api/pets/'+p.id+'/save?mode='+mode,buf,true)}).then(function(r){
       if(r.ok){$('rd').close();if(r.j.restarting)restarting();else{loadPets();gerr('');}return}
       ok.disabled=false;
       var k=r.j&&r.j.key,RM={record:'That file isn’t a valid TamaOrb save.',rom:'That save belongs to a different ROM.',model:'That save is for a different model.',pet:'That save isn’t for this pet.',state:'This firmware can’t use that save.',mode:'Pick one of the two options.'};
