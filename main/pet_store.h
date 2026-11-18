@@ -31,13 +31,16 @@ esp_err_t pet_store_init(void);                      // after rom_store_init; no
 int       pet_store_list(pet_info_t *out, int max);
 bool      pet_store_active(pet_ref_t *out);          // false: none recorded
 esp_err_t pet_store_set_active(const pet_ref_t *p);
-bool      pet_store_take_prev(pet_ref_t *out);       // reads and erases the "prev" record (Back after a switch)
+bool      pet_store_prev(pet_ref_t *out);            // the "prev" record (Back after a switch); false: none
 esp_err_t pet_store_set_prev(const pet_ref_t *p);
+void      pet_store_clear_prev(void);
 // The stored name, else an automatic one (stored). ESP_ERR_NOT_FOUND: no such pet (it is never created here).
+// A few answers are cached (status polls ask every few seconds); creating, renaming and deleting clear them.
 esp_err_t pet_store_name(const pet_ref_t *p, char out[PS_NAME_MAX + 1]);
 // A new pet of that ROM (lowest free number, automatic name). ESP_ERR_NO_MEM: all ten used, or NVS is full.
 esp_err_t pet_store_create(const uint8_t sha1[20], tc_model_t m, pet_ref_t *out);
 // ESP_ERR_INVALID_ARG: not a valid name; ESP_ERR_INVALID_STATE: another pet has it; ESP_ERR_NOT_FOUND: no such pet.
+// Writes nothing unless it succeeds.
 esp_err_t pet_store_rename(const pet_ref_t *p, const char *name);
 // Erases the saves, then the name. ESP_ERR_INVALID_STATE for the running pet; ESP_ERR_NOT_FOUND: no such pet.
 esp_err_t pet_store_delete(const pet_ref_t *p);

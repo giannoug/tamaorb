@@ -13,7 +13,7 @@ bool emu_init(const uint16_t *program);  // tama_core init; restore a save betwe
 // EMU_WAIT for emu_answer (Resume: no replay, saved at once with the current time, then the pet clock is set;
 // Fast-forward: the replay).
 void emu_start(uint64_t catchup_s, int64_t saved_unix, bool saved_trusted, bool ask);
-bool emu_answer(emu_answer_t a);   // any task; false unless EMU_WAIT
+bool emu_answer(emu_answer_t a);   // any task; false unless EMU_WAIT, or when answered already (the first answer wins)
 // Any task; false unless EMU_CATCHUP. The replay stops at its next callback; the pet goes on from there, saved
 // with the current time, and its clock is set.
 bool emu_skip(void);

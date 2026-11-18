@@ -168,7 +168,7 @@ static rm_err_t switch_err(esp_err_t e)
     switch (e) {
     case ESP_OK: return RM_OK;
     case ESP_ERR_NOT_FOUND: return RM_ERR_NOTFOUND;
-    case ESP_ERR_INVALID_STATE: return RM_ERR_CATCHUP;
+    case ESP_ERR_INVALID_STATE: return emu_phase() == EMU_WAIT ? RM_ERR_WAITING : RM_ERR_CATCHUP;
     case ESP_ERR_NOT_ALLOWED: return RM_ERR_BUSY;
     case ESP_ERR_NO_MEM: return RM_ERR_FULL;
     default: return RM_ERR_IO;

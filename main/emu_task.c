@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Emulator task: runs tamalib in real time on core 1.
 #include "emu_task.h"
+#include <stdatomic.h>
 #include "board.h"
 #include "press_task.h"
 #include "pet_clock.h"
+#include "rom_switch.h"
 #include "saver.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -62,7 +64,7 @@ static volatile emu_phase_t s_phase = EMU_BOOT;
 static uint64_t s_catchup_s;
 static bool s_ask;
 static TaskHandle_t s_task;
-static volatile int s_answer = -1;      // emu_answer_t, -1 none yet
+static atomic_int s_answer = -1;        // emu_answer_t, -1 none yet; set once
 static volatile bool s_skip;
 static int64_t s_saved_unix;
 static bool s_saved_trusted;
@@ -103,7 +105,8 @@ static bool catchup_cb(uint64_t done_ticks, uint64_t total_ticks, void *ctx)
 bool emu_answer(emu_answer_t a)
 {
     if (s_phase != EMU_WAIT || !s_task) return false;
-    s_answer = (int)a;
+    int none = -1;
+    if (!atomic_compare_exchange_strong(&s_answer, &none, (int)a)) return false;  // answered already: that one stands
     xTaskNotifyGive(s_task);
     return true;
 }
@@ -123,11 +126,13 @@ static void wait_for_answer(void)
     s_phase = EMU_WAIT;
     ESP_LOGI(TAG, "away %llu s: waiting for Resume or Fast-forward", (unsigned long long)s_catchup_s);
     int64_t t0 = esp_timer_get_time();
-    while (s_answer < 0) ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    while (atomic_load(&s_answer) < 0) ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    int answer = atomic_load(&s_answer);
     uint64_t waited_s = (uint64_t)(esp_timer_get_time() - t0) / 1000000u;
     ESP_LOGI(TAG, "answer after %llu s: %s", (unsigned long long)waited_s,
-             s_answer == EMU_ANSWER_RESUME ? "resume" : "fast-forward");
-    if (s_answer == EMU_ANSWER_RESUME) {
+             answer == EMU_ANSWER_RESUME ? "resume" : "fast-forward");
+    pet_prev_forget();  // answered: Back is gone, also after a restart
+    if (answer == EMU_ANSWER_RESUME) {
         s_catchup_s = 0;
         tc_resume_now();  // it stood still while asking: go on from now, not race through the wait
         saver_request();  // stamped with the current time at the first loop: the gap isn't counted again

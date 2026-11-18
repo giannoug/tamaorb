@@ -154,7 +154,6 @@ void app_main(void)
     pet_ref_t pet;
     choose_pet(sha1, model, &pet);
     esp_err_t loaded = saver_load(sha1, pet.id, &meta);
-    pet_switch_boot();
     if (loaded == ESP_OK) {
         int64_t now = 0;
         // After deep sleep the RTC ran on its RC oscillator (several % drift): prefer NTP if it comes.
@@ -174,6 +173,7 @@ void app_main(void)
     // A minute or more away: ask Resume or Fast-forward. Less (a restart): fast-forward without asking.
     bool ask = tc_resume_rule(gap_known, gap_s) == TC_RESUME_ASK;
     if (ask) ESP_LOGI(TAG, "away %llu s: asking", (unsigned long long)gap_s);
+    pet_switch_boot(ask);
     press_task_start();
     power_set_awake_hook(net_set_low_latency);  // an open debugger: no light sleep, no Wi-Fi power save
     web_start(remote_ops_init(model, sha1, s_rom, s_rom_len), st.name);  // the same SHA-1 the saver loaded

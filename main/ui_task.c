@@ -335,8 +335,12 @@ static void ui_task(void *arg)
             ui_act_t h = ui_nav_hold(&nav, t.count > 0, t.pt[0].x, t.pt[0].y, now_ms());
             if (h == UI_ACT_FACTORY_RESET) {
                 ESP_LOGW(TAG, "factory reset held");
-                ui_message("Erasing...", "The ball restarts\nlike new.");
-                if (factory_reset_request() == ESP_OK) for (;;) vTaskDelay(pdMS_TO_TICKS(1000));  // until the restart
+                if (factory_reset_request() == ESP_OK) {
+                    ui_message("Erasing...", "The ball restarts\nlike new.");
+                    for (;;) vTaskDelay(pdMS_TO_TICKS(1000));  // until the restart
+                }
+                ui_message("Not erased", "The ball is already\nrestarting. Try again\nafter it.");
+                vTaskDelay(pdMS_TO_TICKS(3000));
                 ui_nav_to_pet(&nav);
             }
             if (h != UI_ACT_NONE && act == UI_ACT_NONE) act = UI_ACT_REDRAW;

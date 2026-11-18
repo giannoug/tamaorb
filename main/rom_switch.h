@@ -14,9 +14,13 @@ bool      app_restart_pending(void);
 // pet 0 (created). Boot and USB pushes use it (spec: "a ROM becomes active with no pet chosen").
 esp_err_t pet_for_rom(const uint8_t sha1[20], tc_model_t m, pet_ref_t *out);
 
-// Boot, once the running pet is known: takes this boot's "previous pet" record (Back after a switch).
-void      pet_switch_boot(void);
-// This boot's Back target, with its name, if the boot followed a switch.
+// Boot, once the running pet is known and whether the question is asked: reads the "previous pet" record (Back
+// after a switch). It stays while the question waits, so a restart asks again with Back; it is erased when the
+// boot doesn't ask, when it names the running pet, or when its ROM is not on the card.
+void      pet_switch_boot(bool asking);
+// The question was answered: Back is gone (the record is erased).
+void      pet_prev_forget(void);
+// This boot's Back target, with its name, while the question waits; false once its pet is deleted.
 bool      pet_prev(pet_ref_t *out, char name[PS_NAME_MAX + 1]);
 
 // Any task, EMU_RUN only. Each draws nothing; on success the ball restarts in 1 s.

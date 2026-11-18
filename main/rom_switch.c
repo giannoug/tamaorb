@@ -51,21 +51,38 @@ esp_err_t pet_for_rom(const uint8_t sha1[20], tc_model_t m, pet_ref_t *out)
 }
 
 static pet_ref_t s_prev;
-static bool s_have_prev;
+static atomic_bool s_have_prev;
 
-void pet_switch_boot(void)
+void pet_switch_boot(bool asking)
 {
-    s_have_prev = pet_store_take_prev(&s_prev);
+    pet_ref_t p;
+    if (!pet_store_prev(&p)) return;
     uint8_t run[20], id;
-    if (s_have_prev && saver_running(run, &id) && id == s_prev.id && !memcmp(run, s_prev.sha1, 20))
-        s_have_prev = false;  // "back" to the pet that is running: nothing to go back to
+    char file[64];
+    bool running = saver_running(run, &id) && id == p.id && !memcmp(run, p.sha1, 20);
+    // Kept while the question waits (a restart asks again, with Back); gone once the pet runs. "Back" to the
+    // running pet, or to a ROM not on the card, could only fail.
+    if (asking && !running && rom_store_find_sd(p.sha1, file)) {
+        s_prev = p;
+        atomic_store(&s_have_prev, true);
+        return;
+    }
+    pet_store_clear_prev();
+}
+
+void pet_prev_forget(void)
+{
+    if (atomic_exchange(&s_have_prev, false)) pet_store_clear_prev();
 }
 
 bool pet_prev(pet_ref_t *out, char name[PS_NAME_MAX + 1])
 {
-    if (!s_have_prev) return false;
+    if (!atomic_load(&s_have_prev)) return false;
     char tmp[PS_NAME_MAX + 1];
-    if (pet_store_name(&s_prev, name ? name : tmp) != ESP_OK) return false;  // deleted meanwhile
+    if (pet_store_name(&s_prev, name ? name : tmp) != ESP_OK) {  // deleted meanwhile
+        pet_prev_forget();
+        return false;
+    }
     *out = s_prev;
     return true;
 }

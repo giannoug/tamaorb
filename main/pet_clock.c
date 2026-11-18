@@ -108,6 +108,10 @@ static void auto_task(void *arg)
         rm_press_defaults(&r);
         r.gap_ms = TC_PET_SETUP_GAP_MS;
         rm_err_t e = rm_press_parse(&r, spec) ? press_run(&r) : RM_ERR_BAD;
+        for (int i = 0; i < 10 && e == RM_ERR_BUSY; i++) {  // an agent's presses: wait for them to finish
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            e = press_run(&r);
+        }
         ESP_LOGI(TAG, "new pet: setup exit \"%s\": %s", spec, e == RM_OK ? "pressed" : "not pressed");
     }
     pet_clock_status_t st = PET_CLOCK_BUSY;
