@@ -1,6 +1,6 @@
 # TamaOrb
 
-Authentic first-generation Tamagotchi emulation for round ESP32-S3 devices. TamaOrb runs the original **P1** and **P2** ROMs on [tamalib](https://github.com/jcrona/tamalib), around the clock, on the SpotPear 1.28" AI Voice Robot Ball (legs, touch and battery). A web panel on the ball handles its settings, and an AI agent can look after the pet through an MCP server that also runs on the ball.
+Authentic first-generation Tamagotchi emulation for round ESP32-S3 devices. TamaOrb runs the original **P1**, **P2**, **Angel** and **Mothra** ROMs on [tamalib](https://github.com/jcrona/tamalib), around the clock, on the SpotPear 1.28" AI Voice Robot Ball (legs, touch and battery). A web panel on the ball handles its settings, and an AI agent can look after the pet through an MCP server that also runs on the ball.
 
 <!-- PHOTO: the ball on a desk, screen on, pet visible (hero image, about 1200 px wide). Save as docs/images/ball.jpg and uncomment:
 ![TamaOrb on its ball](docs/images/ball.jpg)
@@ -15,9 +15,9 @@ Authentic first-generation Tamagotchi emulation for round ESP32-S3 devices. Tama
 - **Runs the real ROM in real time, all the time.** On USB power the screen stays on. On battery it turns off after 30 s, but the pet keeps living.
 - **Saves crash-safely:** 3 s after you press a button, and every 5 minutes. The power button can cut power at any moment without losing the pet.
 - **Catches up after power-offs.** On boot it gets the time over Wi-Fi (NTP) and replays the missed time at about 30x speed, with a progress screen. Without Wi-Fi it resumes where it was saved.
-- **Each ROM keeps its own pet.** A pet on the shelf keeps aging and is caught up when you switch back.
+- **As many pets as you like,** up to ten per ROM. Only the pet on screen lives; the others wait, frozen. When a pet comes back after a minute or more away, the ball asks whether it should live through the missed time (fast-forward) or pick up where it left off (resume). A fast-forward can be stopped partway.
 - **Handles low battery:** it saves, shows a warning, and deep-sleeps until USB is back.
-- **Has a web panel** for status, every setting, Wi-Fi, switching pets, and backing up and restoring saves.
+- **Has a web panel** for status, every setting, Wi-Fi, pets (switch, add, rename, delete), the resume question, and backing up and restoring saves.
 - **Lets an AI agent care for the pet.** The ball serves MCP: the agent reads the screen, presses the buttons and follows a how-to-play guide.
 
 ![The LCD in its three palettes: Classic, Neutral and Night](docs/images/lcd-palettes.png)
@@ -34,6 +34,8 @@ The [SpotPear 1.28" ball](docs/hardware/spotpear-ball-128.md): ESP32-S3 with 16 
 |---|---|---|
 | P1 | 12,288 bytes | `4b4979cf92dc9d2fb6d7295a38f209f3da144f72` |
 | P2 | 12,288 bytes | `09e5101b37636a314fc599d5d69b4846721b3c88` |
+| Angel | 16,384 bytes | `f5899bb7717756ac581451cf16cf97d909961c5c` |
+| Mothra | 16,384 bytes | `74c1f6761724b7cbda8bca3113db78586b786d2d` |
 
 These are the MAME `tama` / `tamag2` sets; MAME zips work directly with the tool below.
 
@@ -46,17 +48,19 @@ These are the MAME `tama` / `tamag2` sets; MAME zips work directly with the tool
 | A / B / C | Tap the left, middle or right button under the pet's screen (anywhere in its part of the strip below it). Touching the pet's screen or the icons above it presses nothing |
 | A + C | Touch A and slide to C, or C to A (the touch chip can't tell two side-by-side fingers apart) |
 | Glance | Swipe down from the top edge. It shows the clock, battery, hunger and happy hearts, a live copy of the pet, what the pet needs, age, weight, discipline and the panel address |
-| Settings | Swipe up from the bottom edge. Tap a row to open it, drag to change a value or scroll the list. Rows: Sound, Brightness, Dimming, Palette, Time zone, Pet clock, ROM, Web panel (a QR code) |
+| Settings | Swipe up from the bottom edge. Tap a row to open it, drag to change a value or scroll the list. Rows: Sound, Brightness, Dimming, Palette, Time zone, Pet clock, Pets, Web panel (a QR code), Factory reset |
 | Back to the pet | Swipe the other way (up from the bottom on the glance, down from the top in settings), or short-press BOOT |
 | Wake the screen | Tap anywhere. The first tap only wakes it, it never presses a button |
 | Screen on/off | Short press BOOT |
-| Switch pet / ROM | Hold BOOT for 2 s (works from any screen), or Settings → ROM: tap a pet, then Switch. Tapping the running pet, a swipe down or a short BOOT press closes the list; back returns to where you opened it (the pet, or the settings list). On the Switch page, Cancel, a swipe down or a short BOOT press returns to the list. At first start with several dumps, tap the pet to start |
+| Pets | Hold BOOT for 2 s (works from any screen), or Settings → Pets. Tap a pet for its sheet: Switch (the ball saves and restarts into it) or Delete… (asks again; not the running pet). "+ New pet" lists the models whose dump is on the card: pick one and Start for a new egg. At first start with several dumps, tap the pet to start |
+| Coming back | A pet that was away a minute or more asks: Resume (no catch-up; its clock is set to the ball's time) or Fast-forward (it lives through the time, at about 75x). After a switch, Back to the previous pet leaves it untouched. While it fast-forwards, Skip → Stop ends the catch-up there and sets its clock |
+| Factory reset | Settings → Factory reset: hold the pill for 3 s. Every pet, setting and Wi-Fi is erased; ROMs on the card stay |
 
 A touch that starts in the outer 24 px of any edge (top, bottom, left or right) never presses a pet button, even if it lifts without swiping, and a sideways swipe does nothing. A press that starts on a button keeps it while the finger moves, even up onto the pet's screen. The pet's hunger, happy, age and the other stats are read from the emulator's RAM; if a stat can't be found reliably for a ROM it is left off, and an unknown ROM shows no stats (addresses in `docs/pet-ram.md`).
 
 Mute and time zone are settings (`muted`, `tz`), so the ball, the web panel, MCP and USB all see the same values. `tz` is an IANA name from the built-in table (`GET /api/timezones` lists them) or a POSIX string; the default is `Etc/UTC`. The glance clock uses it.
 
-**Pet clock.** The pet keeps its own clock (it decides bedtime and wake-up), and it starts wherever the ROM or the save left it. Settings → Pet clock shows the pet's time next to the ball's and sets the pet's clock to the ball's local time (the `tz` setting) when you tap *Set to ball time* and confirm. The same action is on the web panel (Time card), in MCP (`sync_pet_clock`) and over USB (`tamaorb-rom.py clock`). Nothing sets it automatically: after a daylight saving change, set it again. **The pet may wake up or fall asleep, and its age may change**: the ROM checks the clock against the pet's night, so moving an asleep pet into the day wakes it with a birthday, and moving the clock back over 09:00 gives it a second one (the same happens when you set the toy's clock in its own menu; details in `docs/pet-ram.md`). It works for P1 and P2 only, needs internet time, and refuses while the pet's own clock menu is open.
+**Pet clock.** The pet keeps its own clock (it decides bedtime and wake-up), and it starts wherever the ROM or the save left it. Settings → Pet clock shows the pet's time next to the ball's and sets the pet's clock to the ball's local time (the `tz` setting) when you tap *Set to ball time* and confirm. The same action is on the web panel (Time card), in MCP (`sync_pet_clock`) and over USB (`tamaorb-rom.py clock`). Nothing sets it automatically: after a daylight saving change, set it again. **The pet may wake up or fall asleep, and its age may change**: the ROM checks the clock against the pet's night, so moving an asleep pet into the day wakes it with a birthday, and moving the clock back over 09:00 gives it a second one (the same happens when you set the toy's clock in its own menu; details in `docs/pet-ram.md`). It works for all four models, needs internet time, and refuses while the pet's own clock menu is open. Resume, Skip and a new egg also set it automatically (a new egg first leaves the ROM's own clock setup).
 
 ## Build and flash
 
@@ -87,7 +91,7 @@ PlatformIO finds the ball's port by itself. If it picks the wrong one, add `--up
 `tools/tamaorb-rom.py` needs Python 3 and `pip install -r tools/requirements.txt`. It talks to the ball over the flashing cable:
 
 ```bash
-tools/tamaorb-rom.py push roms/tama.zip roms/tamag2.zip   # .bin dumps or MAME zips; only P1/P2 are sent
+tools/tamaorb-rom.py push roms/tama.zip roms/tamag2.zip   # .bin dumps or MAME zips; only the four supported dumps are sent
 tools/tamaorb-rom.py list
 tools/tamaorb-rom.py remove tamag2.bin
 tools/tamaorb-rom.py wifi "My Network"                    # asks for the password; the ball reboots
@@ -95,6 +99,7 @@ tools/tamaorb-rom.py status
 tools/tamaorb-rom.py get                                  # all settings as key=value
 tools/tamaorb-rom.py set brightness=30 palette=night      # all or nothing; applied live, kept across power cuts
 tools/tamaorb-rom.py clock                                # set the pet's clock to the ball's time (see Pet clock above)
+tools/tamaorb-rom.py reset                                # factory reset (asks you to type 'erase')
 ```
 
 ROMs go to `/tamaorb/roms/` on the microSD card. Without a card, a pushed ROM becomes the active one directly. The active ROM is also kept in internal flash, so the pet survives a missing or failed card.
@@ -124,7 +129,7 @@ AI agents connect through the MCP server on the ball itself:
 claude mcp add --transport http tamaorb http://tamaorb.local/mcp      # or http://<ip>/mcp
 ```
 
-The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, `sync_pet_clock` (it tells the agent to warn you that the pet may wake up, fall asleep or age), `read_ram` (the RAM and CPU registers, read only, for finding addresses), and a how-to-play guide per model (`main/guide_p1.md`, `main/guide_p2.md`). By default, beeps caused by agent presses play at normal volume but don't wake or undim the screen; `agent_feedback=silent` also mutes them and `visible` lets them wake the screen.
+The agent gets `look` and `press` (the screen and the buttons), status, settings and pets, `sync_pet_clock` (it tells the agent to warn you that the pet may wake up, fall asleep or age), `read_ram` (the RAM and CPU registers, read only, for finding addresses), and a how-to-play guide per model (`main/guide_p1.md`, `main/guide_p2.md`, `main/guide_angel.md`, `main/guide_mothra.md`). Agents can list and switch pets but can't create or delete them, answer the resume question, skip, or reset the ball. By default, beeps caused by agent presses play at normal volume but don't wake or undim the screen; `agent_feedback=silent` also mutes them and `visible` lets them wake the screen.
 
 **The panel, API and MCP server are open to anyone on your LAN.** There is no login. Requests from other web sites are refused (Origin check), but anything on the network can read the status and press the buttons. Keep the ball on a network you trust. Decision record: `docs/adr/0005-web-panel-on-device.md`.
 
