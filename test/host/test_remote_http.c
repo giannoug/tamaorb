@@ -217,6 +217,8 @@ static void test_unknown_path_404(void)
     TEST_ASSERT_EQUAL(404, resp.status);
     go(RM_GET, "/api/pets/a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4/save", NULL, NULL, NULL);
     TEST_ASSERT_EQUAL(404, resp.status);
+    go(RM_GET, "/api/pets/09e5101b37636a314fc599d5d69b4846721b3c88/save", NULL, NULL, NULL);  // no pet number
+    TEST_ASSERT_EQUAL(404, resp.status);
 }
 
 static void test_wrong_method_405(void)
@@ -260,7 +262,7 @@ static void test_restart(void)
 static void test_save_upload_requires_mode(void)
 {
     char path[80];
-    snprintf(path, sizeof path, "/api/pets/%s/save", SHA_OTHER);
+    snprintf(path, sizeof path, "/api/pets/%s-0/save", SHA_OTHER);
     go(RM_PUT, path, NULL, NULL, "xx");
     expect_err(400, NULL, "mode");
     go(RM_PUT, path, "mode=bogus", NULL, "xx");
@@ -271,7 +273,7 @@ static void test_save_upload_requires_mode(void)
 static void test_save_upload_bad_record(void)
 {
     char path[80];
-    snprintf(path, sizeof path, "/api/pets/%s/save", SHA_OTHER);
+    snprintf(path, sizeof path, "/api/pets/%s-0/save", SHA_OTHER);
     go(RM_PUT, path, "mode=frozen", NULL, "garbage garbage garbage");
     expect_err(400, NULL, "record");
     TEST_ASSERT_EQUAL(0, fake.import_calls);
@@ -289,7 +291,7 @@ static size_t make_record(const uint8_t sha[20], uint8_t *out, size_t cap)
 static void put_rec(const char *sha_hex, const char *query, const uint8_t *rec, size_t n, const char *origin)
 {
     char path[80];
-    snprintf(path, sizeof path, "/api/pets/%s/save", sha_hex);
+    snprintf(path, sizeof path, "/api/pets/%s-0/save", sha_hex);
     rfree();
     rm_req_t rq = {0};
     rq.method = RM_PUT; rq.path = path; rq.query = query; rq.origin = origin;
@@ -362,7 +364,7 @@ static void test_save_download_disposition(void)
     memset(fake.export_data, 0x5A, 12);
     fake.export_meta.unix_time = 1700000000;
     char path[80];
-    snprintf(path, sizeof path, "/api/pets/%s/save", SHA_ACTIVE);
+    snprintf(path, sizeof path, "/api/pets/%s-0/save", SHA_ACTIVE);
     go(RM_GET, path, NULL, NULL, NULL);
     TEST_ASSERT_EQUAL(200, resp.status);
     TEST_ASSERT_EQUAL_STRING("application/octet-stream", resp.content_type);
@@ -381,7 +383,7 @@ static void test_save_download_rom_not_listed(void)  // ruling R11
     fake.export_len = 4;
     fake.export_meta.unix_time = 1700000000;
     char path[80];
-    snprintf(path, sizeof path, "/api/pets/%s/save", SHA_OTHER);
+    snprintf(path, sizeof path, "/api/pets/%s-0/save", SHA_OTHER);
     go(RM_GET, path, NULL, NULL, NULL);
     TEST_ASSERT_EQUAL(200, resp.status);
     TEST_ASSERT_NOT_NULL(strstr(resp.disposition, "tamaorb-P1-"));
@@ -398,21 +400,151 @@ static void test_pets_and_switch(void)
     cJSON *j = json();
     TEST_ASSERT_NOT_NULL(j);
     cJSON_Delete(j);
-    go(RM_POST, "/api/pets/switch", NULL, NULL, "{\"name\":\"other.bin\"}");
+    go(RM_POST, "/api/pets/switch", NULL, NULL, "{\"id\":\"4b4979cf92dc9d2fb6d7295a38f209f3da144f72-3\"}");
     TEST_ASSERT_EQUAL(200, resp.status);
-    TEST_ASSERT_EQUAL_STRING("other.bin", fake.switched_to);
+    TEST_ASSERT_EQUAL_STRING("4b4979cf92dc9d2fb6d7295a38f209f3da144f72-3", fake.switched_to);
     go(RM_POST, "/api/pets/switch", NULL, NULL, "{}");
-    expect_err(400, "invalid", "name");
-    fake.switch_result = RM_ERR_NOTFOUND;
-    go(RM_POST, "/api/pets/switch", NULL, NULL, "{\"name\":\"zzz\"}");
-    TEST_ASSERT_EQUAL(404, resp.status);
+    expect_err(400, "invalid", "id");
+    go(RM_POST, "/api/pets/switch", NULL, NULL, "{\"id\":\"zzz\"}");
+    expect_err(400, "invalid", "id");
 }
 
 static void test_switch_catching_up_409(void)
 {
     fake.switch_result = RM_ERR_CATCHUP;
-    go(RM_POST, "/api/pets/switch", NULL, NULL, "{\"name\":\"other.bin\"}");
+    go(RM_POST, "/api/pets/switch", NULL, NULL, "{\"id\":\"4b4979cf92dc9d2fb6d7295a38f209f3da144f72-0\"}");
     expect_err(409, "catching up", NULL);
+}
+
+static void test_pets_list_shape(void)
+{
+    fake.pets[0].id = 0;
+    snprintf(fake.pets[0].name, sizeof fake.pets[0].name, "P2 #1");
+    fake.pets[0].age_years = 3;
+    fake.pets[1].id = 3;
+    snprintf(fake.pets[1].name, sizeof fake.pets[1].name, "Bob");
+    fake.pets[1].age_years = -1;
+    fake.pets[1].egg = true;
+    go(RM_GET, "/api/pets", NULL, NULL, NULL);
+    cJSON *a = json();
+    TEST_ASSERT_EQUAL(2, cJSON_GetArraySize(a));
+    cJSON *p0 = cJSON_GetArrayItem(a, 0), *p1 = cJSON_GetArrayItem(a, 1);
+    TEST_ASSERT_EQUAL_STRING("09e5101b37636a314fc599d5d69b4846721b3c88-0", cJSON_GetObjectItem(p0, "id")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("P2 #1", cJSON_GetObjectItem(p0, "name")->valuestring);
+    TEST_ASSERT_EQUAL(3, cJSON_GetObjectItem(p0, "age")->valueint);
+    TEST_ASSERT_EQUAL_STRING("4b4979cf92dc9d2fb6d7295a38f209f3da144f72-3", cJSON_GetObjectItem(p1, "id")->valuestring);
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(p1, "age")));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(p1, "egg")));
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItem(p1, "rom_on_card"));
+    cJSON_Delete(a);
+}
+
+static void test_roms_list(void)
+{
+    go(RM_GET, "/api/roms", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    cJSON *a = json();
+    TEST_ASSERT_EQUAL(1, cJSON_GetArraySize(a));
+    TEST_ASSERT_EQUAL_STRING("tamaang.bin", cJSON_GetObjectItem(cJSON_GetArrayItem(a, 0), "file")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("Angel", cJSON_GetObjectItem(cJSON_GetArrayItem(a, 0), "model")->valuestring);
+    cJSON_Delete(a);
+}
+
+static void test_pets_new_ok(void)
+{
+    go(RM_POST, "/api/pets", NULL, NULL, "{\"rom\":\"f5899bb7717756ac581451cf16cf97d909961c5c\"}");
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL(1, fake.new_calls);
+    TEST_ASSERT_EQUAL_HEX8(0xf5, fake.new_sha1[0]);
+    cJSON *j = json();
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(j, "restarting")));
+    cJSON_Delete(j);
+}
+
+static void test_pets_new_full(void)
+{
+    fake.new_result = RM_ERR_FULL;
+    go(RM_POST, "/api/pets", NULL, NULL, "{\"rom\":\"f5899bb7717756ac581451cf16cf97d909961c5c\"}");
+    expect_err(409, "full", NULL);
+}
+
+static void test_pets_new_bad_sha(void)
+{
+    go(RM_POST, "/api/pets", NULL, NULL, "{\"rom\":\"xyz\"}");
+    expect_err(400, "invalid", "rom");
+    go(RM_POST, "/api/pets", NULL, NULL, "{}");
+    expect_err(400, "invalid", "rom");
+    TEST_ASSERT_EQUAL(0, fake.new_calls);
+}
+
+static void test_pets_switch_by_id(void)
+{
+    go(RM_POST, "/api/pets/switch", NULL, NULL, "{\"id\":\"09e5101b37636a314fc599d5d69b4846721b3c88-7\"}");
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL_STRING("09e5101b37636a314fc599d5d69b4846721b3c88-7", fake.switched_to);
+}
+
+static void test_pets_switch_missing_rom(void)
+{
+    fake.switch_result = RM_ERR_NOTFOUND;
+    go(RM_POST, "/api/pets/switch", NULL, NULL, "{\"id\":\"09e5101b37636a314fc599d5d69b4846721b3c88-7\"}");
+    TEST_ASSERT_EQUAL(404, resp.status);
+}
+
+static void test_pets_rename_ok(void)
+{
+    go(RM_PATCH, "/api/pets/4b4979cf92dc9d2fb6d7295a38f209f3da144f72-0", NULL, NULL, "{\"name\":\"Bob\"}");
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL_STRING("Bob", fake.renamed_to);
+    TEST_ASSERT_EQUAL(0, fake.renamed_id);
+}
+
+static void test_pets_rename_invalid(void)
+{
+    const char *bad[] = { "{\"name\":\"\"}", "{\"name\":\" x\"}", "{\"name\":\"abcdefghijklmnopq\"}",
+                          "{\"name\":\"caf\u00e9\"}", "{\"name\":\"a\\tb\"}", "{\"name\":5}", "{}" };
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        go(RM_PATCH, "/api/pets/4b4979cf92dc9d2fb6d7295a38f209f3da144f72-0", NULL, NULL, bad[i]);
+        expect_err(400, "invalid", "name");
+    }
+    TEST_ASSERT_EQUAL(0, fake.rename_calls);
+}
+
+static void test_pets_rename_taken(void)
+{
+    fake.rename_result = RM_ERR_TAKEN;
+    go(RM_PATCH, "/api/pets/4b4979cf92dc9d2fb6d7295a38f209f3da144f72-0", NULL, NULL, "{\"name\":\"Bob\"}");
+    expect_err(409, "taken", NULL);
+}
+
+static void test_pets_delete_running(void)
+{
+    go(RM_DELETE, "/api/pets/4b4979cf92dc9d2fb6d7295a38f209f3da144f72-2", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL(2, fake.deleted_id);
+    fake.delete_result = RM_ERR_BUSY;
+    go(RM_DELETE, "/api/pets/09e5101b37636a314fc599d5d69b4846721b3c88-0", NULL, NULL, NULL);
+    expect_err(409, "busy", NULL);
+}
+
+static void test_pets_bad_id(void)
+{
+    go(RM_DELETE, "/api/pets/zz-1", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(404, resp.status);
+    go(RM_PATCH, "/api/pets/09e5101b37636a314fc599d5d69b4846721b3c88-12", NULL, NULL, "{\"name\":\"x\"}");
+    TEST_ASSERT_EQUAL(404, resp.status);
+    go(RM_DELETE, "/api/pets/0000000000000000000000000000000000000000-1", NULL, NULL, NULL);  // not a known ROM
+    TEST_ASSERT_EQUAL(404, resp.status);
+    TEST_ASSERT_EQUAL(0, fake.delete_calls);
+}
+
+static void test_save_path_with_id(void)
+{
+    fake.export_len = 4;
+    fake.export_meta.unix_time = 1700000000;
+    go(RM_GET, "/api/pets/09e5101b37636a314fc599d5d69b4846721b3c88-2/save", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL(2, fake.export_id);
 }
 
 static void test_look_and_press(void)
@@ -659,6 +791,19 @@ int main(void)
     RUN_TEST(test_save_download_rom_not_listed);
     RUN_TEST(test_pets_and_switch);
     RUN_TEST(test_switch_catching_up_409);
+    RUN_TEST(test_pets_list_shape);
+    RUN_TEST(test_roms_list);
+    RUN_TEST(test_pets_new_ok);
+    RUN_TEST(test_pets_new_full);
+    RUN_TEST(test_pets_new_bad_sha);
+    RUN_TEST(test_pets_switch_by_id);
+    RUN_TEST(test_pets_switch_missing_rom);
+    RUN_TEST(test_pets_rename_ok);
+    RUN_TEST(test_pets_rename_invalid);
+    RUN_TEST(test_pets_rename_taken);
+    RUN_TEST(test_pets_delete_running);
+    RUN_TEST(test_pets_bad_id);
+    RUN_TEST(test_save_path_with_id);
     RUN_TEST(test_status_has_pet_and_ball_clock);
     RUN_TEST(test_pet_clock_sync_ok);
     RUN_TEST(test_pet_clock_sync_refusals);

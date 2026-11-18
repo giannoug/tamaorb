@@ -190,8 +190,10 @@ cJSON *rm_json_pets(const rm_pet_t *p, int n)
         cJSON *o = cJSON_CreateObject();
         if (!o) { cJSON_Delete(a); return NULL; }
         cJSON_AddItemToArray(a, o);
-        char hex[41];
+        char id[RM_PET_ID_LEN + 1], hex[41];
+        rm_pet_id_format(p[i].sha1, p[i].id, id);
         for (int j = 0; j < 20; j++) snprintf(hex + j * 2, 3, "%02x", p[i].sha1[j]);
+        cJSON_AddStringToObject(o, "id", id);
         cJSON_AddStringToObject(o, "name", p[i].name);
         cJSON_AddStringToObject(o, "model", model_name(p[i].model));
         cJSON_AddStringToObject(o, "sha1", hex);
@@ -200,6 +202,27 @@ cJSON *rm_json_pets(const rm_pet_t *p, int n)
         cJSON_AddBoolToObject(o, "save_trusted", p[i].save_trusted);
         if (p[i].has_save) cJSON_AddNumberToObject(o, "save_unix", (double)p[i].save_unix);
         else cJSON_AddNullToObject(o, "save_unix");
+        cJSON_AddBoolToObject(o, "rom_on_card", p[i].rom_on_card);
+        cJSON_AddBoolToObject(o, "egg", p[i].egg);
+        if (p[i].age_years >= 0) cJSON_AddNumberToObject(o, "age", p[i].age_years);
+        else cJSON_AddNullToObject(o, "age");
+    }
+    return a;
+}
+
+cJSON *rm_json_roms(const rm_rom_t *r, int n)
+{
+    cJSON *a = cJSON_CreateArray();
+    if (!a) return NULL;
+    for (int i = 0; i < n; i++) {
+        cJSON *o = cJSON_CreateObject();
+        if (!o) { cJSON_Delete(a); return NULL; }
+        cJSON_AddItemToArray(a, o);
+        char hex[41];
+        for (int j = 0; j < 20; j++) snprintf(hex + j * 2, 3, "%02x", r[i].sha1[j]);
+        cJSON_AddStringToObject(o, "file", r[i].file);
+        cJSON_AddStringToObject(o, "model", model_name(r[i].model));
+        cJSON_AddStringToObject(o, "sha1", hex);
     }
     return a;
 }

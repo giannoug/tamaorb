@@ -325,24 +325,36 @@ static void test_status_and_pets_json(void)
 
 static void test_switch_pet(void)
 {
-    cJSON *r = tool("switch_pet", "{\"name\":\"other.bin\"}");
+    cJSON *r = tool("switch_pet", "{\"id\":\"4b4979cf92dc9d2fb6d7295a38f209f3da144f72-1\"}");
     TEST_ASSERT_FALSE(is_error(r));
-    TEST_ASSERT_EQUAL_STRING("other.bin", fake.switched_to);
+    TEST_ASSERT_EQUAL_STRING("4b4979cf92dc9d2fb6d7295a38f209f3da144f72-1", fake.switched_to);
+    cJSON_Delete(r);
+    // By a pet's name too (the list's "name"): the fake's second pet is "Bob", pet 3 of its ROM.
+    fake.pets[1].id = 3;
+    snprintf(fake.pets[1].name, sizeof fake.pets[1].name, "Bob");
+    r = tool("switch_pet", "{\"name\":\"Bob\"}");
+    TEST_ASSERT_FALSE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(fake.switched_to, "-3"));
+    cJSON_Delete(r);
+    int calls = fake.switch_calls;
+    r = tool("switch_pet", "{\"name\":\"zzz\"}");  // no such pet
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_EQUAL(calls, fake.switch_calls);
     cJSON_Delete(r);
     fake.switch_result = RM_ERR_NOTFOUND;
-    r = tool("switch_pet", "{\"name\":\"zzz\"}");
+    r = tool("switch_pet", "{\"id\":\"4b4979cf92dc9d2fb6d7295a38f209f3da144f72-9\"}");
     TEST_ASSERT_TRUE(is_error(r));
     cJSON_Delete(r);
     r = tool("switch_pet", "{}");
     TEST_ASSERT_TRUE(is_error(r));
-    TEST_ASSERT_NOT_NULL(strstr(text0(r), "name"));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "id"));
     cJSON_Delete(r);
 }
 
 static void test_switch_pet_during_catchup(void)
 {
     fake.switch_result = RM_ERR_CATCHUP;
-    cJSON *r = tool("switch_pet", "{\"name\":\"other.bin\"}");
+    cJSON *r = tool("switch_pet", "{\"id\":\"4b4979cf92dc9d2fb6d7295a38f209f3da144f72-1\"}");
     TEST_ASSERT_TRUE(is_error(r));
     TEST_ASSERT_EQUAL_STRING("the pet is catching up; try again when it finishes", text0(r));
     cJSON_Delete(r);

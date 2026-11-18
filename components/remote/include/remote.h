@@ -56,9 +56,9 @@ bool rm_press_window(const rm_press_t *p, uint32_t now_ms);
 #include "persist.h"
 typedef enum { RM_RESTORE_FROZEN, RM_RESTORE_REPLAY } rm_restore_mode_t;
 bool rm_restore_mode_parse(const char *s, rm_restore_mode_t *out);  // "frozen" | "replay"
-// NULL ok, else "record" (CRC/format/size) | "rom" (sha1 mismatch) | "model" (not a playable model) | "pet" (pet_id != 0)
+// NULL ok, else "record" (CRC/format/size) | "rom" (sha1 mismatch) | "model" (not a playable model) | "pet" (another pet)
 // | "state" (state_ok rejected the payload; state_ok may be NULL). meta_out is filled when the record decodes.
-const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20],
+const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20], uint8_t pet_id,
                           bool (*state_ok)(const uint8_t *payload, size_t len), ps_meta_t *meta_out);
 // e.g. "tamaorb-P1-4b4979cf-2026-11-08.sav" (UTC date of meta->unix_time; "undated" if 0)
 void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[48]);
@@ -78,14 +78,23 @@ typedef struct {
     size_t ram_n;              // nibbles valid in ram (0: nothing published yet)
 } rm_debug_t;
 
-typedef enum { RM_OK = 0, RM_ERR_BUSY, RM_ERR_CATCHUP, RM_ERR_NOTFOUND, RM_ERR_BAD, RM_ERR_IO, RM_ERR_NOTIME } rm_err_t;
+typedef enum { RM_OK = 0, RM_ERR_BUSY, RM_ERR_CATCHUP, RM_ERR_NOTFOUND, RM_ERR_BAD, RM_ERR_IO, RM_ERR_NOTIME,
+               RM_ERR_FULL, RM_ERR_TAKEN } rm_err_t;  // FULL: no free pet number / storage; TAKEN: name in use
+// A pet: a ROM (SHA-1) and a pet number 0-9. Its id on the API is "<40 hex>-<digit>" (rm_pet_id_*).
 typedef struct {
-    char name[64];
-    tc_model_t model;
     uint8_t sha1[20];
-    bool active, has_save, save_trusted;
+    uint8_t id;
+    char name[17];
+    tc_model_t model;
+    bool active, has_save, save_trusted, rom_on_card, egg;
+    int16_t age_years;     // -1 unknown
     int64_t save_unix;
 } rm_pet_t;
+typedef struct { char file[64]; tc_model_t model; uint8_t sha1[20]; } rm_rom_t;  // a playable ROM on the card
+#define RM_PET_ID_LEN 42
+#define RM_PETS_MAX 40     // a pet list never holds more (4 models x 10)
+bool rm_pet_id_parse(const char *s, uint8_t sha1[20], uint8_t *id);  // a playable model's SHA-1, id 0-9
+void rm_pet_id_format(const uint8_t sha1[20], uint8_t id, char out[RM_PET_ID_LEN + 1]);
 typedef struct {
     char name[33], version[32], rom_name[64], wifi_ssid[33], ip[16];
     tc_model_t model;
@@ -107,9 +116,15 @@ typedef struct {
     void (*get_settings)(void *ctx, st_settings_t *out);
     void (*put_settings)(void *ctx, const st_settings_t *s, bool display_changed);
     int (*list_pets)(void *ctx, rm_pet_t *out, int max);
-    rm_err_t (*switch_pet)(void *ctx, const char *name);  // schedules the restart itself
-    rm_err_t (*export_save)(void *ctx, const uint8_t sha1[20], uint8_t *out, size_t cap, size_t *len, ps_meta_t *meta);
-    rm_err_t (*import_save)(void *ctx, const uint8_t sha1[20], uint8_t *rec, size_t len, rm_restore_mode_t mode);
+    int (*list_roms)(void *ctx, rm_rom_t *out, int max);
+    rm_err_t (*switch_pet)(void *ctx, const uint8_t sha1[20], uint8_t id);  // schedules the restart itself
+    rm_err_t (*new_pet)(void *ctx, const uint8_t sha1[20]);                 // creates, then switches to it
+    rm_err_t (*rename_pet)(void *ctx, const uint8_t sha1[20], uint8_t id, const char *name);  // name is valid
+    rm_err_t (*delete_pet)(void *ctx, const uint8_t sha1[20], uint8_t id);  // BUSY for the running pet
+    rm_err_t (*export_save)(void *ctx, const uint8_t sha1[20], uint8_t id, uint8_t *out, size_t cap, size_t *len,
+                            ps_meta_t *meta);
+    rm_err_t (*import_save)(void *ctx, const uint8_t sha1[20], uint8_t id, uint8_t *rec, size_t len,
+                            rm_restore_mode_t mode);
     bool (*set_wifi)(void *ctx, const char *ssid, const char *pass);  // schedules the restart itself
     void (*restart)(void *ctx);                                       // schedules the restart
     const char *(*guide)(void *ctx, const char *model);  // "p1"|"p2"|"angel"|"mothra" -> Markdown, NULL if none
@@ -141,6 +156,7 @@ cJSON *rm_json_debug(const rm_debug_t *d);
 // key: "HH:MM:SS" for 0-86399 seconds of the day, else null.
 void rm_json_add_clock(cJSON *o, const char *key, int32_t sec_of_day);
 cJSON *rm_json_pets(const rm_pet_t *p, int n);
+cJSON *rm_json_roms(const rm_rom_t *r, int n);
 // buttons (string "A AC" or array), hold_ms, gap_ms, settle_ms. NULL ok, else the bad field.
 // Does not range-check: run rm_press_validate on the result.
 const char *rm_json_press_req(const cJSON *args, rm_press_req_t *out);
@@ -159,7 +175,7 @@ cJSON *rm_json_parse(const char *body, size_t len);
 int rm_mcp_handle(const rm_ops_t *ops, const char *body, size_t len, char **out);
 
 // ---- REST router and Origin check ----
-typedef enum { RM_GET, RM_POST, RM_PUT, RM_PATCH, RM_OTHER } rm_method_t;
+typedef enum { RM_GET, RM_POST, RM_PUT, RM_PATCH, RM_DELETE, RM_OTHER } rm_method_t;
 typedef struct {
     rm_method_t method;
     const char *path;

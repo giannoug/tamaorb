@@ -38,14 +38,45 @@ static int f_pets(void *ctx, rm_pet_t *out, int max)
     for (int i = 0; i < n; i++) out[i] = fake.pets[i];
     return n;
 }
-static rm_err_t f_switch(void *ctx, const char *name)
+static int f_roms(void *ctx, rm_rom_t *out, int max)
+{
+    if (max < 1) return 0;
+    memset(out, 0, sizeof *out);
+    snprintf(out->file, sizeof out->file, "tamaang.bin");
+    out->model = TC_MODEL_ANGEL;
+    return 1;
+}
+static rm_err_t f_switch(void *ctx, const uint8_t sha1[20], uint8_t id)
 {
     fake.switch_calls++;
-    snprintf(fake.switched_to, sizeof fake.switched_to, "%s", name);
+    char s[RM_PET_ID_LEN + 1];
+    rm_pet_id_format(sha1, id, s);
+    snprintf(fake.switched_to, sizeof fake.switched_to, "%s", s);
     return fake.switch_result;
 }
-static rm_err_t f_export(void *ctx, const uint8_t sha1[20], uint8_t *out, size_t cap, size_t *len, ps_meta_t *meta)
+static rm_err_t f_new(void *ctx, const uint8_t sha1[20])
 {
+    fake.new_calls++;
+    memcpy(fake.new_sha1, sha1, 20);
+    return fake.new_result;
+}
+static rm_err_t f_rename(void *ctx, const uint8_t sha1[20], uint8_t id, const char *name)
+{
+    fake.rename_calls++;
+    fake.renamed_id = id;
+    snprintf(fake.renamed_to, sizeof fake.renamed_to, "%s", name);
+    return fake.rename_result;
+}
+static rm_err_t f_delete(void *ctx, const uint8_t sha1[20], uint8_t id)
+{
+    fake.delete_calls++;
+    fake.deleted_id = id;
+    return fake.delete_result;
+}
+static rm_err_t f_export(void *ctx, const uint8_t sha1[20], uint8_t id, uint8_t *out, size_t cap, size_t *len,
+                         ps_meta_t *meta)
+{
+    fake.export_id = id;
     if (fake.export_result != RM_OK) return fake.export_result;
     if (cap < fake.export_len) return RM_ERR_IO;
     memcpy(out, fake.export_data, fake.export_len);
@@ -53,9 +84,11 @@ static rm_err_t f_export(void *ctx, const uint8_t sha1[20], uint8_t *out, size_t
     *meta = fake.export_meta;
     return RM_OK;
 }
-static rm_err_t f_import(void *ctx, const uint8_t sha1[20], uint8_t *rec, size_t len, rm_restore_mode_t mode)
+static rm_err_t f_import(void *ctx, const uint8_t sha1[20], uint8_t id, uint8_t *rec, size_t len,
+                         rm_restore_mode_t mode)
 {
     fake.import_calls++;
+    fake.import_id = id;
     fake.import_len = len;
     fake.import_mode = mode;
     return fake.import_result;
@@ -99,7 +132,8 @@ static bool f_rom(void *ctx, const uint8_t **data, size_t *len)
     return true;
 }
 rm_ops_t fake_ops = {.look = f_look, .press = f_press, .status = f_status, .get_settings = f_get, .put_settings = f_put,
-                     .list_pets = f_pets, .switch_pet = f_switch, .export_save = f_export, .import_save = f_import,
+                     .list_pets = f_pets, .list_roms = f_roms, .switch_pet = f_switch, .new_pet = f_new,
+                     .rename_pet = f_rename, .delete_pet = f_delete, .export_save = f_export, .import_save = f_import,
                      .set_wifi = f_wifi, .restart = f_restart, .guide = f_guide, .restart_pending = f_restart_pending,
                      .sync_clock = f_sync_clock, .debug = f_debug, .rom = f_rom, .ctx = NULL};
 

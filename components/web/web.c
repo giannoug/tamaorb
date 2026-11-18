@@ -95,6 +95,7 @@ static rm_method_t method_of(int m)
     case HTTP_POST: return RM_POST;
     case HTTP_PUT: return RM_PUT;
     case HTTP_PATCH: return RM_PATCH;
+    case HTTP_DELETE: return RM_DELETE;
     default: return RM_OTHER;
     }
 }
@@ -410,7 +411,7 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
     // 6 KB overflowed under load before remote's big buffers left the stack. Now about 4.4 KB stays free in the
     // worst case measured; the margin covers the NVS and SD paths (ADR 0005).
     cfg.stack_size = 8192;
-    cfg.max_uri_handlers = 12;
+    cfg.max_uri_handlers = 13;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     s_slow_q = xQueueCreate(SLOW_QUEUE, sizeof(httpd_req_t *));
     s_ws_mutex = xSemaphoreCreateMutex();
@@ -436,6 +437,7 @@ esp_err_t web_start(const rm_ops_t *ops, const char *hostname)
         { .uri = "/api/*", .method = HTTP_POST, .handler = api_handler },
         { .uri = "/api/*", .method = HTTP_PUT, .handler = api_handler },
         { .uri = "/api/*", .method = HTTP_PATCH, .handler = api_handler },
+        { .uri = "/api/*", .method = HTTP_DELETE, .handler = api_handler },
     };
     for (size_t i = 0; i < sizeof uris / sizeof *uris; i++) {
         esp_err_t re = httpd_register_uri_handler(h, &uris[i]);

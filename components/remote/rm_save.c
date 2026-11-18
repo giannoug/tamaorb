@@ -11,7 +11,33 @@ bool rm_restore_mode_parse(const char *s, rm_restore_mode_t *out)
     return false;
 }
 
-const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20],
+bool rm_pet_id_parse(const char *s, uint8_t sha1[20], uint8_t *id)
+{
+    if (!s || strlen(s) != RM_PET_ID_LEN || s[40] != '-' || s[41] < '0' || s[41] > '9') return false;
+    uint8_t h[20];
+    for (int i = 0; i < 20; i++) {
+        unsigned v = 0;
+        for (int k = 0; k < 2; k++) {
+            char c = s[2 * i + k];
+            int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+            if (d < 0) return false;
+            v = v << 4 | (unsigned)d;
+        }
+        h[i] = (uint8_t)v;
+    }
+    if (!tc_model_playable(tc_model_from_sha1(h))) return false;
+    memcpy(sha1, h, 20);
+    *id = (uint8_t)(s[41] - '0');
+    return true;
+}
+
+void rm_pet_id_format(const uint8_t sha1[20], uint8_t id, char out[RM_PET_ID_LEN + 1])
+{
+    for (int i = 0; i < 20; i++) snprintf(out + 2 * i, 3, "%02x", sha1[i]);
+    snprintf(out + 40, 3, "-%u", id % 10u);
+}
+
+const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20], uint8_t pet_id,
                           bool (*state_ok)(const uint8_t *payload, size_t len), ps_meta_t *meta_out)
 {
     ps_meta_t m;
@@ -22,7 +48,7 @@ const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20]
     if (memcmp(m.rom_sha1, sha1, 20) != 0) return "rom";
     tc_model_t model = tc_model_from_sha1(m.rom_sha1);
     if (!tc_model_playable(model)) return "model";
-    if (m.pet_id != 0) return "pet";
+    if (m.pet_id != pet_id) return "pet";
     if (state_ok && !state_ok(payload, plen)) return "state";
     return NULL;
 }

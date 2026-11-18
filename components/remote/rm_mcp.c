@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "remote.h"
 
 #define LATEST_VERSION "2025-11-25"
@@ -51,11 +52,12 @@ static const tool_def_t TOOLS[] = {
      "\"ntp\":{\"type\":\"string\",\"description\":\"NTP host, 1-63 of A-Z a-z 0-9 . -\"},"
      "\"agent_feedback\":{\"type\":\"string\",\"enum\":[\"quiet\",\"silent\",\"visible\"]}},"
      "\"additionalProperties\":false}"},
-    {"list_pets", "Lists the ROMs (pets) on the SD card with the active one, and when each was last saved.",
+    {"list_pets", "Lists the pets on the ball (each an id, a name, its model and ROM), which one runs, and when each was last saved.",
      "{\"type\":\"object\",\"properties\":{}}"},
     {"switch_pet",
-     "Switches to another pet. Saves the current pet, restarts the ball, and the new pet catches up from its own last save.",
-     "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"description\":\"A pet name from list_pets.\"}},\"required\":[\"name\"]}"},
+     "Switches to another pet. Saves the current pet and restarts the ball; the owner then chooses on the ball whether the pet lives through the time it was away.",
+     "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"A pet id from list_pets.\"},"
+     "\"name\":{\"type\":\"string\",\"description\":\"Or a pet name from list_pets.\"}}}"},
     {"sync_pet_clock",
      "Sets the pet's clock to the ball's local time (the tz setting). The pet may wake up or fall asleep, and its age may "
      "change: tell the owner. Fails for ROMs other than P1/P2, without internet time, while catching up, or while the "
@@ -179,11 +181,32 @@ static cJSON *tool_set_settings(const rm_ops_t *ops, const cJSON *args)
     return tool_json(rm_json_settings(&s));
 }
 
+// By id, or by a name from list_pets (case-insensitive).
+static bool pet_by_name(const rm_ops_t *ops, const char *name, uint8_t sha[20], uint8_t *id)
+{
+    rm_pet_t *pets = rm_alloc(sizeof *pets * RM_PETS_MAX);
+    if (!pets) return false;
+    int n = ops->list_pets(ops->ctx, pets, RM_PETS_MAX);
+    bool found = false;
+    for (int i = 0; i < n && !found; i++)
+        if (!strcasecmp(pets[i].name, name)) { memcpy(sha, pets[i].sha1, 20); *id = pets[i].id; found = true; }
+    free(pets);
+    return found;
+}
+
 static cJSON *tool_switch_pet(const rm_ops_t *ops, const cJSON *args)
 {
+    const cJSON *idj = cJSON_GetObjectItemCaseSensitive(args, "id");
     const cJSON *n = cJSON_GetObjectItemCaseSensitive(args, "name");
-    if (!cJSON_IsString(n) || !n->valuestring[0]) return tool_error("invalid value for %s", "name");
-    switch (ops->switch_pet(ops->ctx, n->valuestring)) {
+    uint8_t sha[20], id;
+    if (cJSON_IsString(idj)) {
+        if (!rm_pet_id_parse(idj->valuestring, sha, &id)) return tool_error("invalid value for %s", "id");
+    } else if (cJSON_IsString(n) && n->valuestring[0]) {
+        if (!pet_by_name(ops, n->valuestring, sha, &id)) return tool_result("no such pet", true);
+    } else {
+        return tool_error("invalid value for %s", "id");
+    }
+    switch (ops->switch_pet(ops->ctx, sha, id)) {
     case RM_OK: return tool_result("switching: the ball saves this pet and restarts shortly", false);
     case RM_ERR_NOTFOUND: return tool_result("no such pet", true);
     case RM_ERR_BUSY: return tool_result("busy", true);
@@ -286,8 +309,8 @@ static cJSON *tools_call(const rm_ops_t *ops, const cJSON *params)
         r = tool_json(rm_json_settings(&s));
     } else if (!strcmp(t, "set_settings")) r = tool_set_settings(ops, args);
     else if (!strcmp(t, "list_pets")) {
-        rm_pet_t *pets = rm_alloc(sizeof *pets * 16);  // ~1.7 KB: off the httpd stack
-        int n = pets ? ops->list_pets(ops->ctx, pets, 16) : 0;
+        rm_pet_t *pets = rm_alloc(sizeof *pets * RM_PETS_MAX);  // ~3.6 KB: off the httpd stack
+        int n = pets ? ops->list_pets(ops->ctx, pets, RM_PETS_MAX) : 0;
         r = pets ? tool_json(rm_json_pets(pets, n < 0 ? 0 : n)) : tool_result("out of memory", true);
         free(pets);
     } else if (!strcmp(t, "switch_pet")) r = tool_switch_pet(ops, args);

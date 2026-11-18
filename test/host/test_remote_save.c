@@ -30,29 +30,29 @@ static bool ok_no(const uint8_t *p, size_t l) { return false; }
 static void test_save_check_ok(void)
 {
     ps_meta_t m;
-    TEST_ASSERT_NULL(rm_save_check(rec, n, p1, ok_yes, &m));
+    TEST_ASSERT_NULL(rm_save_check(rec, n, p1, 0, ok_yes, &m));
     TEST_ASSERT_EQUAL_UINT32(5, m.seq);
     TEST_ASSERT_EQUAL_INT64(1794700000, m.unix_time);
-    TEST_ASSERT_NULL(rm_save_check(rec, n, p1, NULL, &m));
+    TEST_ASSERT_NULL(rm_save_check(rec, n, p1, 0, NULL, &m));
 }
 
 static void test_save_check_truncated(void)
 {
     ps_meta_t m;
-    TEST_ASSERT_EQUAL_STRING("record", rm_save_check(rec, n - 1, p1, ok_yes, &m));
+    TEST_ASSERT_EQUAL_STRING("record", rm_save_check(rec, n - 1, p1, 0, ok_yes, &m));
 }
 
 static void test_save_check_bad_crc(void)
 {
     ps_meta_t m;
     rec[PS_HEADER_BYTES + 7] ^= 1;
-    TEST_ASSERT_EQUAL_STRING("record", rm_save_check(rec, n, p1, ok_yes, &m));
+    TEST_ASSERT_EQUAL_STRING("record", rm_save_check(rec, n, p1, 0, ok_yes, &m));
 }
 
 static void test_save_check_other_rom(void)
 {
     ps_meta_t m;
-    TEST_ASSERT_EQUAL_STRING("rom", rm_save_check(rec, n, p2, ok_yes, &m));
+    TEST_ASSERT_EQUAL_STRING("rom", rm_save_check(rec, n, p2, 0, ok_yes, &m));
 }
 
 static void test_save_check_unknown_model(void)
@@ -60,13 +60,13 @@ static void test_save_check_unknown_model(void)
     ps_meta_t m;
     memcpy(meta.rom_sha1, unk, 20);
     n = ps_record_encode(&meta, payload, sizeof payload, rec, sizeof rec);
-    TEST_ASSERT_EQUAL_STRING("model", rm_save_check(rec, n, unk, ok_yes, &m));
+    TEST_ASSERT_EQUAL_STRING("model", rm_save_check(rec, n, unk, 0, ok_yes, &m));
 }
 
 static void test_save_check_state_rejected(void)
 {
     ps_meta_t m;
-    TEST_ASSERT_EQUAL_STRING("state", rm_save_check(rec, n, p1, ok_no, &m));
+    TEST_ASSERT_EQUAL_STRING("state", rm_save_check(rec, n, p1, 0, ok_no, &m));
 }
 
 static void test_save_check_pet(void)
@@ -74,7 +74,7 @@ static void test_save_check_pet(void)
     ps_meta_t m;
     meta.pet_id = 1;
     n = ps_record_encode(&meta, payload, sizeof payload, rec, sizeof rec);
-    TEST_ASSERT_EQUAL_STRING("pet", rm_save_check(rec, n, p1, ok_yes, &m));
+    TEST_ASSERT_EQUAL_STRING("pet", rm_save_check(rec, n, p1, 0, ok_yes, &m));
 }
 
 static void test_check_accepts_angel(void)
@@ -83,10 +83,18 @@ static void test_check_accepts_angel(void)
     test_hex20("f5899bb7717756ac581451cf16cf97d909961c5c", ang);
     memcpy(meta.rom_sha1, ang, 20);
     n = ps_record_encode(&meta, payload, sizeof payload, rec, sizeof rec);
-    TEST_ASSERT_NULL(rm_save_check(rec, n, ang, ok_yes, NULL));
+    TEST_ASSERT_NULL(rm_save_check(rec, n, ang, 0, ok_yes, NULL));
     char fn[48];
     rm_save_filename(TC_MODEL_ANGEL, &meta, fn);
     TEST_ASSERT_EQUAL_STRING("tamaorb-Angel-f5899bb7-2026-11-14.sav", fn);
+}
+
+static void test_check_pet_mismatch(void)
+{
+    meta.pet_id = 4;
+    n = ps_record_encode(&meta, payload, sizeof payload, rec, sizeof rec);
+    TEST_ASSERT_EQUAL_STRING("pet", rm_save_check(rec, n, p1, 0, ok_yes, NULL));
+    TEST_ASSERT_NULL(rm_save_check(rec, n, p1, 4, ok_yes, NULL));
 }
 
 static void test_restore_mode_parse(void)
@@ -122,6 +130,7 @@ int main(void)
     RUN_TEST(test_save_check_state_rejected);
     RUN_TEST(test_save_check_pet);
     RUN_TEST(test_check_accepts_angel);
+    RUN_TEST(test_check_pet_mismatch);
     RUN_TEST(test_restore_mode_parse);
     RUN_TEST(test_filename);
     return UNITY_END();

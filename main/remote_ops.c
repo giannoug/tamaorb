@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "remote_ops.h"
 #include "tc_pet.h"
+#include "pet_store.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +22,6 @@
 #include "settings_store.h"
 
 static const char *TAG = "remote";
-static uint8_t pet_for(const uint8_t sha1[20]);
 
 extern const char s_guide_p1[] asm("_binary_guide_p1_md_start");  // EMBED_TXTFILES: NUL-terminated
 extern const char s_guide_p2[] asm("_binary_guide_p2_md_start");
@@ -87,7 +87,9 @@ static void op_status(void *ctx, rm_status_t *st)
     st->sd_present = rom_store_sd_present();
     st->restart_pending = settings_restart_pending();
     ps_meta_t m;
-    if (s_model != TC_MODEL_UNKNOWN && saver_read_newest(s_active, pet_for(s_active), &m, NULL, 0, NULL) == ESP_OK && m.time_trusted) {
+    uint8_t run_sha[20], run_id;
+    if (saver_running(run_sha, &run_id) && saver_read_newest(run_sha, run_id, &m, NULL, 0, NULL) == ESP_OK &&
+        m.time_trusted) {
         st->last_save_known = true;
         st->last_save_unix = m.unix_time;
     }
@@ -97,90 +99,130 @@ static void op_status(void *ctx, rm_status_t *st)
     st->ball_clock_s = pet_clock_ball_s();
 }
 
-// Until the remote API names pets (they carry only a ROM's SHA-1 here): the running pet of that ROM, else pet 0.
-static uint8_t pet_for(const uint8_t sha1[20])
-{
-    uint8_t run[20], id;
-    return saver_running(run, &id) && !memcmp(run, sha1, 20) ? id : 0;
-}
-
 static void op_get_settings(void *ctx, st_settings_t *out) { settings_get(out); }
 
 static void op_put_settings(void *ctx, const st_settings_t *s, bool display_changed) { settings_put(s, display_changed); }
 static bool op_restart_pending(void *ctx) { return settings_restart_pending(); }
 
-static void fill_save(rm_pet_t *p)
+static bool is_running(const uint8_t sha1[20], uint8_t id)
 {
-    ps_meta_t m;
-    p->has_save = saver_read_newest(p->sha1, pet_for(p->sha1), &m, NULL, 0, NULL) == ESP_OK;
-    p->save_trusted = p->has_save && m.time_trusted;
-    p->save_unix = p->has_save ? m.unix_time : 0;
+    uint8_t run[20], rid;
+    return saver_running(run, &rid) && rid == id && !memcmp(run, sha1, 20);
 }
+
+static pet_info_t s_pets[PET_STORE_MAX];  // httpd handles one request at a time
 
 static int op_list_pets(void *ctx, rm_pet_t *out, int max)
 {
-    tc_rom_entry_t *roms = malloc(sizeof *roms * 16);
-    if (!roms) return 0;
-    int idx[16];
-    int n = rom_store_scan(roms, 16);
-    int m = tc_rom_distinct_valid(roms, n, idx, 16), k = 0;
-    bool active_listed = false;
-    for (int i = 0; i < m && k < max; i++, k++) {
-        const tc_rom_entry_t *r = &roms[idx[i]];
+    int n = pet_store_list(s_pets, PET_STORE_MAX), k = 0;
+    for (int i = 0; i < n && k < max; i++, k++) {
+        const pet_info_t *s = &s_pets[i];
         rm_pet_t *p = &out[k];
         memset(p, 0, sizeof *p);
-        snprintf(p->name, sizeof p->name, "%s", r->name);
-        p->model = r->model;
-        memcpy(p->sha1, r->sha1, 20);
-        p->active = s_model != TC_MODEL_UNKNOWN && !memcmp(r->sha1, s_active, 20);
-        active_listed |= p->active;
-        fill_save(p);
-    }
-    free(roms);
-    // Running from the cached copy with the card out (or the file gone): still list it, without a file name.
-    if (!active_listed && s_model != TC_MODEL_UNKNOWN && k < max) {
-        rm_pet_t *p = &out[k++];
-        memset(p, 0, sizeof *p);
-        p->model = s_model;
-        memcpy(p->sha1, s_active, 20);
-        p->active = true;
-        fill_save(p);
+        memcpy(p->sha1, s->ref.sha1, 20);
+        p->id = s->ref.id;
+        snprintf(p->name, sizeof p->name, "%s", s->name);
+        p->model = s->model;
+        p->active = is_running(s->ref.sha1, s->ref.id);
+        p->has_save = s->has_save;
+        p->save_trusted = s->save_trusted;
+        p->save_unix = s->has_save ? s->save_unix : 0;
+        p->rom_on_card = s->rom_on_card;
+        p->egg = s->egg;
+        p->age_years = s->age_years;
     }
     return k;
 }
 
-static rm_err_t op_switch_pet(void *ctx, const char *name)
+static int op_list_roms(void *ctx, rm_rom_t *out, int max)
 {
-    switch (rom_switch_to(name)) {
+    tc_rom_entry_t *roms = malloc(sizeof *roms * 16);
+    if (!roms) return 0;
+    int idx[16];
+    int n = rom_store_scan(roms, 16), m = tc_rom_distinct_valid(roms, n, idx, 16), k = 0;
+    for (int i = 0; i < m && k < max; i++, k++) {
+        memset(&out[k], 0, sizeof out[k]);
+        snprintf(out[k].file, sizeof out[k].file, "%s", roms[idx[i]].name);
+        out[k].model = roms[idx[i]].model;
+        memcpy(out[k].sha1, roms[idx[i]].sha1, 20);
+    }
+    free(roms);
+    return k;
+}
+
+static rm_err_t switch_err(esp_err_t e)
+{
+    switch (e) {
     case ESP_OK: return RM_OK;
     case ESP_ERR_NOT_FOUND: return RM_ERR_NOTFOUND;
     case ESP_ERR_INVALID_STATE: return RM_ERR_CATCHUP;
     case ESP_ERR_NOT_ALLOWED: return RM_ERR_BUSY;
+    case ESP_ERR_NO_MEM: return RM_ERR_FULL;
     default: return RM_ERR_IO;
     }
 }
 
-static rm_err_t op_export_save(void *ctx, const uint8_t sha1[20], uint8_t *out, size_t cap, size_t *len, ps_meta_t *meta)
+static rm_err_t op_switch_pet(void *ctx, const uint8_t sha1[20], uint8_t id)
 {
-    esp_err_t err = saver_read_newest(sha1, pet_for(sha1), meta, out, cap, len);
+    pet_ref_t p = { .id = id };
+    memcpy(p.sha1, sha1, 20);
+    return switch_err(pet_switch_to(&p));
+}
+
+static rm_err_t op_new_pet(void *ctx, const uint8_t sha1[20])
+{
+    pet_ref_t created;
+    return switch_err(pet_new(sha1, &created));
+}
+
+static rm_err_t op_rename_pet(void *ctx, const uint8_t sha1[20], uint8_t id, const char *name)
+{
+    pet_ref_t p = { .id = id };
+    memcpy(p.sha1, sha1, 20);
+    switch (pet_store_rename(&p, name)) {
+    case ESP_OK: return RM_OK;
+    case ESP_ERR_INVALID_ARG: return RM_ERR_BAD;
+    case ESP_ERR_INVALID_STATE: return RM_ERR_TAKEN;
+    case ESP_ERR_NOT_FOUND: return RM_ERR_NOTFOUND;
+    default: return RM_ERR_IO;
+    }
+}
+
+static rm_err_t op_delete_pet(void *ctx, const uint8_t sha1[20], uint8_t id)
+{
+    pet_ref_t p = { .id = id };
+    memcpy(p.sha1, sha1, 20);
+    switch (pet_delete(&p)) {
+    case ESP_OK: return RM_OK;
+    case ESP_ERR_INVALID_STATE: case ESP_ERR_NOT_ALLOWED: return RM_ERR_BUSY;
+    case ESP_ERR_NOT_FOUND: return RM_ERR_NOTFOUND;
+    default: return RM_ERR_IO;
+    }
+}
+
+static rm_err_t op_export_save(void *ctx, const uint8_t sha1[20], uint8_t id, uint8_t *out, size_t cap, size_t *len,
+                               ps_meta_t *meta)
+{
+    esp_err_t err = saver_read_newest(sha1, id, meta, out, cap, len);
     if (err == ESP_OK) return RM_OK;
     return err == ESP_ERR_NOT_FOUND ? RM_ERR_NOTFOUND : RM_ERR_IO;
 }
 
 // Spec §7.3. The record lands as that pet's newest (seq = newest + 1) in the older A/B slot. For the running
 // pet the saver freezes first, so nothing saves over it, and the ball restarts straight into it.
-static rm_err_t op_import_save(void *ctx, const uint8_t sha1[20], uint8_t *rec, size_t len, rm_restore_mode_t mode)
+static rm_err_t op_import_save(void *ctx, const uint8_t sha1[20], uint8_t id, uint8_t *rec, size_t len,
+                               rm_restore_mode_t mode)
 {
     ps_meta_t meta;
-    if (rm_save_check(rec, len, sha1, tc_state_compatible, &meta)) return RM_ERR_BAD;
-    bool running = s_model != TC_MODEL_UNKNOWN && !memcmp(sha1, s_active, 20);
+    if (rm_save_check(rec, len, sha1, id, tc_state_compatible, &meta)) return RM_ERR_BAD;
+    bool running = is_running(sha1, id);
     emu_phase_t ph = emu_phase();
     // Rejected while catching up, like the picker; the running pet also not before its save has loaded.
     if (ph == EMU_CATCHUP || (running && ph != EMU_RUN)) return RM_ERR_CATCHUP;
     esp_err_t err = ESP_ERR_INVALID_STATE;
     for (int attempt = 0; attempt < 3 && err == ESP_ERR_INVALID_STATE; attempt++) {
         ps_meta_t newest;
-        uint32_t seq = saver_read_newest(sha1, pet_for(sha1), &newest, NULL, 0, NULL) == ESP_OK ? newest.seq : 0;
+        uint32_t seq = saver_read_newest(sha1, id, &newest, NULL, 0, NULL) == ESP_OK ? newest.seq : 0;
         bool ok;
         if (mode == RM_RESTORE_FROZEN) {
             int64_t now = 0;
@@ -190,7 +232,7 @@ static rm_err_t op_import_save(void *ctx, const uint8_t sha1[20], uint8_t *rec, 
             ok = ps_record_restamp(rec, len, NULL, false, seq + 1);
         }
         if (!ok) return RM_ERR_BAD;
-        err = saver_import(sha1, pet_for(sha1), rec, len);  // ESP_ERR_INVALID_STATE: a save landed in between
+        err = saver_import(sha1, id, rec, len);  // ESP_ERR_INVALID_STATE: a save landed in between
     }
     if (err != ESP_OK) return RM_ERR_IO;
     ESP_LOGW(TAG, "save restored (%s)%s", mode == RM_RESTORE_FROZEN ? "frozen" : "replay",
@@ -259,7 +301,8 @@ static bool op_rom(void *ctx, const uint8_t **data, size_t *len)
 
 static rm_ops_t s_ops = {
     .look = op_look, .press = op_press, .status = op_status, .get_settings = op_get_settings,
-    .put_settings = op_put_settings, .list_pets = op_list_pets, .switch_pet = op_switch_pet,
+    .put_settings = op_put_settings, .list_pets = op_list_pets, .list_roms = op_list_roms,
+    .switch_pet = op_switch_pet, .new_pet = op_new_pet, .rename_pet = op_rename_pet, .delete_pet = op_delete_pet,
     .export_save = op_export_save, .import_save = op_import_save, .set_wifi = op_set_wifi,
     .restart = op_restart, .guide = op_guide, .restart_pending = op_restart_pending,
     .sync_clock = op_sync_clock, .debug = op_debug, .rom = op_rom, .ctx = NULL,

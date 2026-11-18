@@ -16,8 +16,17 @@ typedef struct {
     bool put_display;
     // pets / misc
     rm_err_t switch_result;
-    char switched_to[64];
+    char switched_to[64];   // "<sha1 hex>-<id>"
     int switch_calls;
+    rm_err_t new_result;
+    uint8_t new_sha1[20];
+    int new_calls;
+    rm_err_t rename_result;
+    char renamed_to[32];
+    int renamed_id, rename_calls;
+    rm_err_t delete_result;
+    int deleted_id, delete_calls;
+    int export_id, import_id;
     rm_err_t export_result;
     uint8_t export_data[64];
     size_t export_len;

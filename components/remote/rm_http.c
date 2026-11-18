@@ -9,7 +9,7 @@
 #include "tzdb.h"
 
 #define SAVE_MAX 16384
-#define PETS_MAX 16
+#define PETS_MAX RM_PETS_MAX
 
 // ---- responses ----
 static void set_json(rm_resp_t *r, int status, cJSON *j)  // takes ownership
@@ -60,6 +60,8 @@ static void err_from(rm_resp_t *r, rm_err_t e)
     case RM_ERR_NOTFOUND: set_err(r, 404, "not found", NULL); break;
     case RM_ERR_BAD: set_err(r, 400, "invalid", NULL); break;
     case RM_ERR_NOTIME: set_err(r, 409, "no time", NULL); break;
+    case RM_ERR_FULL: set_err(r, 409, "full", NULL); break;
+    case RM_ERR_TAKEN: set_err(r, 409, "taken", NULL); break;
     default: set_err(r, 500, "failed", NULL); break;
     }
 }
@@ -125,27 +127,29 @@ static bool parse_sha(const char *s, uint8_t out[20])
     return true;
 }
 
-// Matches /api/pets/<40 hex>/save. 1 = match (sha filled), 0 = no.
-static int match_save_path(const char *path, uint8_t sha[20])
+// Matches /api/pets/<pet id> (*save false) and /api/pets/<pet id>/save (*save true): 1 = match, 0 = no.
+static int match_pet_path(const char *path, uint8_t sha[20], uint8_t *id, bool *save)
 {
     static const char P[] = "/api/pets/";
     if (strncmp(path, P, sizeof P - 1)) return 0;
     const char *h = path + sizeof P - 1;
-    if (strlen(h) != 40 + 5 || strcmp(h + 40, "/save")) return 0;
-    char hex[41];
-    memcpy(hex, h, 40);
-    hex[40] = 0;
-    return parse_sha(hex, sha);
+    size_t n = strlen(h);
+    if (n != RM_PET_ID_LEN && (n != RM_PET_ID_LEN + 5 || strcmp(h + RM_PET_ID_LEN, "/save"))) return 0;
+    char s[RM_PET_ID_LEN + 1];
+    memcpy(s, h, RM_PET_ID_LEN);
+    s[RM_PET_ID_LEN] = 0;
+    *save = n != RM_PET_ID_LEN;
+    return rm_pet_id_parse(s, sha, id);
 }
 
-static int find_pet(const rm_ops_t *ops, const uint8_t sha[20], rm_pet_t *out)  // 1 found, 0 not, -1 oom
+static int find_pet(const rm_ops_t *ops, const uint8_t sha[20], uint8_t id, rm_pet_t *out)  // 1, 0, -1 oom
 {
     rm_pet_t *pets = rm_alloc(sizeof *pets * PETS_MAX);
     if (!pets) return -1;
     int n = ops->list_pets(ops->ctx, pets, PETS_MAX);
     int found = 0;
     for (int i = 0; i < n && i < PETS_MAX; i++)
-        if (!memcmp(pets[i].sha1, sha, 20)) { *out = pets[i]; found = 1; break; }
+        if (!memcmp(pets[i].sha1, sha, 20) && pets[i].id == id) { *out = pets[i]; found = 1; break; }
     free(pets);
     return found;
 }
@@ -224,16 +228,64 @@ static void h_pets(const rm_ops_t *ops, rm_resp_t *r)
     set_json(r, 200, j);
 }
 
+static void h_roms(const rm_ops_t *ops, rm_resp_t *r)
+{
+    rm_rom_t *roms = rm_alloc(sizeof *roms * PETS_MAX);
+    if (!roms) { set_json(r, 500, NULL); return; }
+    int n = ops->list_roms(ops->ctx, roms, PETS_MAX);
+    cJSON *j = rm_json_roms(roms, n);
+    free(roms);
+    set_json(r, 200, j);
+}
+
 static void h_switch(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
 {
     cJSON *p = parse_body(q);
     if (!p || !cJSON_IsObject(p)) { cJSON_Delete(p); set_err(r, 400, "invalid", NULL); return; }
-    const cJSON *n = cJSON_GetObjectItem(p, "name");
-    if (!cJSON_IsString(n) || !n->valuestring[0]) { cJSON_Delete(p); set_err(r, 400, "invalid", "name"); return; }
-    rm_err_t e = ops->switch_pet(ops->ctx, n->valuestring);
+    const cJSON *n = cJSON_GetObjectItem(p, "id");
+    uint8_t sha[20], id;
+    bool ok = cJSON_IsString(n) && rm_pet_id_parse(n->valuestring, sha, &id);
     cJSON_Delete(p);
+    if (!ok) { set_err(r, 400, "invalid", "id"); return; }
+    rm_err_t e = ops->switch_pet(ops->ctx, sha, id);
     if (e != RM_OK) { err_from(r, e); return; }
     set_ok(r, true, true);
+}
+
+static void h_new_pet(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
+{
+    cJSON *p = parse_body(q);
+    if (!p || !cJSON_IsObject(p)) { cJSON_Delete(p); set_err(r, 400, "invalid", NULL); return; }
+    const cJSON *rom = cJSON_GetObjectItem(p, "rom");
+    uint8_t sha[20];
+    bool ok = cJSON_IsString(rom) && parse_sha(rom->valuestring, sha) && tc_model_playable(tc_model_from_sha1(sha));
+    cJSON_Delete(p);
+    if (!ok) { set_err(r, 400, "invalid", "rom"); return; }
+    rm_err_t e = ops->new_pet(ops->ctx, sha);
+    if (e != RM_OK) { err_from(r, e); return; }
+    set_ok(r, true, true);
+}
+
+static void h_rename(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha[20], uint8_t id, rm_resp_t *r)
+{
+    cJSON *p = parse_body(q);
+    if (!p || !cJSON_IsObject(p)) { cJSON_Delete(p); set_err(r, 400, "invalid", NULL); return; }
+    const cJSON *n = cJSON_GetObjectItem(p, "name");
+    char name[PS_NAME_MAX + 1] = "";
+    bool ok = cJSON_IsString(n) && strlen(n->valuestring) <= PS_NAME_MAX && ps_name_valid(n->valuestring);
+    if (ok) snprintf(name, sizeof name, "%s", n->valuestring);
+    cJSON_Delete(p);
+    if (!ok) { set_err(r, 400, "invalid", "name"); return; }
+    rm_err_t e = ops->rename_pet(ops->ctx, sha, id, name);
+    if (e != RM_OK) { err_from(r, e); return; }
+    set_ok(r, false, false);
+}
+
+static void h_delete(const rm_ops_t *ops, const uint8_t sha[20], uint8_t id, rm_resp_t *r)
+{
+    rm_err_t e = ops->delete_pet(ops->ctx, sha, id);
+    if (e != RM_OK) { err_from(r, e); return; }
+    set_ok(r, false, false);
 }
 
 static void look_reply(const rm_ops_t *ops, rm_resp_t *r)
@@ -265,7 +317,7 @@ static void h_press(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
     look_reply(ops, r);
 }
 
-static void h_save_get(const rm_ops_t *ops, const uint8_t sha[20], rm_resp_t *r)
+static void h_save_get(const rm_ops_t *ops, const uint8_t sha[20], uint8_t id, rm_resp_t *r)
 {
     // Ruling R11: any pet with a save, listed or not (a restored save whose ROM left the card). The model comes
     // from the hash; only saves of playable models exist in a form a ball can restore.
@@ -276,7 +328,7 @@ static void h_save_get(const rm_ops_t *ops, const uint8_t sha[20], rm_resp_t *r)
     size_t len = 0;
     ps_meta_t meta;
     memset(&meta, 0, sizeof meta);
-    rm_err_t e = ops->export_save(ops->ctx, sha, buf, SAVE_MAX, &len, &meta);
+    rm_err_t e = ops->export_save(ops->ctx, sha, id, buf, SAVE_MAX, &len, &meta);
     if (e != RM_OK) { free(buf); err_from(r, e); return; }
     char fn[48];
     rm_save_filename(model, &meta, fn);
@@ -287,7 +339,7 @@ static void h_save_get(const rm_ops_t *ops, const uint8_t sha[20], rm_resp_t *r)
     r->body_len = len;
 }
 
-static void h_save_put(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha[20], rm_resp_t *r)
+static void h_save_put(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha[20], uint8_t id, rm_resp_t *r)
 {
     char m[16];
     rm_restore_mode_t mode;
@@ -297,16 +349,16 @@ static void h_save_put(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha
     }
     if (!q->body || !q->body_len || q->body_len > SAVE_MAX) { set_err(r, 400, "invalid", "record"); return; }
     ps_meta_t meta;
-    const char *bad = rm_save_check(q->body, q->body_len, sha, q->state_ok, &meta);
+    const char *bad = rm_save_check(q->body, q->body_len, sha, id, q->state_ok, &meta);
     if (bad) { set_err(r, 400, "invalid", bad); return; }
     // The ROM need not be on the card — the pet list only decides "restarting".
     rm_pet_t pet;
-    int f = find_pet(ops, sha, &pet);
+    int f = find_pet(ops, sha, id, &pet);
     if (f < 0) { set_json(r, 500, NULL); return; }
     uint8_t *rec = rm_alloc(q->body_len);  // import_save re-stamps it in place
     if (!rec) { set_json(r, 500, NULL); return; }
     memcpy(rec, q->body, q->body_len);
-    rm_err_t e = ops->import_save(ops->ctx, sha, rec, q->body_len, mode);
+    rm_err_t e = ops->import_save(ops->ctx, sha, id, rec, q->body_len, mode);
     free(rec);
     if (e != RM_OK) { err_from(r, e); return; }
     set_ok(r, f && pet.active, true);
@@ -366,14 +418,19 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
     static const route_t ROUTES[] = {
         {"/api/status", M(RM_GET)},        {"/api/settings", M(RM_GET) | M(RM_PATCH)},
         {"/api/wifi", M(RM_POST)},         {"/api/restart", M(RM_POST)},
-        {"/api/pets", M(RM_GET)},          {"/api/pets/switch", M(RM_POST)},
+        {"/api/pets", M(RM_GET) | M(RM_POST)}, {"/api/pets/switch", M(RM_POST)},
         {"/api/look", M(RM_GET)},          {"/api/press", M(RM_POST)},
         {"/api/timezones", M(RM_GET)},     {"/api/pet-clock/sync", M(RM_POST)},
         {"/api/debug", M(RM_GET)},         {"/api/rom", M(RM_GET)},
+        {"/api/roms", M(RM_GET)},
     };
-    if (match_save_path(path, sha)) {
-        if (q->method == RM_GET) h_save_get(ops, sha, r);
-        else if (q->method == RM_PUT) h_save_put(ops, q, sha, r);
+    uint8_t pet_id;
+    bool save;
+    if (match_pet_path(path, sha, &pet_id, &save)) {
+        if (save && q->method == RM_GET) h_save_get(ops, sha, pet_id, r);
+        else if (save && q->method == RM_PUT) h_save_put(ops, q, sha, pet_id, r);
+        else if (!save && q->method == RM_PATCH) h_rename(ops, q, sha, pet_id, r);
+        else if (!save && q->method == RM_DELETE) h_delete(ops, sha, pet_id, r);
         else set_err(r, 405, "method", NULL);
         return;
     }
@@ -385,7 +442,7 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         case 1: if (q->method == RM_GET) settings_reply(ops, r); else h_patch_settings(ops, q, r); break;
         case 2: h_wifi(ops, q, r); break;
         case 3: ops->restart(ops->ctx); set_ok(r, true, true); break;
-        case 4: h_pets(ops, r); break;
+        case 4: if (q->method == RM_GET) h_pets(ops, r); else h_new_pet(ops, q, r); break;
         case 5: h_switch(ops, q, r); break;
         case 6: look_reply(ops, r); break;
         case 7: h_press(ops, q, r); break;
@@ -393,6 +450,7 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         case 9: h_pet_clock_sync(ops, r); break;
         case 10: h_debug(ops, r); break;
         case 11: h_rom(ops, r); break;
+        case 12: h_roms(ops, r); break;
         }
         return;
     }

@@ -118,11 +118,11 @@ static void run_one(int t, const uint8_t *data, size_t len)
         ps_meta_t m;
         const uint8_t *pl;
         size_t pn;
-        (void)rm_save_check((const uint8_t *)buf, len, P1_SHA, state_ok, &m);
+        (void)rm_save_check((const uint8_t *)buf, len, P1_SHA, 0, state_ok, &m);
         if (len >= PS_OVERHEAD) {  // again with a valid CRC, so mutations get past the checksum
             uint32_t c = ps_crc32((const uint8_t *)buf, len - 4);
             for (int i = 0; i < 4; i++) buf[len - 4 + i] = (char)(c >> (8 * i));
-            (void)rm_save_check((const uint8_t *)buf, len, P1_SHA, state_ok, &m);
+            (void)rm_save_check((const uint8_t *)buf, len, P1_SHA, 0, state_ok, &m);
         }
         if (ps_record_decode((const uint8_t *)buf, len, &m, &pl, &pn) && (pl < (uint8_t *)buf || pl + pn > (uint8_t *)buf + len)) abort();
         break;
