@@ -189,6 +189,20 @@ def test_get_prints_settings(monkeypatch, capsys):
     assert capsys.readouterr().out == "\n".join(ALL_SETTINGS) + "\n"
 
 
+def test_reset_typed_confirm(monkeypatch, capsys):
+    port = multi_port(["@TO OK REBOOT"])
+    monkeypatch.setattr(tool, "open_port", lambda name: port)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "erase")
+    assert tool.main(["reset"]) == 0
+    assert port.written == ["@TO RESET erase"]
+    port = multi_port([])
+    monkeypatch.setattr(tool, "open_port", lambda name: port)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "no")
+    assert tool.main(["reset"]) == 1
+    assert port.written == []
+    assert "Not erased" in capsys.readouterr().out
+
+
 def test_set_sends_pairs(monkeypatch, capsys):
     port = multi_port(["@TO OK"])
     monkeypatch.setattr(tool, "open_port", lambda name: port)

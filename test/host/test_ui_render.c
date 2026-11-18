@@ -656,7 +656,7 @@ static void test_settings_list_values(void)
     ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
     TEST_ASSERT_TRUE(find_text("7 %", 1, INK, NULL, NULL));
     TEST_ASSERT_TRUE(find_text("after 30 s", 1, INK, NULL, NULL));
-    v.scroll = ui_menu_scroll_max(&v);
+    v.scroll = ui_menu_scroll_max(&v) - (38 + 4);  // one row above the bottom (Factory reset is last)
     ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
     TEST_ASSERT_TRUE(find_text("Isle of Man", 1, INK, NULL, NULL));
     TEST_ASSERT_TRUE(find_text("QR code", 1, INK, NULL, NULL));
@@ -816,6 +816,27 @@ static void test_pet_sheet_running_render(void)
     TEST_ASSERT_TRUE(find_text("to delete it", 1, soft_of(&UI_PALETTE_CLASSIC), NULL, NULL));
 }
 
+// Review finding (self): with the bar part-filled, the label must show on both sides of the fill edge.
+static void test_reset_hold_render(void)
+{
+    sample_cfg();
+    ui_menu_view_t v = view(UI_PAGE_RESET);
+    v.hold_pct = 60;
+    ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
+    int edge = (UI_W - 172) / 2 + 2 + (172 - 4) * 60 / 100;  // the fill edge (canvas Reset: 172 px pill)
+    int ink_right = 0, bg_left = 0;
+    for (int y = 145 + 14; y < 145 + 22; y++) {
+        for (int x = edge + 1; x < edge + 40; x++) ink_right += PX(x, y) == INK;
+        for (int x = edge - 40; x < edge; x++) bg_left += PX(x, y) == BG;
+    }
+    TEST_ASSERT_GREATER_THAN(5, ink_right);  // "ding" in ink on the empty part
+    TEST_ASSERT_GREATER_THAN(5, bg_left);    // "Keep hol" in bg on the filled part
+    int x, y;
+    TEST_ASSERT_TRUE(find_text("lift to cancel", 1, soft_of(&UI_PALETTE_CLASSIC), &x, &y));
+    TEST_ASSERT_EQUAL(UI_CTL_RESET_HOLD, ui_menu_control_at(&v, UI_W / 2, 160, NULL));
+    assert_nothing_outside_circle("reset");
+}
+
 static void test_pet_delete_render(void)
 {
     ui_menu_view_t v = pet_view(UI_PAGE_PET_DELETE, 1);
@@ -906,7 +927,7 @@ static void test_clock_row_value(void)
 {
     sample_cfg();
     ui_menu_view_t v = clock_view(UI_PAGE_LIST);
-    v.scroll = ui_menu_scroll_max(&v);
+    v.scroll = ui_menu_scroll_max(&v) - (38 + 4);  // one row above the bottom (Factory reset is last)
     ui_render_menu(fb, &v, &UI_PALETTE_CLASSIC);
     TEST_ASSERT_TRUE(find_text("Pet clock", 2, INK, NULL, NULL));
     TEST_ASSERT_TRUE(find_text("09:58", 1, INK, NULL, NULL));
@@ -1025,6 +1046,7 @@ int main(void)
     RUN_TEST(test_pet_sheet_render);
     RUN_TEST(test_pet_sheet_running_render);
     RUN_TEST(test_pet_delete_render);
+    RUN_TEST(test_reset_hold_render);
     RUN_TEST(test_new_pet_list_render);
     RUN_TEST(test_new_confirm_render);
     RUN_TEST(test_rom_first_render);

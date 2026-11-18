@@ -321,3 +321,10 @@ esp_err_t saver_erase(const uint8_t sha1[20], uint8_t pet_id)
     unlock();
     return err;
 }
+
+void saver_freeze(void)
+{
+    lock();  // a save in flight holds the lock: it finishes before this returns
+    s_frozen = true;
+    unlock();
+}

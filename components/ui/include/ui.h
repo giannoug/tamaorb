@@ -199,10 +199,11 @@ void ui_render_glance(uint16_t *fb, const ui_glance_t *g, const ui_palette_t *p)
 // UI_PAGE_ROM_CONFIRM: "New egg?". UI_PAGE_PETS: the pets, then "+ New pet"; PET_SHEET: one pet; PET_DELETE: confirm.
 typedef enum { UI_PAGE_LIST, UI_PAGE_SOUND, UI_PAGE_BRIGHTNESS, UI_PAGE_DIMMING, UI_PAGE_PALETTE,
                UI_PAGE_TZ_REGION, UI_PAGE_TZ_CITY, UI_PAGE_PANEL, UI_PAGE_ROM, UI_PAGE_ROM_CONFIRM,
-               UI_PAGE_CLOCK, UI_PAGE_CLOCK_CONFIRM, UI_PAGE_PETS, UI_PAGE_PET_SHEET, UI_PAGE_PET_DELETE } ui_page_t;
+               UI_PAGE_CLOCK, UI_PAGE_CLOCK_CONFIRM, UI_PAGE_PETS, UI_PAGE_PET_SHEET, UI_PAGE_PET_DELETE,
+               UI_PAGE_RESET } ui_page_t;
 // Rows of UI_PAGE_LIST, top to bottom (ui_menu_row_at's result on that page).
 typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, UI_ROW_TZ, UI_ROW_CLOCK, UI_ROW_PETS,
-               UI_ROW_PANEL, UI_ROW_COUNT } ui_row_t;
+               UI_ROW_PANEL, UI_ROW_RESET, UI_ROW_COUNT } ui_row_t;
 // Controls reported by ui_menu_control_at, with the settings key each value is for. Values are already legal:
 //   MUTE        "muted"          0/1: the value a tap switches to (the opposite of cfg->muted)
 //   VOLUME      "volume"         0-100
@@ -216,13 +217,14 @@ typedef enum { UI_ROW_SOUND, UI_ROW_BRIGHTNESS, UI_ROW_DIMMING, UI_ROW_PALETTE, 
 //   PET_CANCEL, PET_SWITCH       the pet sheet's pills (PET_CANCEL is Close on the running pet's sheet)
 //   PET_DELETE                   the pet sheet's small "Delete..." pill
 //   DEL_KEEP, DEL_DELETE         the delete confirm's pills
+//   RESET_HOLD                   the factory reset's "Hold to erase" pill (held, never tapped: ui_nav_hold)
 //   CLOCK_SET                    the Pet clock page's pill, only while clock_why is UI_CLOCK_OK (value 0)
 //   CLOCK_CANCEL, CLOCK_OK       the Pet clock confirm's pills (value 0)
 // A slider reports a value for any x on its track band (clamped at the ends), so a drag can keep feeding it.
 typedef enum { UI_CTL_MUTE, UI_CTL_VOLUME, UI_CTL_BRIGHTNESS, UI_CTL_DIM_LEVEL, UI_CTL_DIM_USB, UI_CTL_DIM_BATTERY,
                UI_CTL_OFF_BATTERY, UI_CTL_PALETTE, UI_CTL_NEW_CANCEL, UI_CTL_NEW_START, UI_CTL_CLOCK_SET,
                UI_CTL_CLOCK_CANCEL, UI_CTL_CLOCK_OK, UI_CTL_PET_CANCEL, UI_CTL_PET_SWITCH, UI_CTL_PET_DELETE,
-               UI_CTL_DEL_KEEP, UI_CTL_DEL_DELETE } ui_ctl_t;
+               UI_CTL_DEL_KEEP, UI_CTL_DEL_DELETE, UI_CTL_RESET_HOLD } ui_ctl_t;
 
 // Why the Pet clock page offers no Set pill (UI_CLOCK_OK: it does). PENDING: a request is out.
 typedef enum { UI_CLOCK_OK, UI_CLOCK_UNSUPPORTED, UI_CLOCK_NO_TIME, UI_CLOCK_CATCHUP, UI_CLOCK_PENDING } ui_clock_why_t;
@@ -258,6 +260,7 @@ typedef struct {
     int pet_count;
     int pet_current;             // row of the running pet, -1 if not listed
     int pet_pick;                // the pet the sheet and the delete confirm are about
+    int hold_pct;                // RESET: how far the 3 s hold has got (0-100); ui_nav_hold sets it
     // The settings list's Pet clock row and the CLOCK pages. The caller fills pet_s, ball_s, clock_why and
     // clock_busy every loop while they show. Seconds of the day; -1 unknown (row "-", page "--:--").
     int32_t pet_s, ball_s;
@@ -296,6 +299,8 @@ typedef struct {
     uint32_t confirm_ms;   // private: view.t_ms when the confirm page opened
     int rom_scroll;        // private: the ROM list's scroll when its confirm opened (restored on the way back)
     int pets_scroll;       // private: the Pets list's scroll when a pet's sheet opened
+    uint32_t hold_t0;      // private: when the current hold on the reset pill began
+    bool holding, hold_fired;  // private: a hold is under way; it already fired (until the finger lifts)
 } ui_nav_t;
 // The confirm page's pills ignore taps for this long after it opens (by view.t_ms), so the second half of a
 // double tap on a list row that lies where a pill appears can't switch pets.
@@ -303,8 +308,10 @@ typedef struct {
 // ROM_SWITCH: first start picked view.roms[view.rom_pick].
 // CLOCK_SYNC: the Pet clock confirm's Set was tapped; nav is back on UI_PAGE_CLOCK. Post the request.
 // PET_SWITCH, PET_DELETE: about view.pets[view.pet_pick] (confirmed). PET_NEW: a new pet of view.roms[view.rom_pick].
+// FACTORY_RESET: the reset pill was held for UI_RESET_HOLD_MS.
 typedef enum { UI_ACT_NONE, UI_ACT_REDRAW, UI_ACT_SETTINGS, UI_ACT_ROM_SWITCH, UI_ACT_CLOCK_SYNC, UI_ACT_PET_SWITCH,
-               UI_ACT_PET_DELETE, UI_ACT_PET_NEW } ui_act_t;
+               UI_ACT_PET_DELETE, UI_ACT_PET_NEW, UI_ACT_FACTORY_RESET } ui_act_t;
+#define UI_RESET_HOLD_MS 3000
 void ui_nav_init(ui_nav_t *n);
 // ev comes from ui_gesture_feed (MENU mode on GLANCE and MENU, PET mode on PET); cur is the latest settings and
 // must stay valid until the next call (the view points at it). On UI_ACT_SETTINGS, *out is cur with exactly one
@@ -312,6 +319,10 @@ void ui_nav_init(ui_nav_t *n);
 ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const st_settings_t *cur,
                      st_settings_t *out, bool *display_changed);
 void ui_nav_to_pet(ui_nav_t *n);   // screen off/timeout and picker close land here
+// Every loop on the factory reset page: down and (x, y) are the finger now. A finger that stays on the reset pill
+// for UI_RESET_HOLD_MS returns FACTORY_RESET once (until it lifts); lifting or sliding off empties the bar.
+// REDRAW when view.hold_pct changed; NONE elsewhere.
+ui_act_t ui_nav_hold(ui_nav_t *n, bool down, int x, int y, uint32_t now_ms);
 // The ROM list (MENU, page ROM, roms NULL, rom_pick -1, rom_first false): the New pet list, whose back
 // returns to the Pets list; first start sets rom_first. The caller then fills the rows.
 void ui_nav_open_roms(ui_nav_t *n);

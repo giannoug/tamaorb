@@ -12,6 +12,7 @@
 #include "rom_store.h"
 #include "saver.h"
 #include "pet_store.h"
+#include "factory_reset.h"
 #include "rom_switch.h"
 #include "power.h"
 #include "press_task.h"
@@ -109,7 +110,8 @@ static void save_for_power(void) { saver_request_and_wait(3000); }
 void app_main(void)
 {
     power_early_boot_check();  // asleep for low battery and USB still absent: back to sleep
-    ESP_LOGI(TAG, "TamaOrb %s", esp_app_get_description()->version);
+    bool erased = factory_reset_boot();  // before anything opens NVS
+    ESP_LOGI(TAG, "TamaOrb %s%s", esp_app_get_description()->version, erased ? " (factory reset done)" : "");
     ESP_ERROR_CHECK(board_init());
     esp_err_t nvs = nvs_flash_init();  // default partition: Wi-Fi calibration and credentials
     if (nvs == ESP_ERR_NVS_NO_FREE_PAGES || nvs == ESP_ERR_NVS_NEW_VERSION_FOUND) {

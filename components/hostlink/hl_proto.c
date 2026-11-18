@@ -186,6 +186,9 @@ void hl_feed_line(hl_session_t *s, const char *line, hl_emit_fn reply, void *rct
         s->ops->status(s->ops->ctx, st, sizeof st);
         snprintf(out, sizeof out, "@TO STATUS %s", st);
         reply(rctx, out);
+    } else if (!strcmp(buf, "RESET") && s->ops->factory_reset) {
+        if (strcmp(rest, "erase") != 0) reply(rctx, "@TO ERR confirm");
+        else reply(rctx, s->ops->factory_reset(s->ops->ctx) ? "@TO OK REBOOT" : "@TO ERR busy");
     } else if (!strcmp(buf, "CLOCK") && s->ops->clock) {
         static const char *const ERR[] = { [HL_CLOCK_UNSUPPORTED] = "@TO ERR unsupported", [HL_CLOCK_NO_TIME] = "@TO ERR notime",
                                            [HL_CLOCK_CATCHUP] = "@TO ERR catchup", [HL_CLOCK_BUSY] = "@TO ERR busy" };

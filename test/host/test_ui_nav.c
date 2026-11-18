@@ -477,6 +477,70 @@ static void test_pets_page_empty(void)
     TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
 }
 
+// ---- Factory reset: hold the pill 3 s ----
+static void reset_pill(int *x, int *y)
+{
+    TEST_ASSERT_TRUE_MESSAGE(find_any_ctl(UI_CTL_RESET_HOLD, x, y), "no hold pill");
+}
+
+static void test_reset_row_opens_page(void)
+{
+    to_menu();
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, row_y(UI_ROW_RESET)));
+    TEST_ASSERT_EQUAL(UI_PAGE_RESET, nav.view.page);
+    TEST_ASSERT_EQUAL(0, nav.view.hold_pct);
+    TEST_ASSERT_EQUAL(UI_ACT_REDRAW, tap(120, 5));  // back
+    TEST_ASSERT_EQUAL(UI_PAGE_LIST, nav.view.page);
+}
+
+static void test_reset_tap_does_nothing(void)
+{
+    open_page(UI_ROW_RESET);
+    int x, y;
+    reset_pill(&x, &y);
+    TEST_ASSERT_EQUAL(UI_ACT_NONE, tap(x, y));
+    TEST_ASSERT_EQUAL(UI_PAGE_RESET, nav.view.page);
+}
+
+static void test_reset_hold_3s_acts(void)
+{
+    open_page(UI_ROW_RESET);
+    int x, y;
+    reset_pill(&x, &y);
+    TEST_ASSERT_NOT_EQUAL(UI_ACT_FACTORY_RESET, ui_nav_hold(&nav, true, x, y, 10000));
+    TEST_ASSERT_NOT_EQUAL(UI_ACT_FACTORY_RESET, ui_nav_hold(&nav, true, x, y, 12999));
+    TEST_ASSERT_EQUAL(99, nav.view.hold_pct);
+    TEST_ASSERT_EQUAL(UI_ACT_FACTORY_RESET, ui_nav_hold(&nav, true, x, y, 13000));
+    TEST_ASSERT_NOT_EQUAL(UI_ACT_FACTORY_RESET, ui_nav_hold(&nav, true, x, y, 14000));  // once per hold
+}
+
+static void test_reset_lift_early_cancels(void)
+{
+    open_page(UI_ROW_RESET);
+    int x, y;
+    reset_pill(&x, &y);
+    ui_nav_hold(&nav, true, x, y, 0);
+    ui_nav_hold(&nav, true, x, y, 2000);
+    TEST_ASSERT_GREATER_THAN(0, nav.view.hold_pct);
+    ui_nav_hold(&nav, false, 0, 0, 2050);
+    TEST_ASSERT_EQUAL(0, nav.view.hold_pct);
+    for (uint32_t t = 2100; t <= 4000; t += 100)  // a new hold from 2100 would need until 5100
+        TEST_ASSERT_NOT_EQUAL(UI_ACT_FACTORY_RESET, ui_nav_hold(&nav, true, x, y, t));
+}
+
+static void test_reset_slide_off_cancels(void)
+{
+    open_page(UI_ROW_RESET);
+    int x, y;
+    reset_pill(&x, &y);
+    ui_nav_hold(&nav, true, x, y, 0);
+    ui_nav_hold(&nav, true, x, y, 2500);
+    ui_nav_hold(&nav, true, 120, 20, 2600);  // off the pill, still down
+    TEST_ASSERT_EQUAL(0, nav.view.hold_pct);
+    TEST_ASSERT_NOT_EQUAL(UI_ACT_FACTORY_RESET, ui_nav_hold(&nav, true, x, y, 3100));
+    TEST_ASSERT_NOT_EQUAL(UI_ACT_FACTORY_RESET, ui_nav_hold(&nav, true, x, y, 5000));
+}
+
 static void test_edit_changes_only_touched_key(void)
 {
     open_page(UI_ROW_SOUND);          // the view sees brightness 80 ...
@@ -741,6 +805,11 @@ int main(void)
     RUN_TEST(test_back_from_sheet_keeps_scroll);
     RUN_TEST(test_first_start_picker_unchanged);
     RUN_TEST(test_pets_page_empty);
+    RUN_TEST(test_reset_row_opens_page);
+    RUN_TEST(test_reset_tap_does_nothing);
+    RUN_TEST(test_reset_hold_3s_acts);
+    RUN_TEST(test_reset_lift_early_cancels);
+    RUN_TEST(test_reset_slide_off_cancels);
     RUN_TEST(test_edit_changes_only_touched_key);
     RUN_TEST(test_mute_toggle_keeps_volume);
     RUN_TEST(test_dim_slider_snaps);

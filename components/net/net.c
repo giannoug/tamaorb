@@ -154,3 +154,5 @@ void net_set_low_latency(bool on)
     esp_err_t err = esp_wifi_set_ps(on ? WIFI_PS_NONE : WIFI_PS_MIN_MODEM);
     ESP_LOGI(TAG, "Wi-Fi power save %s%s", on ? "off" : "on", err == ESP_OK ? "" : " (failed)");
 }
+
+void net_forget_time(void) { s_time_trust = 0; }

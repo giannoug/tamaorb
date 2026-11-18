@@ -2,6 +2,7 @@
 #include "remote_ops.h"
 #include "tc_pet.h"
 #include "tc_time.h"
+#include "factory_reset.h"
 #include "pet_store.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -288,6 +289,8 @@ static rm_err_t op_resume(void *ctx, const char *choice)
 
 static rm_err_t op_skip(void *ctx) { return emu_skip() ? RM_OK : RM_ERR_BUSY; }
 
+static rm_err_t op_factory_reset(void *ctx) { return factory_reset_request() == ESP_OK ? RM_OK : RM_ERR_BUSY; }
+
 static rm_err_t op_sync_clock(void *ctx, int32_t *written_s)
 {
     if (emu_phase() == EMU_WAIT) return RM_ERR_WAITING;
@@ -328,7 +331,8 @@ static rm_ops_t s_ops = {
     .switch_pet = op_switch_pet, .new_pet = op_new_pet, .rename_pet = op_rename_pet, .delete_pet = op_delete_pet,
     .export_save = op_export_save, .import_save = op_import_save, .set_wifi = op_set_wifi,
     .restart = op_restart, .guide = op_guide, .restart_pending = op_restart_pending,
-    .sync_clock = op_sync_clock, .debug = op_debug, .rom = op_rom, .resume = op_resume, .skip = op_skip, .ctx = NULL,
+    .sync_clock = op_sync_clock, .debug = op_debug, .rom = op_rom, .resume = op_resume, .skip = op_skip,
+    .factory_reset = op_factory_reset, .ctx = NULL,
 };
 
 const rm_ops_t *remote_ops_init(tc_model_t model, const uint8_t active_sha1[20], const uint8_t *rom, size_t rom_len)

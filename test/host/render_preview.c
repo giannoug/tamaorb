@@ -90,7 +90,10 @@ int main(int argc, char **argv)
         ui_render_glance(fb, &g, ui_palette_by_id(pal));
     } else if (!strcmp(mode, "catchup")) ui_render_catchup(fb, "P2 #1", 8040, 29100, 760, UI_SKIP_BUTTON, p);
     else if (!strcmp(mode, "catchup-confirm")) ui_render_catchup(fb, "P2 #1", 8040, 29100, 760, UI_SKIP_CONFIRM, p);
-    else if (!strcmp(mode, "resume") || !strcmp(mode, "resume-back")) {
+    else if (!strcmp(mode, "reset") || !strcmp(mode, "reset-holding")) {
+        ui_menu_view_t v = { .page = UI_PAGE_RESET, .pressed = -1, .cfg = &cfg, .hold_pct = strcmp(mode, "reset") ? 60 : 0 };
+        ui_render_menu(fb, &v, ui_palette_by_id(pal));
+    } else if (!strcmp(mode, "resume") || !strcmp(mode, "resume-back")) {
         ui_resume_view_t v = { "P2 #1", 3 * 86400 + 4 * 3600, 3664, !strcmp(mode, "resume-back") ? "P1 #1" : NULL };
         ui_render_resume(fb, &v, p);
     }

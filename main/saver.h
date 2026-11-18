@@ -31,5 +31,7 @@ esp_err_t saver_read_newest(const uint8_t sha1[20], uint8_t pet_id, ps_meta_t *m
 // moved on meanwhile (re-read, restamp, retry). If sha1 is the running pet, saving stops for the rest of
 // this boot once this succeeds (the caller restarts); on failure nothing was written and saving goes on.
 esp_err_t saver_import(const uint8_t sha1[20], uint8_t pet_id, const uint8_t *rec, size_t len);
+// Any task: no save lands after this returns (a save in flight finishes first); for the rest of this boot.
+void      saver_freeze(void);
 // Any task: removes both of that pet's save keys. ESP_ERR_INVALID_STATE for the running pet.
 esp_err_t saver_erase(const uint8_t sha1[20], uint8_t pet_id);

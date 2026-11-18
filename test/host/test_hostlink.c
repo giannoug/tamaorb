@@ -26,6 +26,8 @@ static int put_calls;
 static bool put_display;
 static void get_settings(void *ctx, st_settings_t *out) { st_defaults(out, 50); }
 static void put_settings(void *ctx, const st_settings_t *s_, bool display) { put_val = *s_; put_calls++; put_display = display; }
+static int reset_calls;
+static bool reset_op(void *ctx) { reset_calls++; return true; }
 static hl_clock_t clock_result;
 static int32_t clock_written;
 static int clock_calls;
@@ -36,7 +38,7 @@ static hl_clock_t clock_op(void *ctx, int32_t *written_s)
     return clock_result;
 }
 static const hl_ops_t ops = { .store = store, .list = list, .remove = rm, .wifi = wifi, .status = status,
-                              .get_settings = get_settings, .put_settings = put_settings, .clock = clock_op, .ctx = NULL };
+                              .get_settings = get_settings, .put_settings = put_settings, .clock = clock_op, .factory_reset = reset_op, .ctx = NULL };
 
 static void feed(const char *line) { hl_feed_line(s, line, reply, NULL); }
 
@@ -52,6 +54,7 @@ void setUp(void)
     put_display = false;
     clock_result = HL_CLOCK_OK;
     clock_calls = 0;
+    reset_calls = 0;
 }
 void tearDown(void) { free(s); }
 
@@ -294,6 +297,18 @@ static void test_clock_without_op_is_cmd_error(void)
     TEST_ASSERT_EQUAL(0, clock_calls);
 }
 
+static void test_reset_needs_erase(void)
+{
+    feed("@TO RESET");
+    TEST_ASSERT_EQUAL_STRING("@TO ERR confirm", last);
+    feed("@TO RESET yes");
+    TEST_ASSERT_EQUAL_STRING("@TO ERR confirm", last);
+    TEST_ASSERT_EQUAL(0, reset_calls);
+    feed("@TO RESET erase");
+    TEST_ASSERT_EQUAL_STRING("@TO OK REBOOT", last);
+    TEST_ASSERT_EQUAL(1, reset_calls);
+}
+
 static tc_model_t as_angel(void *ctx, const uint8_t *data, size_t len) { return TC_MODEL_ANGEL; }
 
 static void test_put_16k_accepted(void)
@@ -340,6 +355,7 @@ int main(void)
     RUN_TEST(test_clock_ok_replies_time);
     RUN_TEST(test_clock_refusals);
     RUN_TEST(test_clock_without_op_is_cmd_error);
+    RUN_TEST(test_reset_needs_erase);
     RUN_TEST(test_put_16k_accepted);
     RUN_TEST(test_put_odd_size_refused);
     return UNITY_END();

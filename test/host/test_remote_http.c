@@ -148,6 +148,20 @@ static void test_status_wait_fields(void)
     cJSON_Delete(j);
 }
 
+static void test_factory_reset_confirm(void)
+{
+    go(RM_POST, "/api/factory-reset", NULL, NULL, NULL);
+    expect_err(400, "invalid", "confirm");
+    go(RM_POST, "/api/factory-reset", NULL, NULL, "{\"confirm\":\"yes\"}");
+    expect_err(400, "invalid", "confirm");
+    TEST_ASSERT_EQUAL(0, fake.reset_calls);
+    go(RM_POST, "/api/factory-reset", NULL, NULL, "{\"confirm\":\"erase\"}");
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL(1, fake.reset_calls);
+    go(RM_POST, "/api/factory-reset", NULL, "https://example.com", "{\"confirm\":\"erase\"}");
+    TEST_ASSERT_EQUAL(403, resp.status);
+}
+
 static void test_status_fields(void)
 {
     go(RM_GET, "/api/status", NULL, NULL, NULL);
@@ -852,6 +866,7 @@ int main(void)
     RUN_TEST(test_save_download_rom_not_listed);
     RUN_TEST(test_pets_and_switch);
     RUN_TEST(test_switch_catching_up_409);
+    RUN_TEST(test_factory_reset_confirm);
     RUN_TEST(test_resume_choices);
     RUN_TEST(test_resume_not_waiting);
     RUN_TEST(test_skip_ok);

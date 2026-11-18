@@ -23,6 +23,7 @@
 #include "qr_encode.h"
 #include "pet_clock.h"
 #include "saver.h"
+#include "factory_reset.h"
 #include "tc_time.h"
 
 #define LOOP_MS        30
@@ -330,6 +331,16 @@ static void ui_task(void *arg)
             act = UI_ACT_REDRAW;
         }
         if (nav.screen == UI_SCREEN_MENU && nav.view.page == UI_PAGE_ROM_CONFIRM) prepare_new_name(&nav.view);
+        if (out.backlight && nav.screen == UI_SCREEN_MENU && nav.view.page == UI_PAGE_RESET) {
+            ui_act_t h = ui_nav_hold(&nav, t.count > 0, t.pt[0].x, t.pt[0].y, now_ms());
+            if (h == UI_ACT_FACTORY_RESET) {
+                ESP_LOGW(TAG, "factory reset held");
+                ui_message("Erasing...", "The ball restarts\nlike new.");
+                if (factory_reset_request() == ESP_OK) for (;;) vTaskDelay(pdMS_TO_TICKS(1000));  // until the restart
+                ui_nav_to_pet(&nav);
+            }
+            if (h != UI_ACT_NONE && act == UI_ACT_NONE) act = UI_ACT_REDRAW;
+        }
         if (act == UI_ACT_CLOCK_SYNC) {
             nav.view.clock_busy = false;
             pet_clock_status_t st = pet_clock_start(&s_clock_id);  // re-checked now: time or the phase may have gone

@@ -144,6 +144,8 @@ typedef struct {
     // NOTFOUND: "back" without a previous pet. "back" restarts the ball.
     rm_err_t (*resume)(void *ctx, const char *choice);
     rm_err_t (*skip)(void *ctx);                                // stops a fast-forward; BUSY when none runs
+    // Erases every pet, setting and Wi-Fi at a restart it schedules (REST only, never MCP). BUSY: a restart is pending.
+    rm_err_t (*factory_reset)(void *ctx);
     bool (*rom)(void *ctx, const uint8_t **data, size_t *len);  // the running ROM's bytes; false: none
     void *ctx;
 } rm_ops_t;

@@ -14,6 +14,8 @@
 //   @TO SET k=v [k=v ...]             -> @TO OK | @TO ERR <first bad key> | @TO ERR data (all or nothing)
 //   @TO CLOCK                         -> @TO OK <HH:MM:SS> (the pet's clock set to the ball's local time)
 //                                        | @TO ERR unsupported|notime|catchup|busy
+//   @TO RESET erase                   -> @TO OK REBOOT (every pet, setting and Wi-Fi erased at the restart)
+//                                        | @TO ERR confirm (anything but "erase") | @TO ERR busy
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -39,6 +41,7 @@ typedef struct {
     void (*get_settings)(void *ctx, st_settings_t *out);
     void (*put_settings)(void *ctx, const st_settings_t *s, bool display_changed);
     hl_clock_t (*clock)(void *ctx, int32_t *written_s);   // may block a few seconds; NULL: @TO ERR cmd
+    bool (*factory_reset)(void *ctx);  // asks for the erase and the restart; false: busy. NULL: @TO ERR cmd
     // The model of an uploaded ROM; NULL (the device): tc_rom_identify's, from the known hashes. Tests set it to run
     // the upload path on made-up bytes. The SHA-1 the PUT line announced is checked either way.
     tc_model_t (*identify)(void *ctx, const uint8_t *data, size_t len);

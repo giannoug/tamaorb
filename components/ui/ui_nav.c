@@ -10,6 +10,8 @@ static void menu_open(ui_nav_t *n, ui_page_t page)
     n->view.page = page;
     n->view.scroll = 0;
     n->view.pressed = -1;
+    n->view.hold_pct = 0;
+    n->holding = false;
     n->active_ctl = -1;
 }
 
@@ -134,7 +136,7 @@ static ui_act_t tap_row(ui_nav_t *n, int row, const st_settings_t *cur, st_setti
         static const ui_page_t PAGES[UI_ROW_COUNT] = {
             [UI_ROW_SOUND] = UI_PAGE_SOUND, [UI_ROW_BRIGHTNESS] = UI_PAGE_BRIGHTNESS, [UI_ROW_DIMMING] = UI_PAGE_DIMMING,
             [UI_ROW_PALETTE] = UI_PAGE_PALETTE, [UI_ROW_TZ] = UI_PAGE_TZ_REGION, [UI_ROW_CLOCK] = UI_PAGE_CLOCK,
-            [UI_ROW_PANEL] = UI_PAGE_PANEL,
+            [UI_ROW_PANEL] = UI_PAGE_PANEL, [UI_ROW_RESET] = UI_PAGE_RESET,
         };
         if (row == UI_ROW_PETS) { ui_nav_open_pets(n, false); return UI_ACT_REDRAW; }
         if (row < 0 || row >= UI_ROW_COUNT) return UI_ACT_NONE;
@@ -228,6 +230,7 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
         if (ctl == UI_CTL_PET_DELETE) { open_guarded(n, UI_PAGE_PET_DELETE); return UI_ACT_REDRAW; }
         if (ctl == UI_CTL_DEL_KEEP) { open_guarded(n, UI_PAGE_PET_SHEET); return UI_ACT_REDRAW; }
         if (ctl == UI_CTL_DEL_DELETE) return UI_ACT_PET_DELETE;
+        if (ctl == UI_CTL_RESET_HOLD) return UI_ACT_NONE;  // held, not tapped
         if (ctl == UI_CTL_CLOCK_SET) {
             open_guarded(n, UI_PAGE_CLOCK_CONFIRM);
             v->confirm_s = v->ball_s;
@@ -256,4 +259,34 @@ ui_act_t ui_nav_step(ui_nav_t *n, const ui_gevent_t *ev, bool boot_short, const 
     default:
         return UI_ACT_NONE;
     }
+}
+
+ui_act_t ui_nav_hold(ui_nav_t *n, bool down, int x, int y, uint32_t now_ms)
+{
+    ui_menu_view_t *v = &n->view;
+    if (n->screen != UI_SCREEN_MENU || v->page != UI_PAGE_RESET) {
+        n->holding = n->hold_fired = false;
+        return UI_ACT_NONE;
+    }
+    int before = v->hold_pct;
+    if (!down) n->hold_fired = false;  // a lift ends the hold that fired
+    if (!down || ui_menu_control_at(v, x, y, NULL) != UI_CTL_RESET_HOLD) {
+        n->holding = false;
+        v->hold_pct = 0;
+        return before ? UI_ACT_REDRAW : UI_ACT_NONE;
+    }
+    if (n->hold_fired) return UI_ACT_NONE;
+    if (!n->holding) {
+        n->holding = true;
+        n->hold_t0 = now_ms;
+    }
+    uint32_t held = now_ms - n->hold_t0;
+    if (held >= UI_RESET_HOLD_MS) {
+        n->hold_fired = true;
+        n->holding = false;
+        v->hold_pct = 100;
+        return UI_ACT_FACTORY_RESET;
+    }
+    v->hold_pct = (int)(held * 100 / UI_RESET_HOLD_MS);
+    return v->hold_pct != before ? UI_ACT_REDRAW : UI_ACT_NONE;
 }

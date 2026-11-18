@@ -182,12 +182,13 @@ static void list_value(const ui_menu_view_t *v, int row, char *out, size_t cap)
     case UI_ROW_CLOCK: hm_or_dash(v->pet_s, out, cap); break;
     case UI_ROW_PANEL: snprintf(out, cap, "QR code"); break;
     case UI_ROW_PETS: snprintf(out, cap, "%s", v->running_name ? v->running_name : ""); break;
+    case UI_ROW_RESET: snprintf(out, cap, "erase everything"); break;
     default: break;
     }
 }
 
 static const char *const LIST_NAMES[UI_ROW_COUNT] = { "Sound", "Brightness", "Dimming", "Palette", "Time zone",
-                                                      "Pet clock", "Pets", "Web panel" };
+                                                      "Pet clock", "Pets", "Web panel", "Factory reset" };
 
 // ---- Rows of the list pages ----
 int ui_menu_row_count(const ui_menu_view_t *v)
@@ -286,6 +287,7 @@ static const char *page_title(const ui_menu_view_t *v)
     case UI_PAGE_PETS: return "Pets";
     case UI_PAGE_PET_SHEET: return "";    // drawn by draw_pet_sheet
     case UI_PAGE_PET_DELETE: return "";
+    case UI_PAGE_RESET: return "";         // drawn by draw_reset (two lines)
     case UI_PAGE_CLOCK: return "Pet clock";
     case UI_PAGE_CLOCK_CONFIRM: return "";  // drawn by draw_clock_confirm
     }
@@ -793,6 +795,39 @@ static void draw_pet_delete(uint16_t *fb, const ui_menu_view_t *v, const colors_
 
 static bool in_box(int x, int y, int bx, int by, int bw, int bh) { return x >= bx && x < bx + bw && y >= by && y < by + bh; }
 
+// ---- Factory reset (canvas Reset) ----
+#define RESET_TITLE_Y 33     // "Factory" / "reset", scale 2, 22 px apart
+#define RESET_BODY_Y 88      // three lines, 14 px apart
+#define RESET_PILL_Y 145
+#define RESET_PILL_W 172
+#define RESET_HINT_Y 192
+
+static void draw_reset(uint16_t *fb, const ui_menu_view_t *v, const colors_t *c)
+{
+    ui_text_centred_at(fb, RESET_TITLE_Y, "Factory", 2, c->ink);
+    ui_text_centred_at(fb, RESET_TITLE_Y + 22, "reset", 2, c->ink);
+    ui_text_centred_at(fb, RESET_BODY_Y, "Erases every pet,", 1, c->ink);
+    ui_text_centred_at(fb, RESET_BODY_Y + 14, "setting and Wi-Fi.", 1, c->ink);
+    ui_text_centred_at(fb, RESET_BODY_Y + 28, "ROMs on the card stay.", 1, c->ink);
+    int x = (UI_W - RESET_PILL_W) / 2, pct = v->hold_pct < 0 ? 0 : v->hold_pct > 100 ? 100 : v->hold_pct;
+    ui_fill_rrect(fb, x, RESET_PILL_Y, RESET_PILL_W, PILL_H, PILL_H / 2, c->ink);
+    // Inside the border: ink up to the fill edge, bg after it, within the rounded inner shape only.
+    const int iw = RESET_PILL_W - 4, ih = PILL_H - 4, r = ih / 2, ix = x + 2, iy = RESET_PILL_Y + 2;
+    const int fill = iw * pct / 100;
+    for (int j = 0; j < ih; j++)
+        for (int i = 0; i < iw; i++) {
+            int cx = i < r ? r - 1 - i : i >= iw - r ? i - (iw - r) : -1, cy = j < r ? r - 1 - j : j - (ih - r);
+            if (cx >= 0 && cy >= 0 && (cx * 2 + 1) * (cx * 2 + 1) + (cy * 2 + 1) * (cy * 2 + 1) > 4 * r * r) continue;
+            fb[(iy + j) * UI_W + ix + i] = i < fill ? c->ink : c->bg;
+        }
+    // The label in bg over the filled part and ink over the rest.
+    const char *label = pct > 0 ? "Keep holding" : "Hold to erase";
+    int lx = x + (RESET_PILL_W - ui_text_width(label, 1)) / 2, ly = RESET_PILL_Y + (PILL_H - 8) / 2;
+    if (fill > 0) ui_draw_text_clipped(fb, ix, ix + fill, ly, ix - lx, label, 1, c->bg);
+    ui_draw_text_clipped(fb, ix + fill, ix + iw, ly, ix + fill - lx, label, 1, c->ink);
+    ui_text_centred_at(fb, RESET_HINT_Y, pct > 0 ? "lift to cancel" : "hold for 3 s", 1, c->soft);
+}
+
 // ---- Pet clock ----
 #define CLOCK_PET_Y 62        // "Pet 09:58:00", scale 2
 #define CLOCK_BALL_Y 86       // "Ball 14:32:05", scale 2
@@ -883,6 +918,7 @@ void ui_render_menu(uint16_t *fb, const ui_menu_view_t *v, const ui_palette_t *p
     case UI_PAGE_PETS: draw_list(fb, v, &c); break;
     case UI_PAGE_PET_SHEET: draw_pet_sheet(fb, v, &c); break;
     case UI_PAGE_PET_DELETE: draw_pet_delete(fb, v, &c); break;
+    case UI_PAGE_RESET: draw_reset(fb, v, &c); break;
     case UI_PAGE_CLOCK: draw_clock(fb, v, &c); break;
     case UI_PAGE_CLOCK_CONFIRM: draw_clock_confirm(fb, v, &c); break;
     }
@@ -952,6 +988,9 @@ int ui_menu_control_at(const ui_menu_view_t *v, int x, int y, int *value_out)
         if (in_box(x, y, centred_x(DEL_PILL_W), DEL_PILL_Y, DEL_PILL_W, DEL_PILL_H)) ctl = UI_CTL_PET_DELETE;
         break;
     }
+    case UI_PAGE_RESET:
+        if (in_box(x, y, (UI_W - RESET_PILL_W) / 2, RESET_PILL_Y, RESET_PILL_W, PILL_H)) ctl = UI_CTL_RESET_HOLD;
+        break;
     case UI_PAGE_PET_DELETE:
         for (int i = 0; i < 2; i++)
             if (in_box(x, y, pill_x(i), DELETE_PILL_Y, PILL_W, PILL_H)) ctl = i ? UI_CTL_DEL_DELETE : UI_CTL_DEL_KEEP;

@@ -220,6 +220,11 @@ class Link:
             raise ToolError(f"unexpected reply: {got!r}")
         return got[7:]
 
+    def reset(self):
+        """Erases every pet, setting and Wi-Fi on the ball; it restarts like new."""
+        self._send("@TO RESET erase")
+        self._expect("@TO OK REBOOT")
+
     def status(self):
         """Asks twice: right after a boot the first request can go unanswered (seen once on the ball)."""
         for attempt in range(2):
@@ -258,10 +263,16 @@ def main(argv=None):
     sub.add_parser("status", help="show device status")
     sub.add_parser("get", help="print the settings as key=value")
     sub.add_parser("clock", help="set the pet's clock to the ball's time (the pet may wake up, fall asleep, or age)")
+    sub.add_parser("reset", help="factory reset: erase every pet, setting and Wi-Fi (asks you to type 'erase')")
     st = sub.add_parser("set", help="change settings, e.g. brightness=30 (all or nothing)")
     st.add_argument("pairs", nargs="+", metavar="key=value")
     args = ap.parse_args(argv)
 
+    if args.cmd == "reset":
+        answer = input("Type 'erase' to erase every pet, setting and Wi-Fi on the ball: ")
+        if answer.strip() != "erase":
+            print("Not erased.")
+            return 1
     try:
         if args.cmd == "push":
             roms = [rom for f in args.files for rom in roms_from_path(f)]
@@ -296,6 +307,9 @@ def main(argv=None):
             print("ok")
         elif args.cmd == "clock":
             print(f"Pet clock set to {link.clock()}")
+        elif args.cmd == "reset":
+            link.reset()
+            print("erasing; the ball restarts like new (set Wi-Fi again with the wifi command)")
     except (ToolError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

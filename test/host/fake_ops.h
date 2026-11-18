@@ -30,6 +30,7 @@ typedef struct {
     rm_err_t resume_result, skip_result;
     char resume_choice[16];
     int skip_calls;
+    int reset_calls;
     rm_err_t export_result;
     uint8_t export_data[64];
     size_t export_len;

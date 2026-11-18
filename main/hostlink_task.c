@@ -15,6 +15,7 @@
 #include "pet_clock.h"
 #include "emu_task.h"
 #include "pet_store.h"
+#include "factory_reset.h"
 #include "rom_store.h"
 #include "saver.h"
 #include "settings_store.h"
@@ -94,9 +95,11 @@ static hl_clock_t op_clock(void *ctx, int32_t *written_s)
     }
 }
 
+static bool op_factory_reset(void *ctx) { return factory_reset_request() == ESP_OK; }
+
 static const hl_ops_t s_ops = { .store = op_store, .list = op_list, .remove = op_remove, .wifi = op_wifi,
                                 .status = op_status, .get_settings = op_get_settings, .put_settings = op_put_settings,
-                                .clock = op_clock, .ctx = NULL };
+                                .clock = op_clock, .factory_reset = op_factory_reset, .ctx = NULL };
 
 static void reply(void *ctx, const char *line)
 {

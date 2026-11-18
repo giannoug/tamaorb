@@ -259,6 +259,18 @@ dialog h2{font-size:19px}
       <div class="hint">The ball restarts to join the new network. If it can't, set Wi-Fi over USB with <code class="mono">tamaorb-rom.py wifi</code>.</div>
       <div class="btns end"><button type="button" class="btn" id="cancelwifi">Cancel</button><button type="submit" class="btn primary">Join and restart</button></div>
     </form>
+    <div class="pettop" style="padding-top:6px">
+      <div style="display:flex;flex-direction:column"><b>Factory reset</b><span class="hint">Erases every pet, setting and Wi-Fi. ROMs on the SD card stay.</span></div>
+      <div class="btns"><button type="button" class="btn" id="fr-open">Factory reset…</button></div>
+    </div>
+    <div class="banner err" id="fr" hidden>
+      <div style="font-size:14px">Type <b>erase</b> to erase every pet, setting and Wi-Fi on the ball. It restarts like new; set Wi-Fi again over USB.</div>
+      <div class="btns" style="align-items:center;margin-top:8px">
+        <input class="in" style="font-family:inherit;flex:1 1 140px" id="fr-in" type="text" autocomplete="off" spellcheck="false" aria-label="Type erase to confirm">
+        <button type="button" class="btn primary" id="fr-go" disabled>Erase everything</button>
+        <button type="button" class="btn" id="fr-cancel">Cancel</button>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -776,6 +788,17 @@ function doRestart(){
 }
 $('restart1').addEventListener('click',doRestart);
 $('restart2').addEventListener('click',doRestart);
+$('fr-open').addEventListener('click',function(){$('fr').hidden=false;$('fr-in').value='';$('fr-go').disabled=true;$('fr-in').focus()});
+$('fr-cancel').addEventListener('click',function(){$('fr').hidden=true});
+$('fr-in').addEventListener('input',function(){$('fr-go').disabled=$('fr-in').value.trim()!=='erase'});
+$('fr-go').addEventListener('click',function(){
+  if($('fr-in').value.trim()!=='erase')return;
+  $('fr-go').disabled=true;
+  api('POST','/api/factory-reset',{confirm:'erase'}).then(function(r){
+    if(r.ok){$('fr').hidden=true;restarting();return}
+    $('fr-go').disabled=false;gerr('Couldn’t reset: '+whyText(r)+'.');
+  },function(){$('fr-go').disabled=false;gerr('Couldn’t reach the ball.')});
+});
 $('pclkset').addEventListener('click',setPetClock);
 
 /* ---------- Wi-Fi ---------- */

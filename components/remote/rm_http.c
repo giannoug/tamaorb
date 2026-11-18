@@ -283,6 +283,18 @@ static void h_resume(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
     set_ok(r, !strcmp(choice, "back"), true);
 }
 
+static void h_factory_reset(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
+{
+    cJSON *p = parse_body(q);
+    const cJSON *c = cJSON_IsObject(p) ? cJSON_GetObjectItem(p, "confirm") : NULL;
+    bool ok = cJSON_IsString(c) && !strcmp(c->valuestring, "erase");
+    cJSON_Delete(p);
+    if (!ok) { set_err(r, 400, "invalid", "confirm"); return; }
+    rm_err_t e = ops->factory_reset(ops->ctx);
+    if (e != RM_OK) { err_from(r, e); return; }
+    set_ok(r, true, true);
+}
+
 static void h_skip(const rm_ops_t *ops, rm_resp_t *r)
 {
     rm_err_t e = ops->skip(ops->ctx);
@@ -447,7 +459,7 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         {"/api/timezones", M(RM_GET)},     {"/api/pet-clock/sync", M(RM_POST)},
         {"/api/debug", M(RM_GET)},         {"/api/rom", M(RM_GET)},
         {"/api/roms", M(RM_GET)},          {"/api/resume", M(RM_POST)},
-        {"/api/catchup/skip", M(RM_POST)},
+        {"/api/catchup/skip", M(RM_POST)}, {"/api/factory-reset", M(RM_POST)},
     };
     uint8_t pet_id;
     bool save;
@@ -478,6 +490,7 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         case 12: h_roms(ops, r); break;
         case 13: h_resume(ops, q, r); break;
         case 14: h_skip(ops, r); break;
+        case 15: h_factory_reset(ops, q, r); break;
         }
         return;
     }

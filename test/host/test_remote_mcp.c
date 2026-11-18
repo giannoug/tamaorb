@@ -323,6 +323,16 @@ static void test_status_and_pets_json(void)
     cJSON_Delete(r);
 }
 
+static void test_no_reset_tool(void)
+{
+    cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", NULL);
+    cJSON *tools = cJSON_GetObjectItem(result(r), "tools");
+    TEST_ASSERT_GREATER_THAN(0, cJSON_GetArraySize(tools));
+    for (int i = 0; i < cJSON_GetArraySize(tools); i++)
+        TEST_ASSERT_NULL(strstr(cJSON_GetObjectItem(cJSON_GetArrayItem(tools, i), "name")->valuestring, "reset"));
+    cJSON_Delete(r);
+}
+
 static void test_status_phase_wait(void)
 {
     fake.status.phase = RM_PHASE_WAIT;
@@ -606,6 +616,7 @@ int main(void)
     RUN_TEST(test_set_settings_ok);
     RUN_TEST(test_patch_settings_types);
     RUN_TEST(test_status_and_pets_json);
+    RUN_TEST(test_no_reset_tool);
     RUN_TEST(test_status_phase_wait);
     RUN_TEST(test_switch_pet);
     RUN_TEST(test_switch_pet_during_catchup);
