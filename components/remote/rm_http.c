@@ -62,6 +62,7 @@ static void err_from(rm_resp_t *r, rm_err_t e)
     case RM_ERR_NOTIME: set_err(r, 409, "no time", NULL); break;
     case RM_ERR_FULL: set_err(r, 409, "full", NULL); break;
     case RM_ERR_TAKEN: set_err(r, 409, "taken", NULL); break;
+    case RM_ERR_WAITING: set_err(r, 409, "waiting", NULL); break;
     default: set_err(r, 500, "failed", NULL); break;
     }
 }
@@ -266,6 +267,29 @@ static void h_new_pet(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
     set_ok(r, true, true);
 }
 
+static void h_resume(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
+{
+    cJSON *p = parse_body(q);
+    if (!p || !cJSON_IsObject(p)) { cJSON_Delete(p); set_err(r, 400, "invalid", NULL); return; }
+    const cJSON *c = cJSON_GetObjectItem(p, "choice");
+    static const char *const CHOICES[] = { "resume", "ff", "back" };
+    const char *choice = NULL;
+    for (int i = 0; i < 3 && cJSON_IsString(c); i++)
+        if (!strcmp(c->valuestring, CHOICES[i])) choice = CHOICES[i];
+    cJSON_Delete(p);
+    if (!choice) { set_err(r, 400, "invalid", "choice"); return; }
+    rm_err_t e = ops->resume(ops->ctx, choice);
+    if (e != RM_OK) { err_from(r, e); return; }
+    set_ok(r, !strcmp(choice, "back"), true);
+}
+
+static void h_skip(const rm_ops_t *ops, rm_resp_t *r)
+{
+    rm_err_t e = ops->skip(ops->ctx);
+    if (e != RM_OK) { err_from(r, e); return; }
+    set_ok(r, false, false);
+}
+
 static void h_rename(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha[20], uint8_t id, rm_resp_t *r)
 {
     cJSON *p = parse_body(q);
@@ -422,7 +446,8 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         {"/api/look", M(RM_GET)},          {"/api/press", M(RM_POST)},
         {"/api/timezones", M(RM_GET)},     {"/api/pet-clock/sync", M(RM_POST)},
         {"/api/debug", M(RM_GET)},         {"/api/rom", M(RM_GET)},
-        {"/api/roms", M(RM_GET)},
+        {"/api/roms", M(RM_GET)},          {"/api/resume", M(RM_POST)},
+        {"/api/catchup/skip", M(RM_POST)},
     };
     uint8_t pet_id;
     bool save;
@@ -451,6 +476,8 @@ void rm_http_handle(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
         case 10: h_debug(ops, r); break;
         case 11: h_rom(ops, r); break;
         case 12: h_roms(ops, r); break;
+        case 13: h_resume(ops, q, r); break;
+        case 14: h_skip(ops, r); break;
         }
         return;
     }

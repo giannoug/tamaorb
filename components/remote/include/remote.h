@@ -7,7 +7,8 @@
 #include "tama_core.h"
 #include "tc_rom.h"
 
-typedef enum { RM_PHASE_BOOT, RM_PHASE_CATCHUP, RM_PHASE_RUN } rm_phase_t;
+// WAIT: the pet came back after a gap and waits for the owner to choose Resume or Fast-forward.
+typedef enum { RM_PHASE_BOOT, RM_PHASE_CATCHUP, RM_PHASE_RUN, RM_PHASE_WAIT } rm_phase_t;
 typedef struct {
     tc_frame_t frame;
     tc_model_t model;
@@ -79,7 +80,8 @@ typedef struct {
 } rm_debug_t;
 
 typedef enum { RM_OK = 0, RM_ERR_BUSY, RM_ERR_CATCHUP, RM_ERR_NOTFOUND, RM_ERR_BAD, RM_ERR_IO, RM_ERR_NOTIME,
-               RM_ERR_FULL, RM_ERR_TAKEN } rm_err_t;  // FULL: no free pet number / storage; TAKEN: name in use
+               RM_ERR_FULL, RM_ERR_TAKEN, RM_ERR_WAITING } rm_err_t;  // FULL: no free pet number / storage;
+                                                                    // TAKEN: name in use; WAITING: EMU_WAIT
 // A pet: a ROM (SHA-1) and a pet number 0-9. Its id on the API is "<40 hex>-<digit>" (rm_pet_id_*).
 typedef struct {
     uint8_t sha1[20];
@@ -108,6 +110,11 @@ typedef struct {
     int64_t unix_time, last_save_unix;
     float catchup_speed;
     int32_t pet_clock_s, ball_clock_s;  // seconds of the day; -1 unknown (JSON: "HH:MM:SS" or null)
+    char pet_name[17];                  // the running pet ("" none)
+    // While phase is WAIT: the gap the question is about, the fast-forward's estimate, and the Back target ("" none).
+    uint64_t wait_gap_s;
+    uint32_t wait_ff_s;
+    char back_name[17];
 } rm_status_t;
 typedef struct {
     void (*look)(void *ctx, rm_look_t *out);
@@ -133,6 +140,10 @@ typedef struct {
     // NOTFOUND: the model has no known clock; NOTIME: no trusted time; CATCHUP; BUSY: the ROM's clock menu is open.
     rm_err_t (*sync_clock)(void *ctx, int32_t *written_s);
     void (*debug)(void *ctx, rm_debug_t *out);                  // one snapshot (also keeps the ball awake a while)
+    // The answer to the resume question: "resume" | "ff" | "back" (choice is one of these). BUSY: not waiting;
+    // NOTFOUND: "back" without a previous pet. "back" restarts the ball.
+    rm_err_t (*resume)(void *ctx, const char *choice);
+    rm_err_t (*skip)(void *ctx);                                // stops a fast-forward; BUSY when none runs
     bool (*rom)(void *ctx, const uint8_t **data, size_t *len);  // the running ROM's bytes; false: none
     void *ctx;
 } rm_ops_t;

@@ -94,7 +94,17 @@ bool ui_screen_short_press(ui_screen_t *s);
 int  ui_draw_text(uint16_t *fb, int x, int y, const char *s, uint8_t scale, uint16_t color);
 int  ui_text_width(const char *line, uint8_t scale);  // first line only; the trailing blank column is excluded
 void ui_render_message(uint16_t *fb, const char *title, const char *body, const ui_palette_t *p);
-void ui_render_catchup(uint16_t *fb, uint64_t done_s, uint64_t total_s, uint32_t eta_s, const ui_palette_t *p);
+// Catching up (canvas CatchupSkip, CatchupStop): name may be NULL ("Your pet"). skip: the Skip pill, or its confirm.
+typedef enum { UI_SKIP_BUTTON, UI_SKIP_CONFIRM } ui_skip_t;
+typedef enum { UI_CU_NONE, UI_CU_SKIP, UI_CU_GO_ON, UI_CU_STOP } ui_cu_hit_t;
+void ui_render_catchup(uint16_t *fb, const char *name, uint64_t done_s, uint64_t total_s, uint32_t eta_s,
+                       ui_skip_t skip, const ui_palette_t *p);
+ui_cu_hit_t ui_catchup_at(ui_skip_t skip, int x, int y);
+// The resume question (canvas Resume, ResumeBack): back_name NULL means no Back pill (not after a switch).
+typedef struct { const char *name; uint64_t gap_s; uint32_t ff_s; const char *back_name; } ui_resume_view_t;
+typedef enum { UI_RESUME_NONE, UI_RESUME_RESUME, UI_RESUME_FF, UI_RESUME_BACK } ui_resume_hit_t;
+void ui_render_resume(uint16_t *fb, const ui_resume_view_t *v, const ui_palette_t *p);
+ui_resume_hit_t ui_resume_at(const ui_resume_view_t *v, int x, int y);
 // "40s", "12m", "5h 12m", "3d 4h": the two largest units, the second left out when 0; largest_only: "3d".
 void ui_fmt_away(uint64_t s, bool largest_only, char *out, size_t cap);
 void ui_render_low_battery(uint16_t *fb, const ui_palette_t *p);

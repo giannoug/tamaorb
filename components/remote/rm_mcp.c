@@ -60,7 +60,7 @@ static const tool_def_t TOOLS[] = {
      "\"name\":{\"type\":\"string\",\"description\":\"Or a pet name from list_pets.\"}}}"},
     {"sync_pet_clock",
      "Sets the pet's clock to the ball's local time (the tz setting). The pet may wake up or fall asleep, and its age may "
-     "change: tell the owner. Fails for ROMs other than P1/P2, without internet time, while catching up, or while the "
+     "change: tell the owner. Fails for pets without a known clock, without internet time, while catching up, or while the "
      "pet's own clock menu is open.",
      "{\"type\":\"object\",\"properties\":{}}"},
     {"read_ram",
@@ -166,6 +166,7 @@ static cJSON *tool_press(const rm_ops_t *ops, const cJSON *args)
     case RM_OK: return look_result(ops);
     case RM_ERR_BUSY: return tool_result("busy: another press sequence is running", true);
     case RM_ERR_CATCHUP: return tool_result("the ball is catching up", true);
+    case RM_ERR_WAITING: return tool_result("the ball is waiting for a resume choice (Resume or Fast-forward, on the ball or its web panel)", true);
     default: return tool_result("press failed", true);
     }
 }
@@ -211,6 +212,7 @@ static cJSON *tool_switch_pet(const rm_ops_t *ops, const cJSON *args)
     case RM_ERR_NOTFOUND: return tool_result("no such pet", true);
     case RM_ERR_BUSY: return tool_result("busy", true);
     case RM_ERR_CATCHUP: return tool_result("the pet is catching up; try again when it finishes", true);
+    case RM_ERR_WAITING: return tool_result("the ball is waiting for a resume choice (Resume or Fast-forward, on the ball or its web panel)", true);
     default: return tool_result("switch failed", true);
     }
 }
@@ -226,7 +228,8 @@ static cJSON *tool_sync_pet_clock(const rm_ops_t *ops)
         snprintf(t, sizeof t, "Pet clock set to %02d:%02d:%02d.", (int)(w / 3600), (int)(w / 60 % 60), (int)(w % 60));
         return tool_result(t, false);
     }
-    case RM_ERR_NOTFOUND: return tool_result("not available: the pet's clock is only known for P1 and P2", true);
+    case RM_ERR_NOTFOUND: return tool_result("not available: this pet has no clock the ball can set", true);
+    case RM_ERR_WAITING: return tool_result("the ball is waiting for a resume choice (Resume or Fast-forward, on the ball or its web panel)", true);
     case RM_ERR_NOTIME: return tool_result("the ball has no internet time yet", true);
     case RM_ERR_CATCHUP: return tool_result("the pet is catching up; try again when it finishes", true);
     case RM_ERR_BUSY: return tool_result("the pet's clock is stopped (its own clock menu is open); close it and try again", true);
@@ -269,7 +272,7 @@ static cJSON *tool_read_ram(const rm_ops_t *ops, const cJSON *args)
         "pc=0x%03X np=0x%02X a=0x%X b=0x%X x=0x%03X y=0x%03X sp=0x%02X flags=%s halted=%d call_depth=%lu buttons=%s\n"
         "irq (mask/factor): prog_timer %X/%X serial %X/%X k10_k13 %X/%X k00_k03 %X/%X stopwatch %X/%X clock_timer %X/%X\n",
         MODEL[d->model <= TC_MODEL_MOTHRA ? d->model : 0],
-        d->phase == RM_PHASE_RUN ? "run" : d->phase == RM_PHASE_CATCHUP ? "catch-up" : "boot",
+        d->phase == RM_PHASE_RUN ? "run" : d->phase == RM_PHASE_CATCHUP ? "catch-up" : d->phase == RM_PHASE_WAIT ? "wait" : "boot",
         (unsigned long)c->seq, (unsigned long)c->tick, c->pc, c->np, c->a, c->b, c->x, c->y, c->sp, fl[0] ? fl : "-",
         c->halted, (unsigned long)c->call_depth, bt[0] ? bt : "-",
         c->irq[0].mask, c->irq[0].factor, c->irq[1].mask, c->irq[1].factor, c->irq[2].mask, c->irq[2].factor,

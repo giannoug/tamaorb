@@ -23,6 +23,7 @@
 #include "qr_encode.h"
 #include "pet_clock.h"
 #include "saver.h"
+#include "tc_time.h"
 
 #define LOOP_MS        30
 #define FRAME_MS       16   // while a finger is on the glance or settings: ~60 frames a second
@@ -100,6 +101,14 @@ static bool clock_refresh(ui_menu_view_t *v)
     return changed;
 }
 
+// The running pet's name, once the saver knows which pet runs (it doesn't yet while the UI task starts).
+static void running_name(void)
+{
+    pet_ref_t run;
+    if (s_running_name[0] || !saver_running(run.sha1, &run.id)) return;
+    if (pet_store_name(&run, s_running_name) != ESP_OK) s_running_name[0] = 0;
+}
+
 static void ui_task(void *arg)
 {
     ui_screen_t screen;
@@ -111,12 +120,19 @@ static void ui_task(void *arg)
     bool dimmed = false;
     uint8_t shown_level = 0;
 
-    // Before the emulator runs: a start-up screen, then the catch-up progress screen.
-    uint32_t last_progress_draw = 0;
-    bool boot_drawn = false;
+    // Before the emulator runs: a start-up screen, the resume question (EMU_WAIT), then the catch-up screen with Skip.
+    // The question and the catch-up dim and time out like the pet screen; a tap that wakes the screen does nothing else.
+    uint32_t last_progress_draw = 0, guard_ms = 0;
+    bool boot_drawn = false, lit = true, dirty = true, dimmed_pre = false;
+    ui_skip_t skip = UI_SKIP_BUTTON;
+    emu_phase_t shown_phase = EMU_BOOT;
+    ui_resume_view_t rq = { 0 };
+    static char back_name[PS_NAME_MAX + 1];
+    ui_gesture_t pre = { 0 };
+    ui_gesture_reset(&pre);
     st_settings_t cfg;
     settings_get(&cfg);
-    screen_lit(true);  // these screens are lit: no light sleep (it would stop the backlight PWM)
+    screen_lit(true);  // lit: no light sleep (it would stop the backlight PWM)
     while (emu_phase() != EMU_RUN) {
         settings_get(&cfg);
         const ui_palette_t *pal = ui_palette_by_id(cfg.palette);
@@ -124,24 +140,90 @@ static void ui_task(void *arg)
             ui_render_low_battery(s_fb, pal);
             show();
             board_backlight_set(cfg.brightness);
+            screen_lit(true);
             vTaskSuspend(NULL);  // the power task puts the device to sleep
         }
-        if (emu_phase() == EMU_BOOT && !boot_drawn) {
-            ui_render_message(s_fb, "TamaOrb", "Starting...", pal);
+        emu_phase_t ph = emu_phase();
+        if (ph == EMU_BOOT) {
+            if (!boot_drawn) {
+                ui_render_message(s_fb, "TamaOrb", "Starting...", pal);
+                show();
+                board_backlight_set(cfg.brightness);
+                boot_drawn = true;
+            }
+            vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
+            continue;
+        }
+        if (ph != shown_phase) {  // the question or the catch-up just began: fresh, lit, guarded against a stray tap
+            shown_phase = ph;
+            skip = UI_SKIP_BUTTON;
+            dirty = true;
+            guard_ms = now_ms();
+            ui_screen_wake(&screen, now_ms());
+            running_name();
+            if (ph == EMU_WAIT) {
+                pet_ref_t prev;
+                rq = (ui_resume_view_t){ s_running_name, emu_wait_gap_s(), 0, pet_prev(&prev, back_name) ? back_name : NULL };
+                rq.ff_s = tc_ff_estimate_s(rq.gap_s, emu_catchup_speed());
+            }
+        }
+        ui_touch_t t;
+        read_touch(&t);
+        ui_gevent_t ev;
+        ui_gesture_feed(&pre, UI_GMODE_MENU, &t, now_ms(), &ev);
+        bool usb = board_usb_present();
+        ui_screen_out_t out = ui_screen_update(&screen, now_ms(), t.count ? UI_TOUCH_PRESENT : 0, board_boot_down(), false,
+                                               false, usb ? 0 : cfg.off_battery_s * 1000u);
+        if (screen.swallowing) {
+            ui_gesture_reset(&pre);
+            ev.kind = UI_G_NONE;
+        }
+        if (out.backlight != lit) {
+            lit = out.backlight;
+            screen_lit(lit);
+            if (!lit) board_backlight_set(0);
+            else dirty = true;
+        }
+        if (lit && ev.kind == UI_G_TAP && now_ms() - guard_ms >= UI_CONFIRM_GUARD_MS) {
+            if (ph == EMU_WAIT) {
+                ui_resume_hit_t h = ui_resume_at(&rq, ev.x, ev.y);
+                if (h == UI_RESUME_RESUME) emu_answer(EMU_ANSWER_RESUME);
+                else if (h == UI_RESUME_FF) emu_answer(EMU_ANSWER_FF);
+                else if (h == UI_RESUME_BACK) {
+                    ui_message("Going back", back_name);
+                    esp_err_t e = pet_switch_back();
+                    if (e == ESP_OK) for (;;) vTaskDelay(pdMS_TO_TICKS(1000));  // until the restart
+                    ui_message("Not going back", e == ESP_ERR_NOT_FOUND ? "That pet's ROM is not\non the SD card." : "Try again in a\nmoment.");
+                    vTaskDelay(pdMS_TO_TICKS(2500));
+                    dirty = true;
+                }
+            } else if (ph == EMU_CATCHUP) {
+                ui_cu_hit_t h = ui_catchup_at(skip, ev.x, ev.y);
+                if (h == UI_CU_SKIP) { skip = UI_SKIP_CONFIRM; guard_ms = now_ms(); dirty = true; }
+                else if (h == UI_CU_GO_ON) { skip = UI_SKIP_BUTTON; dirty = true; }
+                else if (h == UI_CU_STOP) { emu_skip(); skip = UI_SKIP_BUTTON; dirty = true; }
+            }
+        }
+        uint32_t dim_s = usb ? cfg.dim_usb_s : cfg.dim_battery_s;
+        bool dim = ui_screen_dimmed(&screen, now_ms(), dim_s ? dim_s * 1000u : UINT32_MAX);
+        if (lit && !dirty && dim != dimmed_pre) board_backlight_set(dim ? st_effective_dim(&cfg) : cfg.brightness);
+        dimmed_pre = dim;
+        if (lit && ph == EMU_WAIT && dirty) {
+            ui_render_resume(s_fb, &rq, pal);
             show();
-            board_backlight_set(cfg.brightness);
-            boot_drawn = true;
-        } else if (emu_phase() == EMU_CATCHUP && now_ms() - last_progress_draw >= 1000) {
+            board_backlight_set(dim ? st_effective_dim(&cfg) : cfg.brightness);
+            dirty = false;
+        } else if (lit && ph == EMU_CATCHUP && (dirty || now_ms() - last_progress_draw >= 1000)) {
             uint64_t done, total;
             uint32_t eta;
             emu_catchup_progress(&done, &total, &eta);
-            ui_render_catchup(s_fb, done, total, eta, pal);
+            ui_render_catchup(s_fb, s_running_name, done, total, eta, skip, pal);
             show();
-            ESP_LOGI(TAG, "catch-up screen %llu/%llu s", (unsigned long long)done, (unsigned long long)total);
-            board_backlight_set(cfg.brightness);
+            board_backlight_set(dim ? st_effective_dim(&cfg) : cfg.brightness);
             last_progress_draw = now_ms();
+            dirty = false;
         }
-        vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
+        vTaskDelay(pdMS_TO_TICKS(t.count ? FRAME_MS : LOOP_MS));
     }
     ui_gesture_t gest = { 0 };
     ui_nav_t nav;
@@ -149,10 +231,7 @@ static void ui_task(void *arg)
     resume_on_pet(&screen, &gest, &nav);
     screen_lit(false);
     backlight = false;  // force a fresh pet frame and backlight on
-    {
-        pet_ref_t run;
-        if (saver_running(run.sha1, &run.id) && pet_store_name(&run, s_running_name) != ESP_OK) s_running_name[0] = 0;
-    }
+    running_name();
     ESP_LOGI(TAG, "showing the pet (%s)", s_running_name);
 
     // The QR page: mDNS answers to the boot name until a restart.

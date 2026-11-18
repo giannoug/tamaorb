@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Writes a PPM of one screen for eyeballing. Not a test.
-// Usage: render_preview out.ppm [pet|catchup|battery|message] [held_mask] [palette 0-2] [frame.txt]
+// Usage: render_preview out.ppm [pet|catchup|catchup-confirm|resume|resume-back|battery|message] [held_mask]
+//                       [palette 0-2] [frame.txt]
 //        render_preview out.ppm pet-<p1|p2|angel|mothra>: that model's pet screen, every icon lit
 //        frame.txt (pet only): 16 lines of 32 '#'/'.' then "icons <hex>"; default: a sample face, Attention lit
 //        render_preview out.ppm <screen> [palette 0-2] [scroll px] [t_ms]
@@ -87,7 +88,12 @@ int main(int argc, char **argv)
         ui_glance_t g = { .frame = &f, .pet = &pet, .model = TC_MODEL_P1, .clock_known = true, .hour = 14,
                           .minute = 32, .batt_pct = 80, .address = "tamaorb.local" };
         ui_render_glance(fb, &g, ui_palette_by_id(pal));
-    } else if (!strcmp(mode, "catchup")) ui_render_catchup(fb, 8040, 29100, 760, p);
+    } else if (!strcmp(mode, "catchup")) ui_render_catchup(fb, "P2 #1", 8040, 29100, 760, UI_SKIP_BUTTON, p);
+    else if (!strcmp(mode, "catchup-confirm")) ui_render_catchup(fb, "P2 #1", 8040, 29100, 760, UI_SKIP_CONFIRM, p);
+    else if (!strcmp(mode, "resume") || !strcmp(mode, "resume-back")) {
+        ui_resume_view_t v = { "P2 #1", 3 * 86400 + 4 * 3600, 3664, !strcmp(mode, "resume-back") ? "P1 #1" : NULL };
+        ui_render_resume(fb, &v, p);
+    }
     else if (!strcmp(mode, "battery")) ui_render_low_battery(fb, p);
     else if (!strcmp(mode, "rom-first") || !strcmp(mode, "new-pet") || !strcmp(mode, "new-confirm")) {
         static const ui_rom_row_t roms[] = { { "P1", "Gen 1 - tama.bin", "tama.bin", true },

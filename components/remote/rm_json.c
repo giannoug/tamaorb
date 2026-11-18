@@ -105,10 +105,11 @@ cJSON *rm_json_debug(const rm_debug_t *d)
     cJSON *o = cJSON_CreateObject();
     if (!o) return NULL;
     const tc_cpu_t *c = &d->cpu;
-    static const char *const PHASE[] = { [RM_PHASE_BOOT] = "boot", [RM_PHASE_CATCHUP] = "catch-up", [RM_PHASE_RUN] = "run" };
+    static const char *const PHASE[] = { [RM_PHASE_BOOT] = "boot", [RM_PHASE_CATCHUP] = "catch-up", [RM_PHASE_RUN] = "run",
+                                         [RM_PHASE_WAIT] = "wait" };
     cJSON_AddNumberToObject(o, "seq", c->seq);
     cJSON_AddStringToObject(o, "model", model_name(d->model));
-    cJSON_AddStringToObject(o, "phase", PHASE[d->phase <= RM_PHASE_RUN ? d->phase : RM_PHASE_RUN]);
+    cJSON_AddStringToObject(o, "phase", PHASE[d->phase <= RM_PHASE_WAIT ? d->phase : RM_PHASE_RUN]);
     cJSON_AddNumberToObject(o, "tick", c->tick);
     cJSON_AddNumberToObject(o, "pc", c->pc);
     cJSON_AddNumberToObject(o, "np", c->np);
@@ -158,7 +159,18 @@ cJSON *rm_json_status(const rm_status_t *st)
     cJSON_AddStringToObject(o, "wifi_ssid", st->wifi_ssid);
     cJSON_AddStringToObject(o, "ip", st->ip);
     cJSON_AddStringToObject(o, "model", model_name(st->model));
-    cJSON_AddStringToObject(o, "phase", st->phase == RM_PHASE_BOOT ? "boot" : st->phase == RM_PHASE_CATCHUP ? "catch-up" : "run");
+    cJSON_AddStringToObject(o, "phase", st->phase == RM_PHASE_BOOT ? "boot" : st->phase == RM_PHASE_CATCHUP ? "catch-up"
+                                        : st->phase == RM_PHASE_WAIT ? "wait" : "run");
+    cJSON_AddStringToObject(o, "pet", st->pet_name);
+    if (st->phase == RM_PHASE_WAIT) {
+        cJSON *w = cJSON_AddObjectToObject(o, "wait");
+        if (w) {
+            cJSON_AddNumberToObject(w, "gap_s", (double)st->wait_gap_s);
+            cJSON_AddNumberToObject(w, "ff_s", st->wait_ff_s);
+            if (st->back_name[0]) cJSON_AddStringToObject(w, "back", st->back_name);
+            else cJSON_AddNullToObject(w, "back");
+        }
+    }
     cJSON_AddNumberToObject(o, "catchup_pct", st->catchup_pct);
     cJSON_AddNumberToObject(o, "uptime_s", st->uptime_s);
     cJSON_AddNumberToObject(o, "batt_mv", st->batt_mv);

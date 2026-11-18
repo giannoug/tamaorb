@@ -27,6 +27,9 @@ typedef struct {
     rm_err_t delete_result;
     int deleted_id, delete_calls;
     int export_id, import_id;
+    rm_err_t resume_result, skip_result;
+    char resume_choice[16];
+    int skip_calls;
     rm_err_t export_result;
     uint8_t export_data[64];
     size_t export_len;

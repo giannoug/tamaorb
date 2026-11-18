@@ -48,7 +48,7 @@ header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-betw
 .banner.row{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
 .busy{background:var(--busy-bg);border:1px solid var(--busy-line);color:var(--busy-ink)}
 .err{background:var(--error-bg);border:1px solid var(--error-line);color:var(--error-ink)}
-#catch{border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+#catch,#ask{border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
 .bar{height:8px;background:var(--busy-track);border-radius:4px;overflow:hidden}
 .bar div{height:8px;background:var(--busy-bar)}
 .btn{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line-control);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
@@ -145,10 +145,22 @@ dialog h2{font-size:19px}
 </header>
 
 <div id="top" aria-live="polite">
+  <div id="ask" class="busy" role="region" aria-labelledby="ask-t" hidden>
+    <div><b id="ask-t"></b></div>
+    <div id="ask-s" style="font-size:14px"></div>
+    <div class="btns">
+      <button type="button" class="btn" id="ask-resume">Resume</button>
+      <button type="button" class="btn primary" id="ask-ff">Fast-forward</button>
+      <button type="button" class="btn" id="ask-back" hidden></button>
+    </div>
+  </div>
   <div id="catch" class="busy" role="status" hidden>
     <div><b id="cutitle">Catching up on missed time</b></div>
     <div class="bar"><div id="cubar" style="width:0"></div></div>
     <div id="cutxt" style="font-size:14px"></div>
+    <div class="btns" id="cu-skip-row"><button type="button" class="btn" id="cu-skip">Skip</button></div>
+    <div class="btns" id="cu-stop-row" hidden><span style="font-size:14px">Stop here? The pet goes on from where it got to, and its clock is set to now.</span>
+      <button type="button" class="btn" id="cu-goon">Go on</button><button type="button" class="btn primary" id="cu-stop">Stop</button></div>
   </div>
 </div>
 <div id="gerr" class="banner err" role="alert" hidden></div>
@@ -353,7 +365,7 @@ function ferr(k,m){
   var b=k==='name'?$('sfx-name'):c;if(b&&b.classList)b.classList.toggle('bad',!!m);
   var hh=$('h-'+k);if(hh)hh.hidden=!!m&&k!=='password';
 }
-var ERR={busy:'the ball is busy, try again in a moment','no time':'the ball has no internet time yet',catching:'the ball is still catching up','catching up':'the ball is still catching up','not found':'it wasn’t found on the ball',origin:'this page was opened from another address',invalid:'the ball didn’t accept that',failed:'the ball failed to do it'};
+var ERR={waiting:'the ball is waiting for Resume or Fast-forward',full:'there’s no room for another pet',taken:'another pet has that name',busy:'the ball is busy, try again in a moment','no time':'the ball has no internet time yet',catching:'the ball is still catching up','catching up':'the ball is still catching up','not found':'it wasn’t found on the ball',origin:'this page was opened from another address',invalid:'the ball didn’t accept that',failed:'the ball failed to do it'};
 function whyText(r){return ERR[(r.j&&r.j.error)||'']||'the ball answered '+r.status}
 
 /* ---------- settings ---------- */
@@ -480,8 +492,8 @@ function renderStatus(){
   document.title='TamaOrb \u00b7 '+runName;
   $('host').textContent=runName+'.local';
   pendName();
-  var phase=s.phase==='catch-up'?'catching up':s.phase==='boot'?'starting':'running';
-  t.push(tile('Pet',s.model,(s.rom_name||'')+' · '+phase));
+  var phase=s.phase==='catch-up'?'catching up':s.phase==='boot'?'starting':s.phase==='wait'?'waiting for you':'running';
+  t.push(tile('Pet',s.pet||s.model,s.model+' · '+phase));
   if(s.usb)t.push(tile('Power','USB','Battery '+(s.batt_mv/1000).toFixed(2)+' V'));
   else t.push(tile('Power','Battery '+s.batt_pct+' %',(s.batt_mv/1000).toFixed(2)+' V'+(S?' · screen off after '+S.off_battery_s+' s idle':'')));
   t.push(tile('Wi-Fi',s.wifi?s.wifi_ssid:'Not connected',s.wifi?'−'+Math.abs(s.rssi)+' dBm · '+s.ip:'No network'));
@@ -492,8 +504,17 @@ function renderStatus(){
   $('wifitxt').textContent=s.wifi?'Connected to '+s.wifi_ssid:'Not connected';
   $('mcp').textContent='claude mcp add --transport http '+runName+' http://'+runName+'.local/mcp';
   if(s.restart_pending&&!restartPending)setPending(true);
+  // the resume question
+  var w=s.phase==='wait'&&s.wait;
+  $('ask').hidden=!w;
+  if(w){
+    $('ask-t').textContent=(s.pet||'Your pet')+' was away '+span(s.wait.gap_s);
+    $('ask-s').textContent='Fast-forward lives through that time (about '+hm(s.wait.ff_s)+'). Resume picks up where it left off; its clock is then set to now. The ball waits for your answer here or on the ball.';
+    var b=$('ask-back');b.hidden=!s.wait.back;if(s.wait.back)b.textContent='Back to '+s.wait.back;
+  }
   // catch-up banner
   var c=s.phase==='catch-up';
+  if(!c){$('cu-skip-row').hidden=false;$('cu-stop-row').hidden=true}
   $('catch').hidden=!c;
   if(c){
     var p=s.catchup_pct,n=Date.now()/1000;
@@ -502,6 +523,7 @@ function renderStatus(){
     if(p>cu.p&&n-cu.t>=10){left=', about '+hm((100-p)*(n-cu.t)/(p-cu.p))+' left'}
     $('cubar').style.width=p+'%';
     $('catch').setAttribute('aria-busy','true');
+    $('cutitle').textContent=(s.pet||'Your pet')+' is catching up on missed time';
     $('cutxt').textContent=p+' % done'+left+'. Switching pets and restoring saves wait until it finishes. Settings still work.';
   }else cu=null;
   if(s.phase!==lastPhase){lastPhase=s.phase;petsAt=0}
@@ -510,6 +532,7 @@ function renderStatus(){
 // The pet's own clock, and the button that sets it to the ball's local time (the tz setting).
 function clockWhy(s){
   if(!s.has_clock)return 'Not available for this pet';
+  if(s.phase==='wait')return 'Waiting for Resume or Fast-forward';
   if(s.phase!=='run')return 'Pet is catching up';
   if(!s.ball_clock)return 'Waiting for internet time';
   return '';
@@ -547,6 +570,28 @@ function loadPets(){
   petsAt=Date.now();
   return api('GET','/api/pets').then(function(r){if(r.ok&&Array.isArray(r.j)){pets=r.j;renderPets()}},function(){});
 }
+
+/* ---------- the resume question and Skip ---------- */
+function answer(choice){
+  ['ask-resume','ask-ff','ask-back'].forEach(function(id){$(id).disabled=true});
+  api('POST','/api/resume',{choice:choice}).then(function(r){
+    ['ask-resume','ask-ff','ask-back'].forEach(function(id){$(id).disabled=false});
+    if(r.ok){gerr('');if(r.j.restarting)restarting();else setTimeout(poll,500);return}
+    gerr('The ball didn’t take that answer: '+whyText(r)+'.');
+  },function(){['ask-resume','ask-ff','ask-back'].forEach(function(id){$(id).disabled=false});gerr('Couldn’t reach the ball.')});
+}
+$('ask-resume').addEventListener('click',function(){answer('resume')});
+$('ask-ff').addEventListener('click',function(){answer('ff')});
+$('ask-back').addEventListener('click',function(){answer('back')});
+$('cu-skip').addEventListener('click',function(){$('cu-skip-row').hidden=true;$('cu-stop-row').hidden=false;$('cu-goon').focus()});
+$('cu-goon').addEventListener('click',function(){$('cu-skip-row').hidden=false;$('cu-stop-row').hidden=true});
+$('cu-stop').addEventListener('click',function(){
+  $('cu-stop').disabled=true;
+  api('POST','/api/catchup/skip').then(function(r){
+    $('cu-stop').disabled=false;$('cu-skip-row').hidden=false;$('cu-stop-row').hidden=true;
+    if(r.ok){gerr('');setTimeout(poll,500)}else gerr('Couldn’t stop the catch-up: '+whyText(r)+'.');
+  },function(){$('cu-stop').disabled=false;gerr('Couldn’t reach the ball.')});
+});
 
 /* ---------- pets ---------- */
 function icon(d){var s=document.createElementNS('http://www.w3.org/2000/svg','svg');s.setAttribute('width',16);s.setAttribute('height',16);s.setAttribute('viewBox','0 0 16 16');s.setAttribute('fill','none');s.setAttribute('stroke','currentColor');s.setAttribute('stroke-width','1.6');s.setAttribute('aria-hidden','true');var p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',d);s.append(p);return s}

@@ -113,6 +113,16 @@ static bool f_restart_pending(void *ctx)
     return fake.status.restart_pending;
 }
 
+static rm_err_t f_resume(void *ctx, const char *choice)
+{
+    snprintf(fake.resume_choice, sizeof fake.resume_choice, "%s", choice);
+    return fake.resume_result;
+}
+static rm_err_t f_skip(void *ctx)
+{
+    fake.skip_calls++;
+    return fake.skip_result;
+}
 static rm_err_t f_sync_clock(void *ctx, int32_t *written_s)
 {
     fake.sync_calls++;
@@ -135,7 +145,7 @@ rm_ops_t fake_ops = {.look = f_look, .press = f_press, .status = f_status, .get_
                      .list_pets = f_pets, .list_roms = f_roms, .switch_pet = f_switch, .new_pet = f_new,
                      .rename_pet = f_rename, .delete_pet = f_delete, .export_save = f_export, .import_save = f_import,
                      .set_wifi = f_wifi, .restart = f_restart, .guide = f_guide, .restart_pending = f_restart_pending,
-                     .sync_clock = f_sync_clock, .debug = f_debug, .rom = f_rom, .ctx = NULL};
+                     .sync_clock = f_sync_clock, .resume = f_resume, .skip = f_skip, .debug = f_debug, .rom = f_rom, .ctx = NULL};
 
 void fake_reset(void)
 {

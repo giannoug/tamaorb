@@ -323,6 +323,21 @@ static void test_status_and_pets_json(void)
     cJSON_Delete(r);
 }
 
+static void test_status_phase_wait(void)
+{
+    fake.status.phase = RM_PHASE_WAIT;
+    cJSON *r = tool("status", "{}");
+    cJSON *s = cJSON_Parse(text0(r));
+    TEST_ASSERT_EQUAL_STRING("wait", cJSON_GetObjectItem(s, "phase")->valuestring);
+    cJSON_Delete(s);
+    cJSON_Delete(r);
+    fake.press_result = RM_ERR_WAITING;
+    r = tool("press", "{\"buttons\":\"A\"}");
+    TEST_ASSERT_TRUE(is_error(r));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "resume"));
+    cJSON_Delete(r);
+}
+
 static void test_switch_pet(void)
 {
     cJSON *r = tool("switch_pet", "{\"id\":\"4b4979cf92dc9d2fb6d7295a38f209f3da144f72-1\"}");
@@ -395,7 +410,7 @@ static void test_sync_pet_clock_refusals_are_tool_errors(void)
     fake.sync_result = RM_ERR_NOTFOUND;
     r = tool("sync_pet_clock", "{}");
     TEST_ASSERT_TRUE(is_error(r));
-    TEST_ASSERT_NOT_NULL(strstr(text0(r), "P1 and P2"));
+    TEST_ASSERT_NOT_NULL(strstr(text0(r), "no clock the ball can set"));
     cJSON_Delete(r);
 }
 
@@ -591,6 +606,7 @@ int main(void)
     RUN_TEST(test_set_settings_ok);
     RUN_TEST(test_patch_settings_types);
     RUN_TEST(test_status_and_pets_json);
+    RUN_TEST(test_status_phase_wait);
     RUN_TEST(test_switch_pet);
     RUN_TEST(test_switch_pet_during_catchup);
     RUN_TEST(test_sync_pet_clock_description_warns);

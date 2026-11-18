@@ -84,6 +84,7 @@ rm_err_t press_run(const rm_press_req_t *req)
 {
     if (!req || rm_press_validate(req)) return RM_ERR_BAD;  // rm_press_begin trusts its input
     if (!s_task || !s_done) return RM_ERR_IO;
+    if (emu_phase() == EMU_WAIT) return RM_ERR_WAITING;
     if (emu_phase() != EMU_RUN) return RM_ERR_CATCHUP;
     if (atomic_exchange(&s_busy, true)) return RM_ERR_BUSY;
     s_req = *req;

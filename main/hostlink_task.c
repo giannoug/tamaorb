@@ -13,6 +13,8 @@
 #include "hostlink.h"
 #include "net.h"
 #include "pet_clock.h"
+#include "emu_task.h"
+#include "pet_store.h"
 #include "rom_store.h"
 #include "saver.h"
 #include "settings_store.h"
@@ -66,8 +68,16 @@ static void op_status(void *ctx, char *out, size_t cap)
     char pet[24] = "-";
     int32_t p = pet_clock_pet_s();
     if (p >= 0) snprintf(pet, sizeof pet, "%02d:%02d:%02d", (int)(p / 3600), (int)(p / 60 % 60), (int)(p % 60));
-    snprintf(out, cap, "rom=%s wifi=%d ip=%s time=%d batt_mv=%lu usb=%d sd=%d pet_clock=%s", tc_model_name(s_model),
-             net_connected(), ip, trusted, (unsigned long)board_battery_mv(), board_usb_present(), rom_store_sd_present(), pet);
+    static const char *const PHASE[] = { [EMU_BOOT] = "boot", [EMU_WAIT] = "wait", [EMU_CATCHUP] = "catch-up",
+                                         [EMU_RUN] = "run" };
+    char name[PS_NAME_MAX + 1] = "-";
+    pet_ref_t run;
+    if (saver_running(run.sha1, &run.id) && pet_store_name(&run, name) == ESP_OK) {
+        for (char *c = name; *c; c++) if (*c == ' ') *c = '_';  // one token per value
+    }
+    snprintf(out, cap, "rom=%s wifi=%d ip=%s time=%d batt_mv=%lu usb=%d sd=%d pet_clock=%s phase=%s pet=%s",
+             tc_model_name(s_model), net_connected(), ip, trusted, (unsigned long)board_battery_mv(), board_usb_present(),
+             rom_store_sd_present(), pet, PHASE[emu_phase()], name);
 }
 
 static void op_get_settings(void *ctx, st_settings_t *out) { settings_get(out); }

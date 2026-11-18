@@ -208,25 +208,125 @@ void ui_render_message(uint16_t *fb, const char *title, const char *body, const 
     text_centred(fb, 132, body, 1, c.soft);
 }
 
-void ui_render_catchup(uint16_t *fb, uint64_t done_s, uint64_t total_s, uint32_t eta_s, const ui_palette_t *p)
+// ---- Pills (as the settings pages draw them) ----
+#define PILL_W 84
+#define PILL_H 36
+#define PILL_GAP 4
+static int pill_x(int i) { return UI_W / 2 - PILL_W - PILL_GAP / 2 + i * (PILL_W + PILL_GAP); }
+static void pill(uint16_t *fb, int x, int y, int w, int h, int border, const char *label, bool filled, const colors_t *c)
+{
+    ui_fill_rrect(fb, x, y, w, h, h / 2, c->ink);
+    if (!filled) ui_fill_rrect(fb, x + border, y + border, w - 2 * border, h - 2 * border, h / 2 - border, c->bg);
+    ui_draw_text(fb, x + (w - ui_text_width(label, 1)) / 2, y + (h - 8) / 2, label, 1, filled ? c->bg : c->ink);
+}
+static bool in_box(int x, int y, int bx, int by, int bw, int bh) { return x >= bx && x < bx + bw && y >= by && y < by + bh; }
+
+// ---- Catching up, with Skip (canvas CatchupSkip, CatchupStop) ----
+#define CU_TITLE_Y 42
+#define CU_BODY_Y 68        // two lines, 13 px apart
+#define CU_BAR_Y 105
+#define CU_DONE_Y 127
+#define CU_LEFT_Y 140
+#define CU_SKIP_Y 170
+#define CU_SKIP_W 80
+#define CU_SKIP_H 28
+#define STOP_TITLE_Y 60
+#define STOP_BODY_Y 88      // three lines, 14 px apart
+#define STOP_PILL_Y 145
+#define STOP_NOTE_Y 192
+
+void ui_render_catchup(uint16_t *fb, const char *name, uint64_t done_s, uint64_t total_s, uint32_t eta_s,
+                       ui_skip_t skip, const ui_palette_t *p)
 {
     colors_t c = colors(p);
     clear(fb, c.bg);
-    text_centred(fb, 52, "Catching up", 2, c.ink);
-    text_centred(fb, 80, "Your pet lived on\nwhile the power was off", 1, c.soft);
+    char line[48], a[16], b[16];
+    if (!name || !*name) name = "Your pet";
+    ui_fmt_away(done_s, false, a, sizeof a);
+    if (skip == UI_SKIP_CONFIRM) {
+        text_centred(fb, STOP_TITLE_Y, "Stop here?", 2, c.ink);
+        snprintf(line, sizeof line, "%s goes on from", name);
+        text_centred(fb, STOP_BODY_Y, line, 1, c.ink);
+        snprintf(line, sizeof line, "%s in. Its clock", a);
+        text_centred(fb, STOP_BODY_Y + 14, line, 1, c.ink);
+        text_centred(fb, STOP_BODY_Y + 28, "is set to now.", 1, c.ink);
+        pill(fb, pill_x(0), STOP_PILL_Y, PILL_W, PILL_H, 2, "Go on", false, &c);
+        pill(fb, pill_x(1), STOP_PILL_Y, PILL_W, PILL_H, 2, "Stop", true, &c);
+        text_centred(fb, STOP_NOTE_Y, "still catching up", 1, c.soft);
+        return;
+    }
+    text_centred(fb, CU_TITLE_Y, "Catching up", 2, c.ink);
+    snprintf(line, sizeof line, "%s lives through", name);
+    text_centred(fb, CU_BODY_Y, line, 1, c.soft);
+    text_centred(fb, CU_BODY_Y + 13, "the time it was away", 1, c.soft);
 
     int filled = total_s ? (int)(done_s * 16 / total_s) : 0;
     if (filled > 16) filled = 16;
     const int x0 = 120 - (16 * 9 - 2) / 2;
-    for (int i = 0; i < 16; i++) rect(fb, x0 + 9 * i, 150, 7, 12, i < filled ? c.ink : c.ghost);
+    for (int i = 0; i < 16; i++) rect(fb, x0 + 9 * i, CU_BAR_Y, 7, 12, i < filled ? c.ink : c.ghost);
 
-    char line[48];
-    snprintf(line, sizeof line, "%uh %02um of %uh %02um",
-             (unsigned)(done_s / 3600), (unsigned)(done_s / 60 % 60),
-             (unsigned)(total_s / 3600), (unsigned)(total_s / 60 % 60));
-    text_centred(fb, 172, line, 1, c.ink);
+    ui_fmt_away(total_s, false, b, sizeof b);
+    snprintf(line, sizeof line, "%s of %s", a, b);
+    text_centred(fb, CU_DONE_Y, line, 1, c.ink);
     snprintf(line, sizeof line, "about %u min left", (unsigned)((eta_s + 59) / 60));
-    text_centred(fb, 188, line, 1, c.soft);
+    text_centred(fb, CU_LEFT_Y, line, 1, c.soft);
+    pill(fb, (UI_W - CU_SKIP_W) / 2, CU_SKIP_Y, CU_SKIP_W, CU_SKIP_H, 2, "Skip", false, &c);
+}
+
+ui_cu_hit_t ui_catchup_at(ui_skip_t skip, int x, int y)
+{
+    if (skip == UI_SKIP_CONFIRM) {
+        if (in_box(x, y, pill_x(0), STOP_PILL_Y, PILL_W, PILL_H)) return UI_CU_GO_ON;
+        if (in_box(x, y, pill_x(1), STOP_PILL_Y, PILL_W, PILL_H)) return UI_CU_STOP;
+        return UI_CU_NONE;
+    }
+    return in_box(x, y, (UI_W - CU_SKIP_W) / 2, CU_SKIP_Y, CU_SKIP_W, CU_SKIP_H) ? UI_CU_SKIP : UI_CU_NONE;
+}
+
+// ---- The resume question (canvas Resume, ResumeBack): everything moves up 6 px when Back shows ----
+#define RQ_NAME_Y 42
+#define RQ_AWAY_Y 64
+#define RQ_BODY_Y 84        // four lines, 13 px apart
+#define RQ_PILL_Y 146
+#define RQ_BACK_DY 6
+#define RQ_BACK_Y 180
+#define RQ_BACK_W 144
+#define RQ_BACK_H 24
+
+void ui_render_resume(uint16_t *fb, const ui_resume_view_t *v, const ui_palette_t *p)
+{
+    colors_t c = colors(p);
+    clear(fb, c.bg);
+    int up = v->back_name ? RQ_BACK_DY : 0;
+    char line[48], d[16];
+    text_centred(fb, RQ_NAME_Y - up, v->name && *v->name ? v->name : "Your pet", 2, c.ink);
+    ui_fmt_away(v->gap_s, false, d, sizeof d);
+    snprintf(line, sizeof line, "was away %s", d);
+    text_centred(fb, RQ_AWAY_Y - up, line, 1, c.ink);
+    ui_fmt_away(v->ff_s, false, d, sizeof d);
+    text_centred(fb, RQ_BODY_Y - up, "Fast-forward lives", 1, c.soft);
+    snprintf(line, sizeof line, "through it (~%s).", d);
+    text_centred(fb, RQ_BODY_Y + 13 - up, line, 1, c.soft);
+    text_centred(fb, RQ_BODY_Y + 26 - up, "Resume picks up", 1, c.soft);
+    text_centred(fb, RQ_BODY_Y + 39 - up, "where it left off.", 1, c.soft);
+    pill(fb, pill_x(0), RQ_PILL_Y - 2 * up, PILL_W, PILL_H, 2, "Resume", false, &c);
+    pill(fb, pill_x(1), RQ_PILL_Y - 2 * up, PILL_W, PILL_H, 2, "Fast-fwd", true, &c);
+    if (v->back_name) {
+        snprintf(line, sizeof line, "Back to %s", v->back_name);
+        int w = ui_text_width(line, 1) + 24;
+        if (w < RQ_BACK_W) w = RQ_BACK_W;
+        if (w > 200) w = 200;
+        pill(fb, (UI_W - w) / 2, RQ_BACK_Y, w, RQ_BACK_H, 1, line, false, &c);
+    }
+}
+
+ui_resume_hit_t ui_resume_at(const ui_resume_view_t *v, int x, int y)
+{
+    int up = v->back_name ? RQ_BACK_DY : 0;
+    if (in_box(x, y, pill_x(0), RQ_PILL_Y - 2 * up, PILL_W, PILL_H)) return UI_RESUME_RESUME;
+    if (in_box(x, y, pill_x(1), RQ_PILL_Y - 2 * up, PILL_W, PILL_H)) return UI_RESUME_FF;
+    if (v->back_name && in_box(x, y, 20, RQ_BACK_Y, UI_W - 40, RQ_BACK_H)) return UI_RESUME_BACK;
+    return UI_RESUME_NONE;
 }
 
 void ui_render_low_battery(uint16_t *fb, const ui_palette_t *p)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "remote_ops.h"
 #include "tc_pet.h"
+#include "tc_time.h"
 #include "pet_store.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,7 +40,8 @@ static rm_phase_t phase_now(uint8_t *pct)
     emu_phase_t ph = emu_phase();
     *pct = 0;
     if (ph == EMU_RUN) return RM_PHASE_RUN;
-    if (ph == EMU_BOOT || ph == EMU_WAIT) return RM_PHASE_BOOT;  // WAIT gets its own phase with the question (Task 13)
+    if (ph == EMU_BOOT) return RM_PHASE_BOOT;
+    if (ph == EMU_WAIT) return RM_PHASE_WAIT;
     uint64_t done, total;
     uint32_t eta;
     emu_catchup_progress(&done, &total, &eta);
@@ -95,6 +97,14 @@ static void op_status(void *ctx, rm_status_t *st)
     }
     st->catchup_speed = emu_catchup_speed();
     st->has_clock = tc_pet_has_clock(s_model);
+    pet_ref_t run;
+    if (saver_running(run.sha1, &run.id) && pet_store_name(&run, st->pet_name) != ESP_OK) st->pet_name[0] = 0;
+    if (st->phase == RM_PHASE_WAIT) {
+        st->wait_gap_s = emu_wait_gap_s();
+        st->wait_ff_s = tc_ff_estimate_s(st->wait_gap_s, emu_catchup_speed());
+        pet_ref_t prev;
+        if (!pet_prev(&prev, st->back_name)) st->back_name[0] = 0;
+    }
     st->pet_clock_s = pet_clock_pet_s();
     st->ball_clock_s = pet_clock_ball_s();
 }
@@ -266,8 +276,21 @@ static const char *op_guide(void *ctx, const char *model)
     return NULL;
 }
 
+static rm_err_t op_resume(void *ctx, const char *choice)
+{
+    if (emu_phase() != EMU_WAIT) return RM_ERR_BUSY;
+    if (!strcmp(choice, "back")) {
+        esp_err_t e = pet_switch_back();
+        return e == ESP_OK ? RM_OK : e == ESP_ERR_NOT_FOUND ? RM_ERR_NOTFOUND : RM_ERR_BUSY;
+    }
+    return emu_answer(!strcmp(choice, "resume") ? EMU_ANSWER_RESUME : EMU_ANSWER_FF) ? RM_OK : RM_ERR_BUSY;
+}
+
+static rm_err_t op_skip(void *ctx) { return emu_skip() ? RM_OK : RM_ERR_BUSY; }
+
 static rm_err_t op_sync_clock(void *ctx, int32_t *written_s)
 {
+    if (emu_phase() == EMU_WAIT) return RM_ERR_WAITING;
     switch (pet_clock_sync(written_s)) {
     case PET_CLOCK_OK: return RM_OK;
     case PET_CLOCK_UNSUPPORTED: return RM_ERR_NOTFOUND;
@@ -305,7 +328,7 @@ static rm_ops_t s_ops = {
     .switch_pet = op_switch_pet, .new_pet = op_new_pet, .rename_pet = op_rename_pet, .delete_pet = op_delete_pet,
     .export_save = op_export_save, .import_save = op_import_save, .set_wifi = op_set_wifi,
     .restart = op_restart, .guide = op_guide, .restart_pending = op_restart_pending,
-    .sync_clock = op_sync_clock, .debug = op_debug, .rom = op_rom, .ctx = NULL,
+    .sync_clock = op_sync_clock, .debug = op_debug, .rom = op_rom, .resume = op_resume, .skip = op_skip, .ctx = NULL,
 };
 
 const rm_ops_t *remote_ops_init(tc_model_t model, const uint8_t active_sha1[20], const uint8_t *rom, size_t rom_len)

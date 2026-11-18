@@ -87,6 +87,67 @@ static void test_cross_origin_patch_403(void)
     TEST_ASSERT_EQUAL(200, resp.status);
 }
 
+static void test_resume_choices(void)
+{
+    const char *ok[] = { "resume", "ff", "back" };
+    for (int i = 0; i < 3; i++) {
+        char b[40];
+        snprintf(b, sizeof b, "{\"choice\":\"%s\"}", ok[i]);
+        go(RM_POST, "/api/resume", NULL, NULL, b);
+        TEST_ASSERT_EQUAL(200, resp.status);
+        TEST_ASSERT_EQUAL_STRING(ok[i], fake.resume_choice);
+    }
+    go(RM_POST, "/api/resume", NULL, NULL, "{\"choice\":\"later\"}");
+    expect_err(400, "invalid", "choice");
+    go(RM_GET, "/api/resume", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(405, resp.status);
+}
+
+static void test_resume_not_waiting(void)
+{
+    fake.resume_result = RM_ERR_BUSY;
+    go(RM_POST, "/api/resume", NULL, NULL, "{\"choice\":\"ff\"}");
+    TEST_ASSERT_EQUAL(409, resp.status);
+}
+
+static void test_skip_ok(void)
+{
+    go(RM_POST, "/api/catchup/skip", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(200, resp.status);
+    TEST_ASSERT_EQUAL(1, fake.skip_calls);
+}
+
+static void test_skip_not_catching_up(void)
+{
+    fake.skip_result = RM_ERR_BUSY;
+    go(RM_POST, "/api/catchup/skip", NULL, NULL, NULL);
+    TEST_ASSERT_EQUAL(409, resp.status);
+}
+
+static void test_status_wait_fields(void)
+{
+    fake.status.phase = RM_PHASE_WAIT;
+    snprintf(fake.status.pet_name, sizeof fake.status.pet_name, "P2 #1");
+    snprintf(fake.status.back_name, sizeof fake.status.back_name, "P1 #1");
+    fake.status.wait_gap_s = 3600;
+    fake.status.wait_ff_s = 48;
+    go(RM_GET, "/api/status", NULL, NULL, NULL);
+    cJSON *j = json();
+    TEST_ASSERT_EQUAL_STRING("wait", cJSON_GetObjectItem(j, "phase")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("P2 #1", cJSON_GetObjectItem(j, "pet")->valuestring);
+    cJSON *w = cJSON_GetObjectItem(j, "wait");
+    TEST_ASSERT_NOT_NULL(w);
+    TEST_ASSERT_EQUAL(3600, cJSON_GetObjectItem(w, "gap_s")->valueint);
+    TEST_ASSERT_EQUAL(48, cJSON_GetObjectItem(w, "ff_s")->valueint);
+    TEST_ASSERT_EQUAL_STRING("P1 #1", cJSON_GetObjectItem(w, "back")->valuestring);
+    cJSON_Delete(j);
+    fake.status.phase = RM_PHASE_RUN;
+    go(RM_GET, "/api/status", NULL, NULL, NULL);
+    j = json();
+    TEST_ASSERT_NULL(cJSON_GetObjectItem(j, "wait"));
+    cJSON_Delete(j);
+}
+
 static void test_status_fields(void)
 {
     go(RM_GET, "/api/status", NULL, NULL, NULL);
@@ -791,6 +852,11 @@ int main(void)
     RUN_TEST(test_save_download_rom_not_listed);
     RUN_TEST(test_pets_and_switch);
     RUN_TEST(test_switch_catching_up_409);
+    RUN_TEST(test_resume_choices);
+    RUN_TEST(test_resume_not_waiting);
+    RUN_TEST(test_skip_ok);
+    RUN_TEST(test_skip_not_catching_up);
+    RUN_TEST(test_status_wait_fields);
     RUN_TEST(test_pets_list_shape);
     RUN_TEST(test_roms_list);
     RUN_TEST(test_pets_new_ok);
