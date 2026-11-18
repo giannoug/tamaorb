@@ -366,7 +366,8 @@ static void h_save_get(const rm_ops_t *ops, const uint8_t sha[20], uint8_t id, r
     memset(&meta, 0, sizeof meta);
     rm_err_t e = ops->export_save(ops->ctx, sha, id, buf, SAVE_MAX, &len, &meta);
     if (e != RM_OK) { free(buf); err_from(r, e); return; }
-    char fn[48];
+    char fn[RM_SAVE_FILENAME_LEN];
+    meta.pet_id = id;  // the pet it was taken from
     rm_save_filename(model, &meta, fn);
     snprintf(r->disposition, sizeof r->disposition, "attachment; filename=\"%s\"", fn);
     r->status = 200;
@@ -385,7 +386,7 @@ static void h_save_put(const rm_ops_t *ops, const rm_req_t *q, const uint8_t sha
     }
     if (!q->body || !q->body_len || q->body_len > SAVE_MAX) { set_err(r, 400, "invalid", "record"); return; }
     ps_meta_t meta;
-    const char *bad = rm_save_check(q->body, q->body_len, sha, id, q->state_ok, &meta);
+    const char *bad = rm_save_check(q->body, q->body_len, sha, q->state_ok, &meta);
     if (bad) { set_err(r, 400, "invalid", bad); return; }
     // The ROM need not be on the card — the pet list only decides "restarting".
     rm_pet_t pet;

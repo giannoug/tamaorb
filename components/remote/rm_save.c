@@ -37,7 +37,7 @@ void rm_pet_id_format(const uint8_t sha1[20], uint8_t id, char out[RM_PET_ID_LEN
     snprintf(out + 40, 3, "-%u", id % 10u);
 }
 
-const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20], uint8_t pet_id,
+const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20],
                           bool (*state_ok)(const uint8_t *payload, size_t len), ps_meta_t *meta_out)
 {
     ps_meta_t m;
@@ -48,12 +48,11 @@ const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20]
     if (memcmp(m.rom_sha1, sha1, 20) != 0) return "rom";
     tc_model_t model = tc_model_from_sha1(m.rom_sha1);
     if (!tc_model_playable(model)) return "model";
-    if (m.pet_id != pet_id) return "pet";
     if (state_ok && !state_ok(payload, plen)) return "state";
     return NULL;
 }
 
-void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[48])
+void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[RM_SAVE_FILENAME_LEN])
 {
     char date[16] = "undated";
     if (meta->unix_time != 0) {
@@ -72,5 +71,6 @@ void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[48])
         snprintf(date, sizeof date, "%04d-%02d-%02d", (int)y, mo, d);
     }
     const uint8_t *h = meta->rom_sha1;
-    snprintf(out, 48, "tamaorb-%s-%02x%02x%02x%02x-%s.sav", tc_model_name(model), h[0], h[1], h[2], h[3], date);
+    snprintf(out, RM_SAVE_FILENAME_LEN, "tamaorb-%s-%02x%02x%02x%02x-pet%u-%s.sav", tc_model_name(model), h[0], h[1],
+             h[2], h[3], meta->pet_id % 10u + 1u, date);
 }

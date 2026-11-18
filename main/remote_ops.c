@@ -225,7 +225,7 @@ static rm_err_t op_import_save(void *ctx, const uint8_t sha1[20], uint8_t id, ui
                                rm_restore_mode_t mode)
 {
     ps_meta_t meta;
-    if (rm_save_check(rec, len, sha1, id, tc_state_compatible, &meta)) return RM_ERR_BAD;
+    if (rm_save_check(rec, len, sha1, tc_state_compatible, &meta) || !ps_record_set_pet(rec, len, id)) return RM_ERR_BAD;
     bool running = is_running(sha1, id);
     emu_phase_t ph = emu_phase();
     // Rejected while catching up, like the picker; the running pet also not before its save has loaded.

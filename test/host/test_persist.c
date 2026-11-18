@@ -181,6 +181,23 @@ static void test_restamp_corrupt(void)
     TEST_ASSERT_FALSE(ps_record_restamp(rec, n, NULL, false, 1));
 }
 
+static void test_record_set_pet(void)
+{
+    ps_meta_t m = { .pet_id = 4, .time_trusted = true, .unix_time = 123, .seq = 9 };
+    uint8_t pl[6] = { 1, 2, 3, 4, 5, 6 }, rec[64];
+    size_t n = ps_record_encode(&m, pl, sizeof pl, rec, sizeof rec);
+    TEST_ASSERT_TRUE(ps_record_set_pet(rec, n, 1));
+    ps_meta_t got;
+    const uint8_t *p;
+    size_t len;
+    TEST_ASSERT_TRUE(ps_record_decode(rec, n, &got, &p, &len));  // the CRC was recomputed
+    TEST_ASSERT_EQUAL(1, got.pet_id);
+    TEST_ASSERT_EQUAL_UINT32(9, got.seq);
+    TEST_ASSERT_EQUAL_MEMORY(pl, p, sizeof pl);
+    rec[3] ^= 0xFF;  // not a record
+    TEST_ASSERT_FALSE(ps_record_set_pet(rec, n, 2));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -200,5 +217,6 @@ int main(void)
     RUN_TEST(test_restamp_time);
     RUN_TEST(test_restamp_keep_time);
     RUN_TEST(test_restamp_corrupt);
+    RUN_TEST(test_record_set_pet);
     return UNITY_END();
 }

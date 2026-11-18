@@ -70,6 +70,17 @@ bool ps_record_restamp(uint8_t *rec, size_t len, const int64_t *unix_time, bool 
     return true;
 }
 
+bool ps_record_set_pet(uint8_t *rec, size_t len, uint8_t pet_id)
+{
+    ps_meta_t m;
+    const uint8_t *payload;
+    size_t plen;
+    if (!ps_record_decode(rec, len, &m, &payload, &plen)) return false;
+    rec[5] = pet_id;
+    put(rec + PS_HEADER_BYTES + plen, ps_crc32(rec, PS_HEADER_BYTES + plen), 4);
+    return true;
+}
+
 void ps_key(const uint8_t sha1[20], uint8_t pet_id, char slot, char out[16])
 {
     snprintf(out, 16, "s%02x%02x%02x%02x%02x_%u%c", sha1[0], sha1[1], sha1[2], sha1[3], sha1[4], pet_id % 10u, slot);

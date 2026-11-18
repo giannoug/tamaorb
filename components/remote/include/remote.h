@@ -57,12 +57,14 @@ bool rm_press_window(const rm_press_t *p, uint32_t now_ms);
 #include "persist.h"
 typedef enum { RM_RESTORE_FROZEN, RM_RESTORE_REPLAY } rm_restore_mode_t;
 bool rm_restore_mode_parse(const char *s, rm_restore_mode_t *out);  // "frozen" | "replay"
-// NULL ok, else "record" (CRC/format/size) | "rom" (sha1 mismatch) | "model" (not a playable model) | "pet" (another pet)
+// NULL ok, else "record" (CRC/format/size) | "rom" (sha1 mismatch) | "model" (not a playable model)
 // | "state" (state_ok rejected the payload; state_ok may be NULL). meta_out is filled when the record decodes.
-const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20], uint8_t pet_id,
+// Any pet number is fine: a restore rewrites it to the target pet's (ps_record_set_pet).
+const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20],
                           bool (*state_ok)(const uint8_t *payload, size_t len), ps_meta_t *meta_out);
-// e.g. "tamaorb-P1-4b4979cf-2026-11-08.sav" (UTC date of meta->unix_time; "undated" if 0)
-void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[48]);
+// e.g. "tamaorb-P1-4b4979cf-pet3-2026-11-08.sav" (pet number + 1, UTC date of meta->unix_time; "undated" if 0)
+#define RM_SAVE_FILENAME_LEN 56
+void rm_save_filename(tc_model_t model, const ps_meta_t *meta, char out[RM_SAVE_FILENAME_LEN]);
 
 // ---- Operations table, JSON helpers and the MCP dispatcher ----
 #include "cJSON.h"

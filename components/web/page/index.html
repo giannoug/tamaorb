@@ -750,7 +750,7 @@ function openRestore(p,f,t,trusted){
     f.arrayBuffer().then(function(buf){return api('PUT','/api/pets/'+p.id+'/save?mode='+mode,buf,true)}).then(function(r){
       if(r.ok){$('rd').close();if(r.j.restarting)restarting();else{loadPets();gerr('');}return}
       ok.disabled=false;
-      var k=r.j&&r.j.key,RM={record:'That file isn’t a valid TamaOrb save.',rom:'That save belongs to a different ROM.',model:'That save is for a different model.',pet:'That save isn’t for this pet.',state:'This firmware can’t use that save.',mode:'Pick one of the two options.'};
+      var k=r.j&&r.j.key,RM={record:'That file isn’t a valid TamaOrb save.',rom:'That save belongs to a different ROM.',model:'That save is for a different model.',state:'This firmware can’t use that save.',mode:'Pick one of the two options.'};
       $('rd-e').textContent=(k&&RM[k])||'Couldn’t restore: '+whyText(r)+'.';$('rd-e').hidden=false;
     },function(){ok.disabled=false;$('rd-e').textContent='Couldn’t reach the ball.';$('rd-e').hidden=false});
   };
