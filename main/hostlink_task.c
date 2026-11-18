@@ -150,5 +150,5 @@ void hostlink_task_start(tc_model_t active_model)
         return;
     }
     usb_serial_jtag_vfs_use_driver();  // console output and our replies share the driver
-    xTaskCreatePinnedToCore(hostlink_task, "hostlink", 4096, NULL, 4, NULL, 0);
+    xTaskCreatePinnedToCore(hostlink_task, "hostlink", 6144, NULL, 4, NULL, 0);  // LIST (SD + FAT + SHA-1 + printf) overflowed 4096
 }
