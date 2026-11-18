@@ -268,9 +268,9 @@ static void h_press(const rm_ops_t *ops, const rm_req_t *q, rm_resp_t *r)
 static void h_save_get(const rm_ops_t *ops, const uint8_t sha[20], rm_resp_t *r)
 {
     // Ruling R11: any pet with a save, listed or not (a restored save whose ROM left the card). The model comes
-    // from the hash; only P1 and P2 saves exist in a form a ball can restore.
+    // from the hash; only saves of playable models exist in a form a ball can restore.
     tc_model_t model = tc_model_from_sha1(sha);
-    if (model != TC_MODEL_P1 && model != TC_MODEL_P2) { set_err(r, 404, "not found", NULL); return; }
+    if (!tc_model_playable(model)) { set_err(r, 404, "not found", NULL); return; }
     uint8_t *buf = rm_alloc(SAVE_MAX);
     if (!buf) { set_json(r, 500, NULL); return; }
     size_t len = 0;

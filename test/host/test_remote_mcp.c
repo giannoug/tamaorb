@@ -4,7 +4,7 @@
 #include "unity.h"
 #include "fake_ops.h"
 
-#define INSTR "Read the guide resource for the active model (tamaorb://guide/p1 or tamaorb://guide/p2) before acting."
+#define INSTR "Read the guide resource for the active model (tamaorb://guide/p1, p2, angel or mothra) before acting."
 
 void setUp(void) { fake_reset(); }
 void tearDown(void) { rm_set_alloc(NULL); }
@@ -309,6 +309,7 @@ static void test_status_and_pets_json(void)
     TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(s, "last_save_unix")));
     TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(s, "usb")));
     TEST_ASSERT_NOT_NULL(cJSON_GetObjectItem(s, "catchup_speed"));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(s, "has_clock")));
     cJSON_Delete(s);
     cJSON_Delete(r);
     r = tool("list_pets", "{}");
@@ -455,8 +456,11 @@ static void test_resources(void)
 {
     cJSON *r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/list\"}", NULL);
     cJSON *l = cJSON_GetObjectItem(result(r), "resources");
-    TEST_ASSERT_EQUAL(2, cJSON_GetArraySize(l));
+    TEST_ASSERT_EQUAL(4, cJSON_GetArraySize(l));
     TEST_ASSERT_EQUAL_STRING("tamaorb://guide/p1", cJSON_GetObjectItem(cJSON_GetArrayItem(l, 0), "uri")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("tamaorb://guide/p2", cJSON_GetObjectItem(cJSON_GetArrayItem(l, 1), "uri")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("tamaorb://guide/angel", cJSON_GetObjectItem(cJSON_GetArrayItem(l, 2), "uri")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("tamaorb://guide/mothra", cJSON_GetObjectItem(cJSON_GetArrayItem(l, 3), "uri")->valuestring);
     TEST_ASSERT_EQUAL_STRING("text/markdown", cJSON_GetObjectItem(cJSON_GetArrayItem(l, 1), "mimeType")->valuestring);
     cJSON_Delete(r);
 }
@@ -473,6 +477,10 @@ static void test_resources_read_guide(void)
     cJSON_Delete(r);
     r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\",\"params\":{\"uri\":\"tamaorb://guide/p2\"}}", NULL);
     TEST_ASSERT_EQUAL(-32602, err_code(r));  // p2 has no guide in the fake
+    cJSON_Delete(r);
+    r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\",\"params\":{\"uri\":\"tamaorb://guide/angel\"}}", NULL);
+    c = cJSON_GetArrayItem(cJSON_GetObjectItem(result(r), "contents"), 0);
+    TEST_ASSERT_EQUAL_STRING("# angel guide", cJSON_GetObjectItem(c, "text")->valuestring);
     cJSON_Delete(r);
     r = call("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"resources/read\"}", NULL);
     TEST_ASSERT_EQUAL(-32602, err_code(r));

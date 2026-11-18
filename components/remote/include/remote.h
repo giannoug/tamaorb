@@ -56,7 +56,7 @@ bool rm_press_window(const rm_press_t *p, uint32_t now_ms);
 #include "persist.h"
 typedef enum { RM_RESTORE_FROZEN, RM_RESTORE_REPLAY } rm_restore_mode_t;
 bool rm_restore_mode_parse(const char *s, rm_restore_mode_t *out);  // "frozen" | "replay"
-// NULL ok, else "record" (CRC/format/size) | "rom" (sha1 mismatch) | "model" (not P1/P2) | "pet" (pet_id != 0)
+// NULL ok, else "record" (CRC/format/size) | "rom" (sha1 mismatch) | "model" (not a playable model) | "pet" (pet_id != 0)
 // | "state" (state_ok rejected the payload; state_ok may be NULL). meta_out is filled when the record decodes.
 const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20],
                           bool (*state_ok)(const uint8_t *payload, size_t len), ps_meta_t *meta_out);
@@ -95,6 +95,7 @@ typedef struct {
     uint8_t batt_pct;
     int8_t rssi;
     bool usb, wifi, time_trusted, sd_present, restart_pending, last_save_known;
+    bool has_clock;        // the running model has a clock the ball can set (tc_pet_has_clock)
     int64_t unix_time, last_save_unix;
     float catchup_speed;
     int32_t pet_clock_s, ball_clock_s;  // seconds of the day; -1 unknown (JSON: "HH:MM:SS" or null)
@@ -111,10 +112,10 @@ typedef struct {
     rm_err_t (*import_save)(void *ctx, const uint8_t sha1[20], uint8_t *rec, size_t len, rm_restore_mode_t mode);
     bool (*set_wifi)(void *ctx, const char *ssid, const char *pass);  // schedules the restart itself
     void (*restart)(void *ctx);                                       // schedules the restart
-    const char *(*guide)(void *ctx, const char *model);               // "p1"|"p2" -> Markdown, NULL if none
+    const char *(*guide)(void *ctx, const char *model);  // "p1"|"p2"|"angel"|"mothra" -> Markdown, NULL if none
     bool (*restart_pending)(void *ctx);  // same as status' restart_pending, without the cost of a full status
     // Sets the pet's clock to the ball's local time; *written_s = the time written (seconds of the day).
-    // NOTFOUND: not a P1/P2; NOTIME: no trusted time; CATCHUP; BUSY: the pet's own clock menu stops its clock.
+    // NOTFOUND: the model has no known clock; NOTIME: no trusted time; CATCHUP; BUSY: the ROM's clock menu is open.
     rm_err_t (*sync_clock)(void *ctx, int32_t *written_s);
     void (*debug)(void *ctx, rm_debug_t *out);                  // one snapshot (also keeps the ball awake a while)
     bool (*rom)(void *ctx, const uint8_t **data, size_t *len);  // the running ROM's bytes; false: none

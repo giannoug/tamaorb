@@ -21,7 +21,7 @@ const char *rm_save_check(const uint8_t *rec, size_t len, const uint8_t sha1[20]
     if (meta_out) *meta_out = m;
     if (memcmp(m.rom_sha1, sha1, 20) != 0) return "rom";
     tc_model_t model = tc_model_from_sha1(m.rom_sha1);
-    if (model != TC_MODEL_P1 && model != TC_MODEL_P2) return "model";
+    if (!tc_model_playable(model)) return "model";
     if (m.pet_id != 0) return "pet";
     if (state_ok && !state_ok(payload, plen)) return "state";
     return NULL;

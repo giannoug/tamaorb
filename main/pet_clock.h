@@ -9,7 +9,7 @@ typedef enum { PET_CLOCK_OK, PET_CLOCK_UNSUPPORTED, PET_CLOCK_NO_TIME, PET_CLOCK
                PET_CLOCK_PENDING } pet_clock_status_t;
 
 void pet_clock_init(tc_model_t model);
-// OK, or why the action isn't available: UNSUPPORTED (not P1/P2), CATCHUP (emulator not running), NO_TIME.
+// OK, or why the action isn't available: UNSUPPORTED (no known clock), CATCHUP (emulator not running), NO_TIME.
 pet_clock_status_t pet_clock_available(void);
 int32_t pet_clock_pet_s(void);   // the pet's clock from the RAM snapshot, seconds of the day; -1 unknown
 int32_t pet_clock_ball_s(void);  // the ball's local time of day; -1 without trusted time

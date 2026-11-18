@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "remote_ops.h"
+#include "tc_pet.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +24,8 @@ static const char *TAG = "remote";
 
 extern const char s_guide_p1[] asm("_binary_guide_p1_md_start");  // EMBED_TXTFILES: NUL-terminated
 extern const char s_guide_p2[] asm("_binary_guide_p2_md_start");
+extern const char s_guide_angel[] asm("_binary_guide_angel_md_start");
+extern const char s_guide_mothra[] asm("_binary_guide_mothra_md_start");
 
 static tc_model_t s_model;
 static uint8_t s_active[20];
@@ -88,6 +91,7 @@ static void op_status(void *ctx, rm_status_t *st)
         st->last_save_unix = m.unix_time;
     }
     st->catchup_speed = emu_catchup_speed();
+    st->has_clock = tc_pet_has_clock(s_model);
     st->pet_clock_s = pet_clock_pet_s();
     st->ball_clock_s = pet_clock_ball_s();
 }
@@ -207,6 +211,8 @@ static const char *op_guide(void *ctx, const char *model)
     if (!model) return NULL;
     if (!strcmp(model, "p1")) return s_guide_p1;
     if (!strcmp(model, "p2")) return s_guide_p2;
+    if (!strcmp(model, "angel")) return s_guide_angel;
+    if (!strcmp(model, "mothra")) return s_guide_mothra;
     return NULL;
 }
 

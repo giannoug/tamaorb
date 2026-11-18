@@ -77,6 +77,18 @@ static void test_save_check_pet(void)
     TEST_ASSERT_EQUAL_STRING("pet", rm_save_check(rec, n, p1, ok_yes, &m));
 }
 
+static void test_check_accepts_angel(void)
+{
+    uint8_t ang[20];
+    test_hex20("f5899bb7717756ac581451cf16cf97d909961c5c", ang);
+    memcpy(meta.rom_sha1, ang, 20);
+    n = ps_record_encode(&meta, payload, sizeof payload, rec, sizeof rec);
+    TEST_ASSERT_NULL(rm_save_check(rec, n, ang, ok_yes, NULL));
+    char fn[48];
+    rm_save_filename(TC_MODEL_ANGEL, &meta, fn);
+    TEST_ASSERT_EQUAL_STRING("tamaorb-Angel-f5899bb7-2026-11-14.sav", fn);
+}
+
 static void test_restore_mode_parse(void)
 {
     rm_restore_mode_t m;
@@ -109,6 +121,7 @@ int main(void)
     RUN_TEST(test_save_check_unknown_model);
     RUN_TEST(test_save_check_state_rejected);
     RUN_TEST(test_save_check_pet);
+    RUN_TEST(test_check_accepts_angel);
     RUN_TEST(test_restore_mode_parse);
     RUN_TEST(test_filename);
     return UNITY_END();

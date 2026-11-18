@@ -70,7 +70,8 @@ static bool f_wifi(void *ctx, const char *ssid, const char *pass)
 static void f_restart(void *ctx) { fake.restart_calls++; }
 static const char *f_guide(void *ctx, const char *model)
 {
-    return strcmp(model, "p1") == 0 ? "# P1 guide" : NULL;
+    if (strcmp(model, "p1") == 0) return "# P1 guide";
+    return strcmp(model, "angel") == 0 ? "# angel guide" : NULL;
 }
 
 static bool f_restart_pending(void *ctx)
@@ -108,6 +109,7 @@ void fake_reset(void)
     st_defaults(&fake.settings, 50);
     fake.settings.brightness = 80;
     snprintf(fake.status.name, sizeof fake.status.name, "tamaorb");
+    fake.status.has_clock = true;
     snprintf(fake.status.version, sizeof fake.status.version, "test");
     snprintf(fake.status.rom_name, sizeof fake.status.rom_name, "tama.bin");
     snprintf(fake.status.ip, sizeof fake.status.ip, "10.0.0.2");

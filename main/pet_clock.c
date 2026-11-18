@@ -17,7 +17,7 @@ static volatile uint32_t s_saved_id;  // the last request a save was asked for (
 
 void pet_clock_init(tc_model_t model) { s_model = model; }
 
-static bool supported(void) { return s_model == TC_MODEL_P1 || s_model == TC_MODEL_P2; }
+static bool supported(void) { return tc_pet_has_clock(s_model); }
 
 pet_clock_status_t pet_clock_available(void)
 {

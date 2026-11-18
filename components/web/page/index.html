@@ -509,7 +509,7 @@ function renderStatus(){
 }
 // The pet's own clock, and the button that sets it to the ball's local time (the tz setting).
 function clockWhy(s){
-  if(s.model!=='P1'&&s.model!=='P2')return 'Not available for this pet';
+  if(!s.has_clock)return 'Not available for this pet';
   if(s.phase!=='run')return 'Pet is catching up';
   if(!s.ball_clock)return 'Waiting for internet time';
   return '';

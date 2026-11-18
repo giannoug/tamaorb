@@ -88,7 +88,7 @@ const char *rm_json_patch_settings(const cJSON *patch, st_settings_t *s, bool *d
     return NULL;
 }
 
-static const char *model_name(tc_model_t m) { return m == TC_MODEL_P1 ? "P1" : m == TC_MODEL_P2 ? "P2" : "unknown"; }
+static const char *model_name(tc_model_t m) { return tc_model_playable(m) ? tc_model_name(m) : "unknown"; }
 
 void rm_json_add_clock(cJSON *o, const char *key, int32_t sec_of_day)
 {
@@ -177,6 +177,7 @@ cJSON *rm_json_status(const rm_status_t *st)
     else cJSON_AddNullToObject(o, "last_save_unix");
     cJSON_AddNumberToObject(o, "catchup_speed", st->catchup_speed);
     rm_json_add_clock(o, "pet_clock", st->pet_clock_s);
+    cJSON_AddBoolToObject(o, "has_clock", st->has_clock);
     rm_json_add_clock(o, "ball_clock", st->ball_clock_s);
     return o;
 }

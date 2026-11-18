@@ -8,7 +8,7 @@
 
 #define LATEST_VERSION "2025-11-25"
 static const char *const VERSIONS[] = {"2025-11-25", "2025-06-18", "2025-03-26"};
-#define INSTRUCTIONS "Read the guide resource for the active model (tamaorb://guide/p1 or tamaorb://guide/p2) before acting."
+#define INSTRUCTIONS "Read the guide resource for the active model (tamaorb://guide/p1, p2, angel or mothra) before acting."
 
 #define BUTTONS_DESC "Button steps in order: A, B, C or AC (A and C together), as an array or a space-separated string."
 
@@ -240,12 +240,12 @@ static cJSON *tool_read_ram(const rm_ops_t *ops, const cJSON *args)
     char fl[5] = "", bt[4] = "";
     for (int i = 0; i < 4; i++) if (c->flags & (1 << i)) strncat(fl, &"CZDI"[i], 1);
     for (int i = 0; i < 3; i++) if (c->buttons & (1 << i)) strncat(bt, &"ABC"[i], 1);
-    static const char *const MODEL[] = { "unknown", "P1", "P2", "test" };
+    static const char *const MODEL[] = { "unknown", "P1", "P2", "test", "Angel", "Mothra" };
     size_t k = (size_t)snprintf(t, cap,
         "model=%s phase=%s seq=%lu tick=%lu\n"
         "pc=0x%03X np=0x%02X a=0x%X b=0x%X x=0x%03X y=0x%03X sp=0x%02X flags=%s halted=%d call_depth=%lu buttons=%s\n"
         "irq (mask/factor): prog_timer %X/%X serial %X/%X k10_k13 %X/%X k00_k03 %X/%X stopwatch %X/%X clock_timer %X/%X\n",
-        MODEL[d->model <= TC_MODEL_TEST_ROM ? d->model : 0],
+        MODEL[d->model <= TC_MODEL_MOTHRA ? d->model : 0],
         d->phase == RM_PHASE_RUN ? "run" : d->phase == RM_PHASE_CATCHUP ? "catch-up" : "boot",
         (unsigned long)c->seq, (unsigned long)c->tick, c->pc, c->np, c->a, c->b, c->x, c->y, c->sp, fl[0] ? fl : "-",
         c->halted, (unsigned long)c->call_depth, bt[0] ? bt : "-",
@@ -340,15 +340,19 @@ static cJSON *initialize(const rm_ops_t *ops, const cJSON *params)
     return r;
 }
 
-static const char *const GUIDE_URI[2] = {"tamaorb://guide/p1", "tamaorb://guide/p2"};
+#define GUIDES 4
+static const char *const GUIDE_URI[GUIDES] = {"tamaorb://guide/p1", "tamaorb://guide/p2", "tamaorb://guide/angel",
+                                              "tamaorb://guide/mothra"};
+static const char *const GUIDE_MODEL[GUIDES] = {"p1", "p2", "angel", "mothra"};
 
 static cJSON *resources_list(void)
 {
     cJSON *r = cJSON_CreateObject();
     cJSON *arr = r ? cJSON_AddArrayToObject(r, "resources") : NULL;
     if (!arr) { cJSON_Delete(r); return NULL; }
-    static const char *const NAMES[2] = {"Guide for the P1 model", "Guide for the P2 model"};
-    for (int i = 0; i < 2; i++) {
+    static const char *const NAMES[GUIDES] = {"Guide for the P1 model", "Guide for the P2 model",
+                                              "Guide for the Angel model", "Guide for the Mothra model"};
+    for (int i = 0; i < GUIDES; i++) {
         cJSON *o = cJSON_CreateObject();
         if (!o) break;
         cJSON_AddItemToArray(arr, o);
@@ -365,9 +369,9 @@ static cJSON *resources_read(const rm_ops_t *ops, const cJSON *params, bool *bad
     *bad = true;
     const cJSON *u = cJSON_IsObject(params) ? cJSON_GetObjectItemCaseSensitive(params, "uri") : NULL;
     if (!cJSON_IsString(u)) return NULL;
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < GUIDES; i++) {
         if (strcmp(u->valuestring, GUIDE_URI[i]) != 0) continue;
-        const char *g = ops->guide(ops->ctx, i == 0 ? "p1" : "p2");
+        const char *g = ops->guide(ops->ctx, GUIDE_MODEL[i]);
         if (!g) return NULL;
         *bad = false;
         cJSON *r = cJSON_CreateObject();
