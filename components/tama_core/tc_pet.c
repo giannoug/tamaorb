@@ -78,6 +78,7 @@ void tc_pet_decode(tc_model_t model, const uint8_t *ram, size_t n, tc_pet_t *out
     if (!r || !ram || n < TC_PET_RAM_NIBBLES) return;
     if (r->chr >= 0 && nib(ram, r->chr) == 0) return;  // egg or dead: nothing to report
     out->known = true;
+    out->need_hidden = r->chr < 0;
     if (r->hunger >= 0) {
         uint8_t v = nib(ram, r->hunger);
         out->hunger = r->hunger_per_heart ? (int8_t)(v > 4 ? 4 : v) : hearts(v);
@@ -94,7 +95,7 @@ void tc_pet_decode(tc_model_t model, const uint8_t *ram, size_t n, tc_pet_t *out
 
 tc_need_t tc_pet_need(const tc_pet_t *p)
 {
-    if (!p->known) return TC_NEED_NONE;
+    if (!p->known || p->need_hidden) return TC_NEED_NONE;
     if (p->sick > 0) return TC_NEED_SICK;
     if (p->hunger == 0) return TC_NEED_HUNGRY;
     if (p->droppings > 0) return TC_NEED_DROPPINGS;

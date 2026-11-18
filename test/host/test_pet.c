@@ -270,6 +270,21 @@ static void test_mothra_hunger_only(void)
     TEST_ASSERT_NULL(tc_weight_unit(TC_MODEL_MOTHRA));
 }
 
+// Mothra's character address isn't known, so an egg or a dead pet can't be told apart from a hungry one:
+// no need word at all rather than a wrong "Hungry".
+static void test_mothra_names_no_need(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    memset(ram, 0, sizeof ram);
+    tc_pet_t p;
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(0, p.hunger);
+    TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));
+    ram[0x3E] = 2;
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));
+}
+
 static void test_clock_addresses(void)
 {
     TEST_ASSERT_EQUAL(0x10, tc_pet_clock_addr(TC_MODEL_P1));
@@ -343,6 +358,7 @@ int main(void)
     RUN_TEST(test_clock_unknown_model_and_short_ram);
     RUN_TEST(test_angel_decode);
     RUN_TEST(test_mothra_hunger_only);
+    RUN_TEST(test_mothra_names_no_need);
     RUN_TEST(test_clock_addresses);
     RUN_TEST(test_clock_angel_mothra);
     RUN_TEST(test_setup_exit_specs_parse);

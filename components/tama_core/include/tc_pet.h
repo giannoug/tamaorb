@@ -16,13 +16,15 @@ typedef struct {
     int16_t age_years, weight;     // weight in the ROM's own unit (tc_weight_unit); -1 = n/a
     int8_t droppings;              // piles 0-4 (clamped), -1 = n/a
     int8_t sick, asleep, light_on; // 0 or 1, -1 = n/a
+    bool need_hidden;              // the character address isn't known (Mothra): an egg can't be told from a
+                                   // hungry pet, so tc_pet_need names nothing
 } tc_pet_t;
 
 // The decoder reads RAM nibbles 0x00..0x5E only: fetching this many with tc_get_ram is enough.
 #define TC_PET_RAM_NIBBLES 0x5F
 // ram: n nibbles, one per byte, address order (tc_get_ram). Always fills *out (every field -1 when !known).
 void tc_pet_decode(tc_model_t model, const uint8_t *ram, size_t n, tc_pet_t *out);
-tc_need_t tc_pet_need(const tc_pet_t *p);  // TC_NEED_NONE when !known
+tc_need_t tc_pet_need(const tc_pet_t *p);  // TC_NEED_NONE when !known or need_hidden
 // "All good", "Hungry", "Unhappy", "Sick", "Droppings", "Asleep"; NULL for TC_NEED_NONE.
 const char *tc_need_word(tc_need_t n);
 // The pet's clock as seconds of the day, from RAM nibbles (tc_get_ram): 0x10 s ones, 0x11 s tens, 0x12 min ones,

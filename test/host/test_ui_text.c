@@ -113,6 +113,41 @@ static void test_resume_and_catchup_render(void)
     TEST_ASSERT_EQUAL_HEX16(0x0000, PX(0, 0));
 }
 
+// Ink outside the round screen's visible span, row by row.
+static int ink_off_screen(void)
+{
+    int n = 0;
+    for (int y = 0; y < UI_H; y++) {
+        int x0 = 0, x1 = UI_W - 1;
+        if (!ui_geom_span(&UI_GEOM, y, y, &x0, &x1)) x0 = UI_W, x1 = -1;
+        for (int x = 0; x < UI_W; x++) n += (x < x0 || x > x1) && PX(x, y) == INK;
+    }
+    return n;
+}
+
+// A 16-character name (the most the panel allows) stays on the glass, and the lines that carry it keep
+// their own words.
+static void test_long_names_fit(void)
+{
+    const char *name = "WWWWWWWWWWWWWWWW";
+    ui_resume_view_t v = { name, 3 * 86400, 3664, name };
+    ui_render_resume(fb, &v, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_EQUAL(0, ink_off_screen());
+    // The Back pill (y 180..203, h 24): its label stays clear of the rounded ends.
+    int left = 0, right = UI_W - 1;
+    while (left < UI_W && PX(left, 191) != INK) left++;
+    while (right > 0 && PX(right, 191) != INK) right--;
+    TEST_ASSERT_TRUE(right - left > 100);
+    int on_ends = 0;
+    for (int y = 188; y < 196; y++)
+        for (int x = 3; x < 12; x++) on_ends += PX(left + x, y) == INK || PX(right - x, y) == INK;
+    TEST_ASSERT_EQUAL(0, on_ends);
+    ui_render_catchup(fb, name, 3600, 7200, 120, UI_SKIP_BUTTON, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_EQUAL(0, ink_off_screen());
+    ui_render_catchup(fb, name, 3600, 7200, 120, UI_SKIP_CONFIRM, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_EQUAL(0, ink_off_screen());
+}
+
 static void test_message_centred(void)
 {
     ui_render_message(fb, "X", "", &UI_PALETTE_CLASSIC);
@@ -166,6 +201,7 @@ int main(void)
     RUN_TEST(test_resume_hits_two_buttons);
     RUN_TEST(test_resume_hits_back_only_with_name);
     RUN_TEST(test_resume_and_catchup_render);
+    RUN_TEST(test_long_names_fit);
     RUN_TEST(test_message_centred);
     RUN_TEST(test_low_battery_has_title);
     RUN_TEST(test_fmt_away);

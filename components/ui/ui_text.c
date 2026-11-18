@@ -217,7 +217,36 @@ static void pill(uint16_t *fb, int x, int y, int w, int h, int border, const cha
 {
     ui_fill_rrect(fb, x, y, w, h, h / 2, c->ink);
     if (!filled) ui_fill_rrect(fb, x + border, y + border, w - 2 * border, h - 2 * border, h / 2 - border, c->bg);
-    ui_draw_text(fb, x + (w - ui_text_width(label, 1)) / 2, y + (h - 8) / 2, label, 1, filled ? c->bg : c->ink);
+    uint16_t fg = filled ? c->bg : c->ink;
+    int tw = ui_text_width(label, 1), ty = y + (h - 8) / 2;
+    if (tw <= w - h) ui_draw_text(fb, x + (w - tw) / 2, ty, label, 1, fg);
+    else ui_draw_text_ellipsis(fb, x + h / 2, x + w - h / 2, ty, label, 1, fg);  // clear of the rounded ends
+}
+
+#define NAME_MARGIN 5  // px kept free at each end of the visible span
+
+// "<name><suffix>" centred on the visible span at y. When it wouldn't fit, the name alone is cut with an
+// ellipsis, so the suffix's words still show.
+static void name_line(uint16_t *fb, int y, const char *name, const char *suffix, uint8_t scale, uint16_t color)
+{
+    int x0 = 0, x1 = UI_W - 1;
+    ui_span(y, y + 8 * scale - 1, &x0, &x1);
+    x0 += NAME_MARGIN;
+    x1 -= NAME_MARGIN;
+    int box = x1 - x0 + 1;
+    char line[64];
+    snprintf(line, sizeof line, "%s%s", name, suffix);
+    int tw = ui_text_width(line, scale);
+    if (tw <= box) {
+        ui_draw_text(fb, x0 + (box - tw) / 2, y, line, scale, color);
+        return;
+    }
+    int sw = *suffix ? ui_text_width(suffix, scale) + scale : 0;  // + the gap column before the suffix
+    int nbox = box - sw, n = ui_text_fit(name, scale, nbox - 8 * scale);
+    int nw = (8 * (n + 1) - 1) * scale;  // what ui_draw_text_ellipsis draws: n chars and the ellipsis
+    int x = x0 + (box - nw - sw) / 2;
+    ui_draw_text_ellipsis(fb, x, x + nbox, y, name, scale, color);
+    if (*suffix) ui_draw_text(fb, x + nw + scale, y, suffix, scale, color);
 }
 static bool in_box(int x, int y, int bx, int by, int bw, int bh) { return x >= bx && x < bx + bw && y >= by && y < by + bh; }
 
@@ -245,8 +274,7 @@ void ui_render_catchup(uint16_t *fb, const char *name, uint64_t done_s, uint64_t
     ui_fmt_away(done_s, false, a, sizeof a);
     if (skip == UI_SKIP_CONFIRM) {
         text_centred(fb, STOP_TITLE_Y, "Stop here?", 2, c.ink);
-        snprintf(line, sizeof line, "%s goes on from", name);
-        text_centred(fb, STOP_BODY_Y, line, 1, c.ink);
+        name_line(fb, STOP_BODY_Y, name, " goes on from", 1, c.ink);
         snprintf(line, sizeof line, "%s in. Its clock", a);
         text_centred(fb, STOP_BODY_Y + 14, line, 1, c.ink);
         text_centred(fb, STOP_BODY_Y + 28, "is set to now.", 1, c.ink);
@@ -256,8 +284,7 @@ void ui_render_catchup(uint16_t *fb, const char *name, uint64_t done_s, uint64_t
         return;
     }
     text_centred(fb, CU_TITLE_Y, "Catching up", 2, c.ink);
-    snprintf(line, sizeof line, "%s lives through", name);
-    text_centred(fb, CU_BODY_Y, line, 1, c.soft);
+    name_line(fb, CU_BODY_Y, name, " lives through", 1, c.soft);
     text_centred(fb, CU_BODY_Y + 13, "the time it was away", 1, c.soft);
 
     int filled = total_s ? (int)(done_s * 16 / total_s) : 0;
@@ -299,7 +326,7 @@ void ui_render_resume(uint16_t *fb, const ui_resume_view_t *v, const ui_palette_
     clear(fb, c.bg);
     int up = v->back_name ? RQ_BACK_DY : 0;
     char line[48], d[16];
-    text_centred(fb, RQ_NAME_Y - up, v->name && *v->name ? v->name : "Your pet", 2, c.ink);
+    name_line(fb, RQ_NAME_Y - up, v->name && *v->name ? v->name : "Your pet", "", 2, c.ink);
     ui_fmt_away(v->gap_s, false, d, sizeof d);
     snprintf(line, sizeof line, "was away %s", d);
     text_centred(fb, RQ_AWAY_Y - up, line, 1, c.ink);
@@ -313,9 +340,10 @@ void ui_render_resume(uint16_t *fb, const ui_resume_view_t *v, const ui_palette_
     pill(fb, pill_x(1), RQ_PILL_Y - 2 * up, PILL_W, PILL_H, 2, "Fast-fwd", true, &c);
     if (v->back_name) {
         snprintf(line, sizeof line, "Back to %s", v->back_name);
-        int w = ui_text_width(line, 1) + 24;
+        int x0 = 0, x1 = UI_W - 1, w = ui_text_width(line, 1) + 24;
+        ui_span(RQ_BACK_Y, RQ_BACK_Y + RQ_BACK_H - 1, &x0, &x1);  // the widest the glass shows on those rows
         if (w < RQ_BACK_W) w = RQ_BACK_W;
-        if (w > 200) w = 200;
+        if (w > x1 - x0 + 1) w = x1 - x0 + 1;
         pill(fb, (UI_W - w) / 2, RQ_BACK_Y, w, RQ_BACK_H, 1, line, false, &c);
     }
 }
