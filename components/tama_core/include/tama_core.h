@@ -28,6 +28,9 @@ typedef struct {
 bool     tc_init(const uint16_t *program, const tc_platform_t *plat);  // once per process; captures the boot snapshot
 void     tc_reset_to_boot(void);
 void     tc_set_realtime(bool realtime);
+// Emulator task: the emulator stood still (not stepped) for a while, e.g. at the resume question; it goes on from
+// now instead of running the stood-still time at full speed to catch up with real time.
+void     tc_resume_now(void);
 // Any task. How far ahead of real time the emulator may run before it sleeps (real-time mode). The UI sets 20 ms with
 // the screen off so the ball can light-sleep (it needs >= 8 ms idle), the default with it on. Takes effect at the next
 // wait. Buzzer changes still happen at their moment: the emulator waits for real time to reach them.

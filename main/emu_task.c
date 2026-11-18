@@ -122,12 +122,18 @@ static void wait_for_answer(void)
 {
     s_phase = EMU_WAIT;
     ESP_LOGI(TAG, "away %llu s: waiting for Resume or Fast-forward", (unsigned long long)s_catchup_s);
+    int64_t t0 = esp_timer_get_time();
     while (s_answer < 0) ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    ESP_LOGI(TAG, "answer: %s", s_answer == EMU_ANSWER_RESUME ? "resume" : "fast-forward");
+    uint64_t waited_s = (uint64_t)(esp_timer_get_time() - t0) / 1000000u;
+    ESP_LOGI(TAG, "answer after %llu s: %s", (unsigned long long)waited_s,
+             s_answer == EMU_ANSWER_RESUME ? "resume" : "fast-forward");
     if (s_answer == EMU_ANSWER_RESUME) {
         s_catchup_s = 0;
+        tc_resume_now();  // it stood still while asking: go on from now, not race through the wait
         saver_request();  // stamped with the current time at the first loop: the gap isn't counted again
         pet_clock_auto("resume");
+    } else {
+        s_catchup_s += waited_s;  // the time spent asking was time away too
     }
 }
 

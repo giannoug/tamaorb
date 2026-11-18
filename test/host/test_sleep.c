@@ -213,6 +213,20 @@ static void test_state_load_in_realtime_never_sleeps_long(void)
     free(later);
 }
 
+// Review finding (Critical): the emulator stands still while the ball asks Resume or Fast-forward; time goes on.
+// Going on from now must not run the stood-still time at full speed to catch up with the wall clock.
+static void test_resume_now_after_standing_still(void)
+{
+    NEED();
+    run_real_us(500000);
+    fake_now += 3600ull * 1000000;  // an hour at the question: no steps
+    uint32_t t0 = tc_tick_counter();
+    tc_resume_now();
+    run_real_us(1000000);           // one real second
+    uint32_t ran = tc_ticks_since(t0, tc_tick_counter());
+    TEST_ASSERT_LESS_THAN_UINT32(2 * TC_TICK_HZ, ran);  // about one emulated second, not an hour
+}
+
 static void test_fast_mode_never_waits_for_tones(void)
 {
     NEED();
@@ -239,5 +253,6 @@ int main(void)
     RUN_TEST(test_tone_prepare_before_wait);
     RUN_TEST(test_inaudible_buzzer_writes_are_dropped);
     RUN_TEST(test_state_load_in_realtime_never_sleeps_long);
+    RUN_TEST(test_resume_now_after_standing_still);
     return UNITY_END();
 }

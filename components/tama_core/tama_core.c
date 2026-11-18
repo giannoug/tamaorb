@@ -224,6 +224,9 @@ void tc_set_realtime(bool realtime)
     tamalib_set_exec_mode(EXEC_MODE_RUN);  // re-syncs tamalib's reference timestamp
 }
 
+// The emulator stood still (not stepped) while real time went on: go on from now, in the current mode.
+void tc_resume_now(void) { tc_set_realtime(g_realtime); }
+
 #ifdef TC_TESTING
 static uint32_t (*g_tick_source)(void);
 static void (*g_step_hook)(void);
