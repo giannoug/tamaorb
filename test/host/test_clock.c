@@ -215,8 +215,8 @@ static void test_unknown_id_is_busy(void)
 
 int main(void)
 {
-    static uint8_t rom[TC_ROM_BYTES];
-    static uint16_t program[TC_ROM_WORDS];
+    static uint8_t rom[TC_ROM_BYTES_S46];
+    static uint16_t program[TC_ROM_MAX_WORDS];
     const char *root = getenv("TAMAORB_ROOT");
     char path[512];
     snprintf(path, sizeof path, "%s/roms/saves/p1.sav", root ? root : TAMAORB_ROOT_DEFAULT);

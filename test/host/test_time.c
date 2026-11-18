@@ -14,7 +14,7 @@ static int tone_events;
 static void tone_cb(uint32_t f, bool on) { tone_events++; }
 static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us, .tone = tone_cb };
 static bool have_rom, inited;
-static uint16_t program[TC_ROM_WORDS];
+static uint16_t program[TC_ROM_MAX_WORDS];
 
 void setUp(void) { if (inited) { tc_debug_set_tick_source(NULL); tc_reset_to_boot(); tc_set_realtime(true); } }
 void tearDown(void) { tc_debug_set_tick_source(NULL); }
@@ -155,7 +155,7 @@ static void test_catchup_matches_realtime(void)
 
 int main(void)
 {
-    static uint8_t rom[TC_ROM_BYTES];
+    static uint8_t rom[TC_ROM_BYTES_S46];
     have_rom = test_require_rom(test_load_file(test_rom_name("tama.bin"), rom, sizeof rom));
     if (have_rom) tc_rom_decode(rom, sizeof rom, program);
     inited = tc_init(program, &plat);

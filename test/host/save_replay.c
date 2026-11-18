@@ -140,8 +140,8 @@ int main(int argc, char **argv)
     }
     double hold = argc > 5 ? atof(argv[4]) : 200, gap = argc > 5 ? atof(argv[5]) : 400;  // the press tool's defaults
 
-    static uint8_t rom[TC_ROM_WORDS * 2], rec[4096];
-    static uint16_t program[TC_ROM_WORDS];
+    static uint8_t rom[TC_ROM_MAX_BYTES], rec[4096];
+    static uint16_t program[TC_ROM_MAX_WORDS];
     size_t rom_len, rec_len;
     if (!read_file(argv[1], rom, sizeof rom, &rom_len) || !tc_rom_decode(rom, rom_len, program)) {
         fprintf(stderr, "%s: not a P1/P2 ROM dump\n", argv[1]);

@@ -224,8 +224,8 @@ static void test_fast_mode_never_waits_for_tones(void)
 
 int main(void)
 {
-    static uint8_t rom[TC_ROM_BYTES];
-    static uint16_t program[TC_ROM_WORDS];
+    static uint8_t rom[TC_ROM_BYTES_S46];
+    static uint16_t program[TC_ROM_MAX_WORDS];
     have = test_require_rom(test_load_file(test_rom_name("tama.bin"), rom, sizeof rom)) &&
            tc_rom_decode(rom, sizeof rom, program) && tc_init(program, &plat);
     UNITY_BEGIN();

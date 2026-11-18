@@ -2,13 +2,11 @@
 #include <string.h>
 #include "tc_rom.h"
 
-static bool valid(tc_model_t m) { return m == TC_MODEL_P1 || m == TC_MODEL_P2; }
-
 int tc_rom_distinct_valid(const tc_rom_entry_t *sd, int n_sd, int *idx_out, int max)
 {
     int n = 0;
     for (int i = 0; i < n_sd && n < max; i++) {
-        if (!valid(sd[i].model)) continue;
+        if (!tc_model_playable(sd[i].model)) continue;
         bool dup = false;
         for (int k = 0; k < n && !dup; k++) dup = memcmp(sd[i].sha1, sd[idx_out[k]].sha1, 20) == 0;
         if (!dup) idx_out[n++] = i;

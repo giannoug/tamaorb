@@ -17,7 +17,7 @@ static void tone_cb(uint32_t freq_dhz, bool on) { if (on && freq_dhz) tone_on_ev
 static const tc_platform_t plat = { .now_us = now_us, .sleep_until_us = sleep_until_us, .tone = tone_cb };
 
 static bool have_rom;
-static uint16_t program[TC_ROM_WORDS];
+static uint16_t program[TC_ROM_MAX_WORDS];
 static uint8_t s1[4096], s2[4096], s3[4096];
 
 static bool inited;  // tc_init runs once, after the fork-based test (which needs uninitialised parents)
@@ -364,7 +364,7 @@ static void test_snapshot_buttons_and_flags(void)
 
 int main(void)
 {
-    static uint8_t rom[TC_ROM_BYTES];
+    static uint8_t rom[TC_ROM_BYTES_S46];
     have_rom = test_require_rom(test_load_file(test_rom_name("tama.bin"), rom, sizeof rom));
     if (have_rom) tc_rom_decode(rom, sizeof rom, program);  // otherwise an all-zero program still runs
 

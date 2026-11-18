@@ -5,8 +5,8 @@
 #include "test_support.h"
 #include "tc_rom.h"
 
-static uint8_t rom[TC_ROM_BYTES];
-static uint16_t words[TC_ROM_WORDS];
+static uint8_t rom[TC_ROM_MAX_BYTES];
+static uint16_t words[TC_ROM_MAX_WORDS];
 
 void setUp(void) { memset(rom, 0, sizeof rom); }
 void tearDown(void) {}
@@ -48,13 +48,13 @@ static void test_identify_rejects_wrong_size(void)
 
 static void test_identify_zero_rom_unknown(void)
 {
-    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_rom_identify(rom, TC_ROM_BYTES, NULL));
+    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_rom_identify(rom, TC_ROM_BYTES_S46, NULL));
 }
 
 static void test_decode_big_endian(void)
 {
     rom[0] = 0x0A; rom[1] = 0xBC; rom[2] = 0xFF; rom[3] = 0xFF;
-    TEST_ASSERT_TRUE(tc_rom_decode(rom, TC_ROM_BYTES, words));
+    TEST_ASSERT_TRUE(tc_rom_decode(rom, TC_ROM_BYTES_S46, words));
     TEST_ASSERT_EQUAL_HEX16(0x0ABC, words[0]);
     TEST_ASSERT_EQUAL_HEX16(0x0FFF, words[1]);
     TEST_ASSERT_FALSE(tc_rom_decode(rom, 100, words));
@@ -151,12 +151,73 @@ static void test_model_from_sha1(void)
 // identify = the SHA-1 of the bytes, looked up in that table.
 static void test_identify_reports_sha1_of_the_bytes(void)
 {
-    for (size_t i = 0; i < TC_ROM_BYTES; i++) rom[i] = (uint8_t)(i * 31 + 5);
+    for (size_t i = 0; i < TC_ROM_BYTES_S46; i++) rom[i] = (uint8_t)(i * 31 + 5);
     uint8_t got[20], want[20];
-    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_rom_identify(rom, TC_ROM_BYTES, got));
-    tc_sha1(rom, TC_ROM_BYTES, want);
+    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_rom_identify(rom, TC_ROM_BYTES_S46, got));
+    tc_sha1(rom, TC_ROM_BYTES_S46, want);
     TEST_ASSERT_EQUAL_MEMORY(want, got, 20);
-    memset(rom, 0, TC_ROM_BYTES);
+    memset(rom, 0, sizeof rom);
+}
+
+static void test_model_from_sha1_angel_mothra(void)
+{
+    uint8_t h[20];
+    test_hex20("f5899bb7717756ac581451cf16cf97d909961c5c", h);
+    TEST_ASSERT_EQUAL(TC_MODEL_ANGEL, tc_model_from_sha1(h));
+    test_hex20("74c1f6761724b7cbda8bca3113db78586b786d2d", h);
+    TEST_ASSERT_EQUAL(TC_MODEL_MOTHRA, tc_model_from_sha1(h));
+}
+
+static void test_decode_16k(void)
+{
+    rom[2 * 8191] = 0x1A;
+    rom[2 * 8191 + 1] = 0xBC;
+    TEST_ASSERT_TRUE(tc_rom_decode(rom, TC_ROM_BYTES_S48, words));
+    TEST_ASSERT_EQUAL_HEX16(0x0ABC, words[8191]);
+    TEST_ASSERT_TRUE(tc_rom_decode(rom, TC_ROM_BYTES_S46, words));
+    TEST_ASSERT_FALSE(tc_rom_decode(rom, 16383, words));
+    TEST_ASSERT_TRUE(tc_rom_size_ok(12288));
+    TEST_ASSERT_TRUE(tc_rom_size_ok(16384));
+    TEST_ASSERT_FALSE(tc_rom_size_ok(16000));
+}
+
+static void test_identify_size_mismatch(void)
+{
+    for (size_t i = 0; i < TC_ROM_BYTES_S46; i++) rom[i] = (uint8_t)(i * 7 + 1);
+    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_rom_identify(rom, TC_ROM_BYTES_S46, NULL));
+    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_rom_identify(rom, 16000, NULL));
+    TEST_ASSERT_EQUAL(TC_MODEL_UNKNOWN, tc_rom_identify(rom, TC_ROM_BYTES_S48, NULL));
+}
+
+static void test_playable_and_names(void)
+{
+    TEST_ASSERT_TRUE(tc_model_playable(TC_MODEL_P1));
+    TEST_ASSERT_TRUE(tc_model_playable(TC_MODEL_P2));
+    TEST_ASSERT_TRUE(tc_model_playable(TC_MODEL_ANGEL));
+    TEST_ASSERT_TRUE(tc_model_playable(TC_MODEL_MOTHRA));
+    TEST_ASSERT_FALSE(tc_model_playable(TC_MODEL_TEST_ROM));
+    TEST_ASSERT_FALSE(tc_model_playable(TC_MODEL_UNKNOWN));
+    TEST_ASSERT_EQUAL_STRING("Angel", tc_model_name(TC_MODEL_ANGEL));
+    TEST_ASSERT_EQUAL_STRING("Mothra", tc_model_name(TC_MODEL_MOTHRA));
+    TEST_ASSERT_EQUAL_STRING("Gen 1", tc_model_long_name(TC_MODEL_P1));
+    TEST_ASSERT_EQUAL_STRING("Gen 2", tc_model_long_name(TC_MODEL_P2));
+    TEST_ASSERT_EQUAL_STRING("Angel", tc_model_long_name(TC_MODEL_ANGEL));
+    TEST_ASSERT_EQUAL_STRING("Mothra", tc_model_long_name(TC_MODEL_MOTHRA));
+    TEST_ASSERT_NULL(tc_model_long_name(TC_MODEL_TEST_ROM));
+    TEST_ASSERT_EQUAL(12288, tc_model_rom_bytes(TC_MODEL_P1));
+    TEST_ASSERT_EQUAL(12288, tc_model_rom_bytes(TC_MODEL_TEST_ROM));
+    TEST_ASSERT_EQUAL(16384, tc_model_rom_bytes(TC_MODEL_ANGEL));
+    TEST_ASSERT_EQUAL(16384, tc_model_rom_bytes(TC_MODEL_MOTHRA));
+    TEST_ASSERT_EQUAL(0, tc_model_rom_bytes(TC_MODEL_UNKNOWN));
+}
+
+static void test_distinct_valid_includes_angel(void)
+{
+    tc_rom_entry_t sd[5] = { entry("tama.bin", TC_MODEL_P1, 1), entry("tamaang.bin", TC_MODEL_ANGEL, 4),
+                             entry("test.bin", TC_MODEL_TEST_ROM, 3), entry("tamamot.bin", TC_MODEL_MOTHRA, 5),
+                             entry("copy.bin", TC_MODEL_P1, 1) };
+    int idx[5];
+    TEST_ASSERT_EQUAL(3, tc_rom_distinct_valid(sd, 5, idx, 5));
 }
 
 int main(void)
@@ -178,5 +239,10 @@ int main(void)
     RUN_TEST(test_distinct_valid_dedups_and_filters);
     RUN_TEST(test_model_from_sha1);
     RUN_TEST(test_identify_reports_sha1_of_the_bytes);
+    RUN_TEST(test_model_from_sha1_angel_mothra);
+    RUN_TEST(test_decode_16k);
+    RUN_TEST(test_identify_size_mismatch);
+    RUN_TEST(test_playable_and_names);
+    RUN_TEST(test_distinct_valid_includes_angel);
     return UNITY_END();
 }

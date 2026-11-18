@@ -101,7 +101,7 @@ static void test_b64_roundtrip(void)
 
 static void test_put_unknown_rom_rejected(void)
 {
-    static uint8_t junk[TC_ROM_BYTES];
+    static uint8_t junk[TC_ROM_BYTES_S46];
     memset(junk, 0x5A, sizeof junk);
     TEST_ASSERT_EQUAL_STRING("@TO ERR unknown", upload("x.bin", junk, sizeof junk, NULL));
     TEST_ASSERT_EQUAL(0, stored_len);
@@ -119,7 +119,7 @@ static void use_p1_identify(void)
 }
 static uint8_t *fake_rom(void)
 {
-    static uint8_t rom[TC_ROM_BYTES];
+    static uint8_t rom[TC_ROM_BYTES_S46];
     for (size_t i = 0; i < sizeof rom; i++) rom[i] = (uint8_t)(i * 13 + 7);
     return rom;
 }
@@ -127,14 +127,14 @@ static uint8_t *fake_rom(void)
 static void test_put_roundtrip_p1(void)
 {
     use_p1_identify();
-    TEST_ASSERT_EQUAL_STRING("@TO OK P1", upload("tama.bin", fake_rom(), TC_ROM_BYTES, NULL));
+    TEST_ASSERT_EQUAL_STRING("@TO OK P1", upload("tama.bin", fake_rom(), TC_ROM_BYTES_S46, NULL));
     TEST_ASSERT_EQUAL_STRING("tama.bin", stored_name);
-    TEST_ASSERT_EQUAL(TC_ROM_BYTES, stored_len);
+    TEST_ASSERT_EQUAL(TC_ROM_BYTES_S46, stored_len);
 }
 
 static void test_put_bad_sha_rejected(void)
 {
-    static uint8_t junk[TC_ROM_BYTES];
+    static uint8_t junk[TC_ROM_BYTES_S46];
     TEST_ASSERT_EQUAL_STRING("@TO ERR sha1", upload("x.bin", junk, sizeof junk, "0000000000000000000000000000000000000000"));
 }
 
@@ -205,13 +205,13 @@ static void test_put_reboot_announced(void)
 {
     use_p1_identify();
     store_result = HL_STORE_OK_REBOOT;
-    TEST_ASSERT_EQUAL_STRING("@TO OK P1 REBOOT", upload("tama.bin", fake_rom(), TC_ROM_BYTES, NULL));
+    TEST_ASSERT_EQUAL_STRING("@TO OK P1 REBOOT", upload("tama.bin", fake_rom(), TC_ROM_BYTES_S46, NULL));
 }
 
 // Without the hook, the real identification decides: made-up bytes are no P1.
 static void test_put_without_hook_uses_real_identify(void)
 {
-    TEST_ASSERT_EQUAL_STRING("@TO ERR unknown", upload("tama.bin", fake_rom(), TC_ROM_BYTES, NULL));
+    TEST_ASSERT_EQUAL_STRING("@TO ERR unknown", upload("tama.bin", fake_rom(), TC_ROM_BYTES_S46, NULL));
 }
 
 static void test_get_lists_all_settings(void)
