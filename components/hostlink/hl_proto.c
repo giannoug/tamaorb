@@ -13,7 +13,7 @@ struct hl_session {
     size_t size, got;
     uint32_t next_seq;
     uint8_t sha1[20];
-    uint8_t data[TC_ROM_BYTES_S46];
+    uint8_t data[TC_ROM_MAX_BYTES];
 };
 
 size_t hl_session_size(void) { return sizeof(hl_session_t); }
@@ -58,10 +58,11 @@ static void put(hl_session_t *s, char *args, hl_emit_fn reply, void *rctx)
 {
     char *name = strtok(args, " "), *size = strtok(NULL, " "), *hex = strtok(NULL, " ");
     if (!name || !valid_name(name)) { reply(rctx, "@TO ERR name"); return; }
-    if (!size || strtoul(size, NULL, 10) != TC_ROM_BYTES_S46) { reply(rctx, "@TO ERR size"); return; }
+    unsigned long n = size ? strtoul(size, NULL, 10) : 0;
+    if (!tc_rom_size_ok(n)) { reply(rctx, "@TO ERR size"); return; }
     if (!parse_hex20(hex, s->sha1)) { reply(rctx, "@TO ERR data"); return; }
     snprintf(s->name, sizeof s->name, "%s", name);
-    s->size = TC_ROM_BYTES_S46;
+    s->size = n;
     s->got = 0;
     s->next_seq = 0;
     s->uploading = true;
@@ -90,7 +91,7 @@ static void end(hl_session_t *s, hl_emit_fn reply, void *rctx)
     tc_model_t m = tc_rom_identify(s->data, s->size, h);
     if (memcmp(h, s->sha1, 20) != 0) { reply(rctx, "@TO ERR sha1"); return; }
     if (s->ops->identify) m = s->ops->identify(s->ops->ctx, s->data, s->size);
-    if (m != TC_MODEL_P1 && m != TC_MODEL_P2) { reply(rctx, "@TO ERR unknown"); return; }
+    if (!tc_model_playable(m)) { reply(rctx, "@TO ERR unknown"); return; }
     hl_store_result_t r = s->ops->store(s->ops->ctx, s->name, s->data, s->size);
     if (r == HL_STORE_FAIL) { reply(rctx, "@TO ERR io"); return; }
     char line[32];

@@ -294,6 +294,26 @@ static void test_clock_without_op_is_cmd_error(void)
     TEST_ASSERT_EQUAL(0, clock_calls);
 }
 
+static tc_model_t as_angel(void *ctx, const uint8_t *data, size_t len) { return TC_MODEL_ANGEL; }
+
+static void test_put_16k_accepted(void)
+{
+    static hl_ops_t a;
+    a = ops;
+    a.identify = as_angel;
+    hl_init(s, &a);
+    static uint8_t rom[TC_ROM_BYTES_S48];
+    for (size_t i = 0; i < sizeof rom; i++) rom[i] = (uint8_t)(i * 5 + 3);
+    TEST_ASSERT_EQUAL_STRING("@TO OK Angel", upload("tamaang.bin", rom, sizeof rom, NULL));
+    TEST_ASSERT_EQUAL(TC_ROM_BYTES_S48, stored_len);
+}
+
+static void test_put_odd_size_refused(void)
+{
+    feed("@TO PUT x.bin 16000 0000000000000000000000000000000000000000");
+    TEST_ASSERT_EQUAL_STRING("@TO ERR size", last);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -320,5 +340,7 @@ int main(void)
     RUN_TEST(test_clock_ok_replies_time);
     RUN_TEST(test_clock_refusals);
     RUN_TEST(test_clock_without_op_is_cmd_error);
+    RUN_TEST(test_put_16k_accepted);
+    RUN_TEST(test_put_odd_size_refused);
     return UNITY_END();
 }

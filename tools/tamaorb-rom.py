@@ -12,7 +12,7 @@
   tamaorb-rom.py set muted=true tz=Europe/Berlin      # mute; time zone (IANA name or POSIX string)
 
 Talks the "@TO" line protocol (docs: components/hostlink/include/hostlink.h) over the same
-USB serial port used for flashing. Only P1 and P2 dumps are sent; nothing else leaves the PC.
+USB serial port used for flashing. Only P1, P2, Angel and Mothra dumps are sent; nothing else leaves the PC.
 """
 import argparse
 import base64
@@ -29,8 +29,10 @@ from dataclasses import dataclass
 KNOWN = {
     "4b4979cf92dc9d2fb6d7295a38f209f3da144f72": "P1",
     "09e5101b37636a314fc599d5d69b4846721b3c88": "P2",
+    "f5899bb7717756ac581451cf16cf97d909961c5c": "Angel",
+    "74c1f6761724b7cbda8bca3113db78586b786d2d": "Mothra",
 }
-ROM_BYTES = 12288
+ROM_BYTES = {"P1": 12288, "P2": 12288, "Angel": 16384, "Mothra": 16384}  # dump size per model
 CHUNK = 768
 # Every key "@TO GET" lists (components/settings/st_settings.c); a listing missing any is incomplete.
 SETTINGS_KEYS = ("brightness", "dim_level", "dim_usb_s", "dim_battery_s", "off_battery_s", "volume", "palette",
@@ -59,9 +61,9 @@ def device_name(name):
 
 def _identify(name, data):
     sha = hashlib.sha1(data).hexdigest()
-    model = KNOWN.get(sha) if len(data) == ROM_BYTES else None
-    if not model:
-        print(f"  skipping {name}: not a supported P1/P2 dump (sha1 {sha[:10]}...)")
+    model = KNOWN.get(sha)
+    if not model or len(data) != ROM_BYTES[model]:
+        print(f"  skipping {name}: not a supported P1, P2, Angel or Mothra dump (sha1 {sha[:10]}...)")
         return None
     clean = device_name(name)
     if clean != pathlib.PurePath(name).name:
@@ -76,7 +78,7 @@ def roms_from_path(path):
     if path.suffix.lower() == ".zip":
         with zipfile.ZipFile(path) as z:
             for info in z.infolist():
-                if info.filename.lower().endswith(".bin") and info.file_size == ROM_BYTES:
+                if info.filename.lower().endswith(".bin") and info.file_size in ROM_BYTES.values():
                     rom = _identify(info.filename, z.read(info))
                     if rom:
                         found.append(rom)
@@ -200,7 +202,7 @@ class Link:
             raise
 
     CLOCK_ERRORS = {
-        "unsupported": "the pet's clock is only known for P1 and P2",
+        "unsupported": "this pet has no clock the ball can set",
         "notime": "the ball has no internet time yet",
         "catchup": "the pet is catching up; try again when it finishes",
         "busy": "the pet's clock is stopped (its own clock menu is open); close it and try again",

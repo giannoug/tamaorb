@@ -2,9 +2,10 @@
 // Replays a save from the ball on the PC with a button script and prints every distinct screen.
 // A dev tool, not a test: it answers "what does the pet do if I press this?" without touching the ball.
 //
-//   save_replay <rom.bin> <save.sav> "<script>" [hold_ms gap_ms]
+//   save_replay <rom.bin> <save.sav|-> "<script>" [hold_ms gap_ms]
 //
-// The save is the file from GET /api/pets/<sha1>/save (or the panel's "Back up save").
+// The save is the file from GET /api/pets/<id>/save (or the panel's "Back up save"); "-" starts from the ROM's
+// power-on state (a fresh egg).
 // Script tokens, separated by spaces: A, B, C, AC press like the agent's press tool (hold, then gap);
 // wN waits N ms; ffN fast-forwards N emulated seconds without printing frames (the last frame is printed
 // after); ram prints every RAM nibble that changed since the previous ram (the first ram prints them all).
@@ -16,6 +17,8 @@
 // hN sets the hold time of the presses that follow (the P1 clock menu wants A+C held ~3 s: "h3000 AC h200").
 // Example: "ff120 clock set210000 clock ff600 clock" moves an awake P1 into the night; ten minutes later it sleeps.
 // "@file" in place of the script reads it from that file (for scripts too long for one argument).
+// dump <file> writes the state at that point as a save record (pet 0, untrusted time 0) that this tool loads again,
+// so long research runs can be chained.
 // Emulation runs as fast as possible; times in the output are emulated milliseconds.
 #include <stdio.h>
 #include <stdlib.h>
@@ -120,6 +123,22 @@ static bool set_clock(const char *t)
     return true;
 }
 
+static uint8_t g_sha1[20];
+
+static bool dump_state(const char *path)
+{
+    static uint8_t state[1024], out[1024 + PS_OVERHEAD];
+    size_t n = tc_state_save(state, sizeof state);
+    ps_meta_t m = { .pet_id = 0, .time_trusted = false, .unix_time = 0, .seq = 1 };
+    memcpy(m.rom_sha1, g_sha1, 20);
+    size_t len = n ? ps_record_encode(&m, state, n, out, sizeof out) : 0;
+    FILE *f = len ? fopen(path, "wb") : NULL;
+    if (!f || fwrite(out, 1, len, f) != len) { perror(path); if (f) fclose(f); return false; }
+    fclose(f);
+    printf("=== dumped to %s at %.0f ms\n", path, g_ms);
+    return true;
+}
+
 static bool read_file(const char *path, uint8_t *buf, size_t cap, size_t *len)
 {
     FILE *f = fopen(path, "rb");
@@ -132,10 +151,11 @@ static bool read_file(const char *path, uint8_t *buf, size_t cap, size_t *len)
 int main(int argc, char **argv)
 {
     if (argc < 4) {
-        fprintf(stderr, "usage: %s <rom.bin> <save.sav> \"<script>\"|@script.txt [hold_ms gap_ms]\n"
+        fprintf(stderr, "usage: %s <rom.bin> <save.sav|-> \"<script>\"|@script.txt [hold_ms gap_ms]\n"
                         "script tokens: A B C AC (press), wN (wait N ms), ffN (fast-forward N s quietly),\n"
                         "  ram (RAM nibbles changed since the last ram; the first prints all),\n"
-                        "  clock (the pet's clock), setHHMMSS (set it), hN (hold time of later presses)\n", argv[0]);
+                        "  clock (the pet's clock), setHHMMSS (set it), hN (hold time of later presses),\n"
+                        "  dump <file> (write the state as a save)\n", argv[0]);
         return 2;
     }
     double hold = argc > 5 ? atof(argv[4]) : 200, gap = argc > 5 ? atof(argv[5]) : 400;  // the press tool's defaults
@@ -144,17 +164,18 @@ int main(int argc, char **argv)
     static uint16_t program[TC_ROM_MAX_WORDS];
     size_t rom_len, rec_len;
     if (!read_file(argv[1], rom, sizeof rom, &rom_len) || !tc_rom_decode(rom, rom_len, program)) {
-        fprintf(stderr, "%s: not a P1/P2 ROM dump\n", argv[1]);
+        fprintf(stderr, "%s: not a ROM dump of a supported size\n", argv[1]);
         return 1;
     }
-    g_model = tc_rom_identify(rom, rom_len, NULL);
+    g_model = tc_rom_identify(rom, rom_len, g_sha1);
     static const tc_platform_t plat = { now_us, sleep_until, NULL, NULL, NULL };
     if (!tc_init(program, &plat)) return 1;
     ps_meta_t meta;
     const uint8_t *payload;
     size_t payload_len;
-    if (!read_file(argv[2], rec, sizeof rec, &rec_len) || !ps_record_decode(rec, rec_len, &meta, &payload, &payload_len) ||
-        !tc_state_load(payload, payload_len)) {
+    if (strcmp(argv[2], "-") != 0 &&
+        (!read_file(argv[2], rec, sizeof rec, &rec_len) || !ps_record_decode(rec, rec_len, &meta, &payload, &payload_len) ||
+         !tc_state_load(payload, payload_len))) {
         fprintf(stderr, "%s: not a TamaOrb save for this build\n", argv[2]);
         return 1;
     }
@@ -182,6 +203,11 @@ int main(int argc, char **argv)
         }
         if (!strcmp(t, "ram")) { show_ram(); continue; }
         if (!strcmp(t, "clock")) { show_clock(); continue; }
+        if (!strcmp(t, "dump")) {
+            char *path = strtok(NULL, " \t\r\n");
+            if (!path || !dump_state(path)) return 1;
+            continue;
+        }
         if (!strncmp(t, "set", 3) && set_clock(t + 3)) continue;
         if (t[0] == 'h' && t[1] >= '0' && t[1] <= '9') { hold = atof(t + 1); continue; }
         uint8_t mask = !strcmp(t, "A") ? 1 : !strcmp(t, "B") ? 2 : !strcmp(t, "C") ? 4 : !strcmp(t, "AC") ? 5 : 0;

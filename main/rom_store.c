@@ -41,16 +41,17 @@ static bool path_for(const char *name, char *out, size_t cap)
     return snprintf(out, cap, "%s/%s", ROM_STORE_DIR, name) < (int)cap;
 }
 
-bool rom_store_read_sd(const char *name, uint8_t *rom)
+bool rom_store_read_sd(const char *name, uint8_t *rom, size_t *len)
 {
     char path[128];
     if (!s_sd || !path_for(name, path, sizeof path)) return false;
     FILE *f = fopen(path, "rb");
     if (!f) return false;
-    size_t n = fread(rom, 1, TC_ROM_BYTES, f);
+    size_t n = fread(rom, 1, TC_ROM_MAX_BYTES, f);
     int extra = fgetc(f);
     fclose(f);
-    return n == TC_ROM_BYTES && extra == EOF;
+    *len = n;
+    return tc_rom_size_ok(n) && extra == EOF;
 }
 
 int rom_store_scan(tc_rom_entry_t *out, int max)
@@ -58,7 +59,7 @@ int rom_store_scan(tc_rom_entry_t *out, int max)
     if (!s_sd) return 0;
     DIR *d = opendir(ROM_STORE_DIR);
     if (!d) return 0;
-    static uint8_t buf[TC_ROM_BYTES];  // shared: the UI picker and hostlink LIST can scan at once
+    static uint8_t buf[TC_ROM_MAX_BYTES];  // shared: the UI picker and hostlink LIST can scan at once
     xSemaphoreTake(s_scan_lock, portMAX_DELAY);
     int n = 0;
     bool have_unknown = false;  // keep one unknown dump (to name it); more would crowd out real ROMs
@@ -68,10 +69,11 @@ int rom_store_scan(tc_rom_entry_t *out, int max)
         if (len < 5 || len >= sizeof out[0].name || strcasecmp(e->d_name + len - 4, ".bin") != 0) continue;
         char path[128];
         struct stat st;
-        if (!path_for(e->d_name, path, sizeof path) || stat(path, &st) != 0 || st.st_size != TC_ROM_BYTES) continue;
-        if (!rom_store_read_sd(e->d_name, buf)) continue;
+        if (!path_for(e->d_name, path, sizeof path) || stat(path, &st) != 0 || !tc_rom_size_ok((size_t)st.st_size)) continue;
+        size_t blen;
+        if (!rom_store_read_sd(e->d_name, buf, &blen)) continue;
         tc_rom_entry_t *r = &out[n];
-        r->model = tc_rom_identify(buf, sizeof buf, r->sha1);
+        r->model = tc_rom_identify(buf, blen, r->sha1);
         if (r->model == TC_MODEL_UNKNOWN || r->model == TC_MODEL_TEST_ROM) {
             if (have_unknown) continue;
             have_unknown = true;
@@ -89,28 +91,42 @@ static esp_err_t open_ns(nvs_open_mode_t mode, nvs_handle_t *h)
     return nvs_open_from_partition(ROM_STORE_PARTITION, "rom", mode, h);
 }
 
-bool rom_store_cached(uint8_t *rom, uint8_t sha1[20])
+bool rom_store_find_sd(const uint8_t sha1[20], char name_out[64])
+{
+    static tc_rom_entry_t roms[16];  // callers are serialised: switches run one at a time
+    int n = rom_store_scan(roms, 16);
+    for (int i = 0; i < n; i++)
+        if (!memcmp(roms[i].sha1, sha1, 20)) {
+            snprintf(name_out, 64, "%s", roms[i].name);
+            return true;
+        }
+    return false;
+}
+
+bool rom_store_cached(uint8_t *rom, size_t *len, uint8_t sha1[20])
 {
     nvs_handle_t h;
     if (open_ns(NVS_READONLY, &h) != ESP_OK) return false;
-    size_t len = TC_ROM_BYTES, slen = 20;
+    size_t n = TC_ROM_MAX_BYTES, slen = 20;
     uint8_t want[20];
-    bool ok = nvs_get_blob(h, "rom", rom, &len) == ESP_OK && len == TC_ROM_BYTES &&
+    bool ok = nvs_get_blob(h, "rom", rom, &n) == ESP_OK && tc_rom_size_ok(n) &&
               nvs_get_blob(h, "rom_sha", want, &slen) == ESP_OK && slen == 20;
     nvs_close(h);
     if (!ok) return false;
-    tc_rom_identify(rom, TC_ROM_BYTES, sha1);
+    *len = n;
+    tc_rom_identify(rom, n, sha1);
     return memcmp(sha1, want, 20) == 0;
 }
 
-esp_err_t rom_store_set_active(const uint8_t *rom)
+esp_err_t rom_store_set_active(const uint8_t *rom, size_t len)
 {
+    if (!tc_rom_size_ok(len)) return ESP_ERR_INVALID_SIZE;
     uint8_t sha1[20];
-    tc_rom_identify(rom, TC_ROM_BYTES, sha1);
+    tc_rom_identify(rom, len, sha1);
     nvs_handle_t h;
     esp_err_t err = open_ns(NVS_READWRITE, &h);
     if (err != ESP_OK) return err;
-    err = nvs_set_blob(h, "rom", rom, TC_ROM_BYTES);
+    err = nvs_set_blob(h, "rom", rom, len);
     if (err == ESP_OK) err = nvs_set_blob(h, "rom_sha", sha1, 20);
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);

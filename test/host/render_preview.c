@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Writes a PPM of one screen for eyeballing. Not a test.
 // Usage: render_preview out.ppm [pet|catchup|battery|message] [held_mask] [palette 0-2] [frame.txt]
+//        render_preview out.ppm pet-<p1|p2|angel|mothra>: that model's pet screen, every icon lit
 //        frame.txt (pet only): 16 lines of 32 '#'/'.' then "icons <hex>"; default: a sample face, Attention lit
 //        render_preview out.ppm <screen> [palette 0-2] [scroll px] [t_ms]
 //        screens: glance, glance-asleep, glance-unknown, settings, sound, brightness, dimming, palette,
@@ -95,7 +96,16 @@ int main(int argc, char **argv)
         if (v.rom_first) v.rom_current = -1;
         ui_render_menu(fb, &v, ui_palette_by_id(pal));
     } else if (!strcmp(mode, "message")) ui_render_message(fb, "No ROM found", "Put a P1 or P2 dump in\n/tamaorb/roms/ on the SD card,\nor push one over USB.", p);
-    else {
+    else if (!strncmp(mode, "pet-", 4)) {
+        static const struct { const char *name; tc_model_t m; } MODELS[] = {
+            { "p1", TC_MODEL_P1 }, { "p2", TC_MODEL_P2 }, { "angel", TC_MODEL_ANGEL }, { "mothra", TC_MODEL_MOTHRA } };
+        tc_model_t m = TC_MODEL_UNKNOWN;
+        for (size_t i = 0; i < sizeof MODELS / sizeof MODELS[0]; i++)
+            if (!strcmp(mode + 4, MODELS[i].name)) m = MODELS[i].m;
+        if (m == TC_MODEL_UNKNOWN) { fprintf(stderr, "unknown model: %s\n", mode + 4); return 2; }
+        f.icons = 0xFF;
+        ui_render_pet(fb, &f, m, 0, p);
+    } else {
         FILE *in = argc > 5 ? fopen(argv[5], "r") : NULL;
         if (argc > 5 && !in) { perror(argv[5]); return 1; }
         if (in) {

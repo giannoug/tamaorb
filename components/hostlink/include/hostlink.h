@@ -2,7 +2,7 @@
 // Line protocol over the USB serial console. Portable: no ESP-IDF headers.
 // Requests and replies start with "@TO "; every other line (logs) is ignored by both sides.
 //
-//   @TO PUT <name> <size> <sha1hex>   -> @TO OK | @TO ERR name|size|busy|io
+//   @TO PUT <name> <size> <sha1hex>   -> @TO OK | @TO ERR name|size|busy|io   (size 12288 or 16384)
 //   @TO D <seq> <base64 <= 768 bytes> -> @TO OK <seq> | @TO ERR seq|size|data|state
 //   @TO END                           -> @TO OK <model> [REBOOT] | @TO ERR size|sha1|unknown|io|state
 //                                        (REBOOT: the device restarts to apply it; stop sending)
@@ -31,7 +31,7 @@ typedef enum { HL_STORE_FAIL = 0, HL_STORE_OK, HL_STORE_OK_REBOOT } hl_store_res
 typedef enum { HL_CLOCK_OK, HL_CLOCK_UNSUPPORTED, HL_CLOCK_NO_TIME, HL_CLOCK_CATCHUP, HL_CLOCK_BUSY } hl_clock_t;
 
 typedef struct {
-    hl_store_result_t (*store)(void *ctx, const char *name, const uint8_t *data, size_t len);  // verified P1/P2 ROM
+    hl_store_result_t (*store)(void *ctx, const char *name, const uint8_t *data, size_t len);  // a verified playable ROM
     void (*list)(void *ctx, hl_emit_fn emit, void *ectx);   // emit "<name> <model> <sha1hex>" per ROM
     bool (*remove)(void *ctx, const char *name);
     bool (*wifi)(void *ctx, const char *ssid, const char *pass);

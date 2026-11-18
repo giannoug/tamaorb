@@ -26,8 +26,9 @@
 
 static const char *TAG = "tamaorb";
 
-static uint8_t s_rom[TC_ROM_BYTES];
-static uint16_t s_program[TC_ROM_WORDS];
+static uint8_t s_rom[TC_ROM_MAX_BYTES];
+static size_t s_rom_len;
+static uint16_t s_program[TC_ROM_MAX_WORDS];
 
 static void show_no_rom(const tc_rom_entry_t *roms, int n)
 {
@@ -39,7 +40,7 @@ static void show_no_rom(const tc_rom_entry_t *roms, int n)
         ui_message("Unknown ROM", body);
         return;
     }
-    ui_message("No ROM found", "Put a P1 or P2 dump\nin /tamaorb/roms/\non the SD card, or\npush one over USB.");
+    ui_message("No ROM found", "Put a P1, P2, Angel\nor Mothra dump in\n/tamaorb/roms/ on the\nSD card, or push one\nover USB.");
 }
 
 // Picks the ROM to run. Returns its model, or TC_MODEL_UNKNOWN if there is none.
@@ -48,10 +49,10 @@ static tc_model_t choose_rom(void)
     static tc_rom_entry_t roms[16];
     uint8_t sha1[20];
     int n = rom_store_scan(roms, 16), idx = -1;
-    bool cached = rom_store_cached(s_rom, sha1);
+    bool cached = rom_store_cached(s_rom, &s_rom_len, sha1);
     switch (tc_rom_select(cached, roms, n, &idx)) {
     case TC_SEL_USE_CACHED: {
-        tc_model_t m = tc_rom_identify(s_rom, sizeof s_rom, NULL);
+        tc_model_t m = tc_rom_identify(s_rom, s_rom_len, NULL);
         if (!rom_store_sd_present()) {
             char body[80];
             snprintf(body, sizeof body, "Using the saved copy\nof %s.\nYour pet is fine.", tc_model_name(m));
@@ -64,7 +65,7 @@ static tc_model_t choose_rom(void)
         idx = ui_pick_rom(roms, n);
         /* fall through */
     case TC_SEL_USE_SD:
-        if (idx >= 0 && rom_store_read_sd(roms[idx].name, s_rom) && rom_store_set_active(s_rom) == ESP_OK) {
+        if (idx >= 0 && rom_store_read_sd(roms[idx].name, s_rom, &s_rom_len) && rom_store_set_active(s_rom, s_rom_len) == ESP_OK) {
             ESP_LOGI(TAG, "active ROM: %s", roms[idx].name);
             return roms[idx].model;
         }
@@ -109,12 +110,12 @@ void app_main(void)
         return;
     }
     ESP_LOGI(TAG, "running %s", tc_model_name(model));
-    tc_rom_decode(s_rom, sizeof s_rom, s_program);
+    tc_rom_decode(s_rom, s_rom_len, s_program);
     pet_clock_init(model);
     ui_task_start(model);  // shows "Starting" until the emulator runs
     if (!emu_init(s_program)) return;
     uint8_t sha1[20];
-    tc_rom_identify(s_rom, sizeof s_rom, sha1);
+    tc_rom_identify(s_rom, s_rom_len, sha1);
     ps_meta_t meta;
     uint64_t gap_s = 0;
     if (saver_load(sha1, &meta) == ESP_OK) {
@@ -134,7 +135,7 @@ void app_main(void)
     }
     press_task_start();
     power_set_awake_hook(net_set_low_latency);  // an open debugger: no light sleep, no Wi-Fi power save
-    web_start(remote_ops_init(model, sha1, s_rom), st.name);  // the same SHA-1 the saver loaded
+    web_start(remote_ops_init(model, sha1, s_rom, s_rom_len), st.name);  // the same SHA-1 the saver loaded
     emu_start(gap_s, meta.unix_time, meta.time_trusted);
     power_start(save_for_power, ui_task_show_low_battery);
 }

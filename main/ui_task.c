@@ -405,7 +405,11 @@ static int rom_rows(const tc_rom_entry_t *roms, int n)
     int m = tc_rom_distinct_valid(roms, n, s_row_entry, MAX_ROMS);
     for (int k = 0; k < m; k++) {
         const tc_rom_entry_t *r = &roms[s_row_entry[k]];
-        snprintf(s_row_sub[k], sizeof s_row_sub[k], "Gen %d - %s", r->model == TC_MODEL_P1 ? 1 : 2, r->name);
+        const char *longname = tc_model_long_name(r->model);
+        if (longname && strcmp(longname, tc_model_name(r->model)) != 0)
+            snprintf(s_row_sub[k], sizeof s_row_sub[k], "%s - %s", longname, r->name);
+        else
+            snprintf(s_row_sub[k], sizeof s_row_sub[k], "%s", r->name);
         s_rows[k] = (ui_rom_row_t){ tc_model_name(r->model), s_row_sub[k] };
     }
     return m;
@@ -417,8 +421,9 @@ static void load_rom_rows(ui_menu_view_t *v)
     int n = rom_store_scan(s_scan, MAX_ROMS), m = rom_rows(s_scan, n);
     v->rom_current = -1;
     uint8_t active[20];
-    uint8_t *rom = malloc(TC_ROM_BYTES);  // only to learn the active SHA-1
-    if (rom && rom_store_cached(rom, active))
+    uint8_t *rom = malloc(TC_ROM_MAX_BYTES);  // only to learn the active SHA-1
+    size_t rom_len;
+    if (rom && rom_store_cached(rom, &rom_len, active))
         for (int k = 0; k < m; k++)
             if (!memcmp(s_scan[s_row_entry[k]].sha1, active, 20)) v->rom_current = k;
     free(rom);

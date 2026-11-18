@@ -28,6 +28,7 @@ static tc_model_t s_model;
 static uint8_t s_active[20];
 static char s_rom_name[64];
 static const uint8_t *s_rom;
+static size_t s_rom_len;
 
 static rm_phase_t phase_now(uint8_t *pct)
 {
@@ -238,7 +239,7 @@ static bool op_rom(void *ctx, const uint8_t **data, size_t *len)
 {
     if (!s_rom || s_model == TC_MODEL_UNKNOWN) return false;
     *data = s_rom;
-    *len = TC_ROM_BYTES;
+    *len = s_rom_len;
     return true;
 }
 
@@ -250,10 +251,11 @@ static rm_ops_t s_ops = {
     .sync_clock = op_sync_clock, .debug = op_debug, .rom = op_rom, .ctx = NULL,
 };
 
-const rm_ops_t *remote_ops_init(tc_model_t model, const uint8_t active_sha1[20], const uint8_t *rom)
+const rm_ops_t *remote_ops_init(tc_model_t model, const uint8_t active_sha1[20], const uint8_t *rom, size_t rom_len)
 {
     s_model = model;
     s_rom = rom;
+    s_rom_len = rom_len;
     if (active_sha1) memcpy(s_active, active_sha1, 20);
     tc_rom_entry_t *roms = malloc(sizeof *roms * 16);
     if (roms) {

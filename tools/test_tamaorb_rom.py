@@ -56,6 +56,22 @@ def test_zip_selects_known_roms(tmp_path, monkeypatch):
     assert [(r.name, r.model) for r in roms] == [("tama.bin", "P1")]
 
 
+FAKE16 = bytes((i * 11 + 3) & 0xFF for i in range(16384))
+FAKE16_SHA = hashlib.sha1(FAKE16).hexdigest()
+
+
+def test_known_angel_from_zip(tmp_path, monkeypatch):
+    monkeypatch.setattr(tool, "KNOWN", {FAKE16_SHA: "Angel"})
+    z = make_zip(tmp_path, {"tamaang.bin": FAKE16, "tamaang.svg": b"<svg/>"})
+    roms = tool.roms_from_path(z)
+    assert [(r.name, r.model) for r in roms] == [("tamaang.bin", "Angel")]
+
+
+def test_known_sizes_per_model():
+    assert tool.ROM_BYTES == {"P1": 12288, "P2": 12288, "Angel": 16384, "Mothra": 16384}
+    assert set(tool.KNOWN.values()) == {"P1", "P2", "Angel", "Mothra"}
+
+
 def test_unknown_bin_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(tool, "KNOWN", {})
     p = tmp_path / "x.bin"

@@ -35,7 +35,7 @@ static esp_err_t switch_locked(const char *sd_name)
     static tc_rom_entry_t roms[16];
     int n = rom_store_scan(roms, 16), found = -1;
     for (int i = 0; i < n; i++)
-        if (!strcmp(roms[i].name, sd_name) && (roms[i].model == TC_MODEL_P1 || roms[i].model == TC_MODEL_P2)) found = i;
+        if (!strcmp(roms[i].name, sd_name) && tc_model_playable(roms[i].model)) found = i;
     if (found < 0) return ESP_ERR_NOT_FOUND;
     uint8_t want[20];
     memcpy(want, roms[found].sha1, 20);
@@ -45,13 +45,14 @@ static esp_err_t switch_locked(const char *sd_name)
         return ESP_FAIL;
     }
     // Internal RAM, like the boot path's buffer: it is the source of a flash write.
-    uint8_t *rom = heap_caps_malloc(TC_ROM_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint8_t *rom = heap_caps_malloc(TC_ROM_MAX_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (!rom) return ESP_ERR_NO_MEM;
     uint8_t sha1[20];
+    size_t len = 0;
     esp_err_t err = ESP_ERR_NOT_FOUND;
-    if (rom_store_read_sd(sd_name, rom) && tc_rom_identify(rom, TC_ROM_BYTES, sha1) != TC_MODEL_UNKNOWN &&
+    if (rom_store_read_sd(sd_name, rom, &len) && tc_rom_identify(rom, len, sha1) != TC_MODEL_UNKNOWN &&
         !memcmp(sha1, want, 20))
-        err = rom_store_set_active(rom);
+        err = rom_store_set_active(rom, len);
     free(rom);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "switch to %s failed: %s", sd_name, esp_err_to_name(err));
