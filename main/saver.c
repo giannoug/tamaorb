@@ -12,6 +12,7 @@
 static const char *TAG = "saver";
 
 static uint8_t s_sha1[20];
+static uint8_t s_pet;              // the running pet's number
 static uint32_t s_seq;
 static char s_next_slot = 'a';
 static bool (*s_now)(int64_t *);
@@ -49,14 +50,14 @@ static void lock(void)
 
 static void unlock(void) { xSemaphoreGive(s_mtx); }
 
-static bool read_slot_of(nvs_handle_t h, const uint8_t sha1[20], char slot, ps_meta_t *m, const uint8_t **payload,
-                         size_t *len, uint8_t *buf, size_t cap, size_t *rec_len)
+static bool read_slot_of(nvs_handle_t h, const uint8_t sha1[20], uint8_t pet, char slot, ps_meta_t *m,
+                         const uint8_t **payload, size_t *len, uint8_t *buf, size_t cap, size_t *rec_len)
 {
     char key[16];
-    ps_key(sha1, 0, slot, key);
+    ps_key(sha1, pet, slot, key);
     size_t n = cap;
     if (nvs_get_blob(h, key, buf, &n) != ESP_OK || !ps_record_decode(buf, n, m, payload, len) ||
-        memcmp(m->rom_sha1, sha1, 20) != 0)
+        memcmp(m->rom_sha1, sha1, 20) != 0 || m->pet_id != pet)
         return false;
     if (rec_len) *rec_len = n;
     return true;
@@ -64,13 +65,23 @@ static bool read_slot_of(nvs_handle_t h, const uint8_t sha1[20], char slot, ps_m
 
 static bool read_slot(nvs_handle_t h, char slot, ps_meta_t *m, const uint8_t **payload, size_t *len, uint8_t *buf, size_t cap)
 {
-    return read_slot_of(h, s_sha1, slot, m, payload, len, buf, cap, NULL);
+    return read_slot_of(h, s_sha1, s_pet, slot, m, payload, len, buf, cap, NULL);
 }
 
-esp_err_t saver_load(const uint8_t sha1[20], ps_meta_t *meta)
+bool saver_running(uint8_t sha1_out[20], uint8_t *pet_id)
+{
+    lock();
+    bool r = s_loaded;
+    if (r) { memcpy(sha1_out, s_sha1, 20); *pet_id = s_pet; }
+    unlock();
+    return r;
+}
+
+esp_err_t saver_load(const uint8_t sha1[20], uint8_t pet_id, ps_meta_t *meta)
 {
     lock();
     memcpy(s_sha1, sha1, 20);
+    s_pet = pet_id;
     s_loaded = true;
     unlock();
     if (!s_done) s_done = xSemaphoreCreateBinary();
@@ -113,12 +124,12 @@ static esp_err_t save_at_locked(int64_t unix_s, bool trusted)
     if (s_frozen) return ESP_ERR_INVALID_STATE;  // an imported record waits for the restart
     size_t len = tc_state_save(s_state, sizeof s_state);
     if (!len) return ESP_FAIL;
-    ps_meta_t m = { .pet_id = 0, .time_trusted = trusted, .unix_time = unix_s, .seq = s_seq + 1 };
+    ps_meta_t m = { .pet_id = s_pet, .time_trusted = trusted, .unix_time = unix_s, .seq = s_seq + 1 };
     memcpy(m.rom_sha1, s_sha1, 20);
     size_t n = ps_record_encode(&m, s_state, len, s_rec, sizeof s_rec);
     if (!n) return ESP_FAIL;
     char key[16];
-    ps_key(s_sha1, 0, s_next_slot, key);
+    ps_key(s_sha1, s_pet, s_next_slot, key);
     nvs_handle_t h = 0;
     esp_err_t err = open_ns(NVS_READWRITE, &h);
     if (err == ESP_OK) err = nvs_set_blob(h, key, s_rec, n);
@@ -198,15 +209,16 @@ void saver_serve_request_at(int64_t unix_s, bool trusted)
 // Caller holds the lock. Newest valid record of a pet in buf_a or buf_b; *slot is 'a' or 'b'.
 static uint8_t s_imp_a[sizeof s_rec], s_imp_b[sizeof s_rec];
 
-static esp_err_t newest_locked(const uint8_t sha1[20], ps_meta_t *meta, char *slot, const uint8_t **rec, size_t *rec_len)
+static esp_err_t newest_locked(const uint8_t sha1[20], uint8_t pet, ps_meta_t *meta, char *slot, const uint8_t **rec,
+                               size_t *rec_len)
 {
     nvs_handle_t h;
     if (open_ns(NVS_READONLY, &h) != ESP_OK) return ESP_ERR_NOT_FOUND;  // no namespace yet: no saves
     ps_meta_t ma, mb;
     const uint8_t *p;
     size_t pl, na = 0, nb = 0;
-    bool a = read_slot_of(h, sha1, 'a', &ma, &p, &pl, s_imp_a, sizeof s_imp_a, &na);
-    bool b = read_slot_of(h, sha1, 'b', &mb, &p, &pl, s_imp_b, sizeof s_imp_b, &nb);
+    bool a = read_slot_of(h, sha1, pet, 'a', &ma, &p, &pl, s_imp_a, sizeof s_imp_a, &na);
+    bool b = read_slot_of(h, sha1, pet, 'b', &mb, &p, &pl, s_imp_b, sizeof s_imp_b, &nb);
     nvs_close(h);
     int pick = ps_pick_newest(a, &ma, b, &mb);
     if (pick < 0) return ESP_ERR_NOT_FOUND;
@@ -217,14 +229,15 @@ static esp_err_t newest_locked(const uint8_t sha1[20], ps_meta_t *meta, char *sl
     return ESP_OK;
 }
 
-esp_err_t saver_read_newest(const uint8_t sha1[20], ps_meta_t *meta, uint8_t *rec, size_t cap, size_t *len)
+esp_err_t saver_read_newest(const uint8_t sha1[20], uint8_t pet_id, ps_meta_t *meta, uint8_t *rec, size_t cap,
+                            size_t *len)
 {
     ps_meta_t m;
     char slot;
     const uint8_t *r;
     size_t n;
     lock();
-    esp_err_t err = newest_locked(sha1, &m, &slot, &r, &n);
+    esp_err_t err = newest_locked(sha1, pet_id, &m, &slot, &r, &n);
     if (err == ESP_OK && rec) {
         if (n > cap) err = ESP_ERR_INVALID_SIZE;
         else memcpy(rec, r, n);
@@ -237,21 +250,22 @@ esp_err_t saver_read_newest(const uint8_t sha1[20], ps_meta_t *meta, uint8_t *re
     return err;
 }
 
-esp_err_t saver_import(const uint8_t sha1[20], const uint8_t *rec, size_t len)
+esp_err_t saver_import(const uint8_t sha1[20], uint8_t pet_id, const uint8_t *rec, size_t len)
 {
     ps_meta_t in, newest;
     const uint8_t *p;
     size_t pl;
-    if (!ps_record_decode(rec, len, &in, &p, &pl) || memcmp(in.rom_sha1, sha1, 20) != 0) return ESP_ERR_INVALID_ARG;
+    if (!ps_record_decode(rec, len, &in, &p, &pl) || memcmp(in.rom_sha1, sha1, 20) != 0 || in.pet_id != pet_id)
+        return ESP_ERR_INVALID_ARG;
     lock();
-    bool running = s_loaded && memcmp(sha1, s_sha1, 20) == 0;
+    bool running = s_loaded && memcmp(sha1, s_sha1, 20) == 0 && pet_id == s_pet;
     bool was_frozen = s_frozen;
     // Freeze before anything else: holding the lock, no save is in flight, and none can start after this.
     if (running) s_frozen = true;
     char slot;
     const uint8_t *r;
     size_t n;
-    esp_err_t err = newest_locked(sha1, &newest, &slot, &r, &n);
+    esp_err_t err = newest_locked(sha1, pet_id, &newest, &slot, &r, &n);
     char target;
     if (err == ESP_OK) {
         target = slot == 'a' ? 'b' : 'a';  // the older slot: the newest record stays intact
@@ -264,7 +278,7 @@ esp_err_t saver_import(const uint8_t sha1[20], const uint8_t *rec, size_t len)
     bool written = false;
     if (err == ESP_OK) {
         char key[16];
-        ps_key(sha1, 0, target, key);
+        ps_key(sha1, pet_id, target, key);
         err = open_ns(NVS_READWRITE, &h);
         if (err == ESP_OK) err = nvs_set_blob(h, key, rec, len);
         written = err == ESP_OK;
@@ -280,5 +294,30 @@ esp_err_t saver_import(const uint8_t sha1[20], const uint8_t *rec, size_t len)
                  running ? "; saving stopped until the restart" : "");
     else
         ESP_LOGE(TAG, "import failed: %s", esp_err_to_name(err));
+    return err;
+}
+
+esp_err_t saver_erase(const uint8_t sha1[20], uint8_t pet_id)
+{
+    lock();
+    if (s_loaded && memcmp(sha1, s_sha1, 20) == 0 && pet_id == s_pet) {
+        unlock();
+        return ESP_ERR_INVALID_STATE;
+    }
+    nvs_handle_t h;
+    esp_err_t err = open_ns(NVS_READWRITE, &h);
+    if (err == ESP_OK) {
+        for (char slot = 'a'; slot <= 'b'; slot++) {
+            char key[16];
+            ps_key(sha1, pet_id, slot, key);
+            esp_err_t e = nvs_erase_key(h, key);
+            if (e != ESP_OK && e != ESP_ERR_NVS_NOT_FOUND) err = e;
+        }
+        if (err == ESP_OK) err = nvs_commit(h);
+        nvs_close(h);
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        err = ESP_OK;  // no saves namespace yet: nothing to erase
+    }
+    unlock();
     return err;
 }

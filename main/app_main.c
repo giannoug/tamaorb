@@ -11,6 +11,7 @@
 #include "emu_task.h"
 #include "rom_store.h"
 #include "saver.h"
+#include "pet_store.h"
 #include "power.h"
 #include "press_task.h"
 #include "remote_ops.h"
@@ -98,6 +99,7 @@ void app_main(void)
     board_volume_set(st_effective_volume(&st));
     ESP_ERROR_CHECK(ui_init());
     ESP_ERROR_CHECK(rom_store_init());
+    ESP_ERROR_CHECK(pet_store_init());
     if (!rom_store_nvs_ok()) {
         ui_message("Storage problem", "Saving is off.\nYour saved pets are\nkept; update the\nfirmware.");
         vTaskDelay(pdMS_TO_TICKS(5000));
@@ -122,7 +124,9 @@ void app_main(void)
     tc_rom_identify(s_rom, s_rom_len, sha1);
     ps_meta_t meta;
     uint64_t gap_s = 0;
-    if (saver_load(sha1, &meta) == ESP_OK) {
+    pet_ref_t active;
+    uint8_t pet_id = pet_store_active(&active) && !memcmp(active.sha1, sha1, 20) ? active.id : 0;
+    if (saver_load(sha1, pet_id, &meta) == ESP_OK) {
         int64_t now = 0;
         // After deep sleep the RTC ran on its RC oscillator (several % drift): prefer NTP if it comes.
         if (esp_reset_reason() == ESP_RST_DEEPSLEEP && net_configured()) net_wait_fresh_sync(15000);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Saves in the "tamaorb" NVS partition, two alternating keys per pet.
+// Saves in the "tamaorb" NVS partition, two alternating keys per pet (a ROM's SHA-1 plus a pet number 0-9).
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -9,7 +9,8 @@
 
 // Loads the newest valid record for this ROM into tama_core (call after tc_init, before the
 // emulator task runs). ESP_ERR_NOT_FOUND when there is none.
-esp_err_t saver_load(const uint8_t sha1[20], ps_meta_t *meta);
+esp_err_t saver_load(const uint8_t sha1[20], uint8_t pet_id, ps_meta_t *meta);
+bool      saver_running(uint8_t sha1_out[20], uint8_t *pet_id);  // the pet saver_load was called for, if any
 void      saver_request(void);                                  // any task; saved at the emulator's next loop
 bool      saver_request_and_wait(uint32_t timeout_ms);          // any task except the emulator's; true if saved
                                                                 // (false at once after an import froze saving)
@@ -23,9 +24,12 @@ void      saver_serve_request_at(int64_t unix_s, bool trusted);
 
 // Any task: the newest valid record of any pet (by its ROM's SHA-1), as stored. rec may be NULL (meta only);
 // otherwise ESP_ERR_INVALID_SIZE if cap is too small. ESP_ERR_NOT_FOUND when that pet has no valid record.
-esp_err_t saver_read_newest(const uint8_t sha1[20], ps_meta_t *meta, uint8_t *rec, size_t cap, size_t *len);
+esp_err_t saver_read_newest(const uint8_t sha1[20], uint8_t pet_id, ps_meta_t *meta, uint8_t *rec, size_t cap,
+                            size_t *len);
 // Any task: writes rec (already restamped by the caller with seq = newest + 1) into that pet's older slot,
 // so the newest existing record survives a power cut mid-write. ESP_ERR_INVALID_STATE if the newest seq
 // moved on meanwhile (re-read, restamp, retry). If sha1 is the running pet, saving stops for the rest of
 // this boot once this succeeds (the caller restarts); on failure nothing was written and saving goes on.
-esp_err_t saver_import(const uint8_t sha1[20], const uint8_t *rec, size_t len);
+esp_err_t saver_import(const uint8_t sha1[20], uint8_t pet_id, const uint8_t *rec, size_t len);
+// Any task: removes both of that pet's save keys. ESP_ERR_INVALID_STATE for the running pet.
+esp_err_t saver_erase(const uint8_t sha1[20], uint8_t pet_id);

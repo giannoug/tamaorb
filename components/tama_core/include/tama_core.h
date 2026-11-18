@@ -67,6 +67,9 @@ size_t   tc_state_save(uint8_t *buf, size_t cap);
 bool     tc_state_load(const uint8_t *buf, size_t len);
 // Version byte and length match this build; no load. Any task, after tc_init.
 bool     tc_state_compatible(const uint8_t *buf, size_t len);
+// Any task, after tc_init: the RAM nibbles (one per byte, address order) inside a save tc_state_load would take;
+// at most n and the RAM size. 0 when the save doesn't fit this build. Lets a pet list read a save without loading it.
+size_t   tc_state_ram(const uint8_t *buf, size_t len, uint8_t *out, size_t n);
 
 typedef bool (*tc_catchup_cb)(uint64_t done_ticks, uint64_t total_ticks, void *ctx);  // return false to stop early
 // Runs at full speed until `ticks` emulated ticks have passed (wrap-safe), calling cb every

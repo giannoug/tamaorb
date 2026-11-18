@@ -70,6 +70,22 @@ static void test_state_roundtrip_deterministic(void)
     TEST_ASSERT_EQUAL_MEMORY(&f1, &f2, sizeof f1);
 }
 
+// The pet list reads age and egg from a save without loading it.
+static void test_state_ram_matches_live(void)
+{
+    if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
+    run_seconds(3);
+    size_t len = tc_state_save(s1, sizeof s1);
+    TEST_ASSERT_GREATER_THAN(0, len);
+    static uint8_t got[TC_RAM_NIBBLES];
+    TEST_ASSERT_EQUAL(TC_RAM_NIBBLES, tc_state_ram(s1, len, got, sizeof got));
+    for (int a = 0; a < TC_RAM_NIBBLES; a++)
+        TEST_ASSERT_EQUAL_HEX8_MESSAGE(GET_RAM_MEMORY(tamalib_get_state()->memory, a), got[a], "RAM nibble differs");
+    TEST_ASSERT_EQUAL(0x10, tc_state_ram(s1, len, got, 0x10));  // n caps the copy
+    TEST_ASSERT_EQUAL(0, tc_state_ram(s1, len - 1, got, sizeof got));
+    TEST_ASSERT_EQUAL(0, tc_state_ram(NULL, 0, got, sizeof got));
+}
+
 static void test_reset_to_boot_unsticks(void)
 {
     if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
@@ -380,6 +396,7 @@ int main(void)
     RUN_TEST(test_remote_buttons_or_touch);
     RUN_TEST(test_load_rejects_wrong_version);
     RUN_TEST(test_state_compatible);
+    RUN_TEST(test_state_ram_matches_live);
     RUN_TEST(test_state_v2_saves_timing_fields);
     RUN_TEST(test_state_loads_version_1);
     RUN_TEST(test_load_rejects_bad_cpu_frequency);

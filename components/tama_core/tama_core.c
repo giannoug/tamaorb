@@ -538,6 +538,17 @@ bool tc_state_load(const uint8_t *buf, size_t len)
     return true;
 }
 
+// The memory buffer is the last field before the version 2 extras; each element is one byte in the save.
+size_t tc_state_ram(const uint8_t *buf, size_t len, uint8_t *out, size_t n)
+{
+    int version = check_layout(buf, len, g_boot_len);
+    if (!version) return 0;
+    const MEM_BUFFER_TYPE *m = (const MEM_BUFFER_TYPE *)(buf + len - (version >= 2 ? STATE_V2_EXTRA : 0) - MEM_BUFFER_SIZE);
+    if (n > MEM_RAM_SIZE) n = MEM_RAM_SIZE;
+    for (size_t a = 0; a < n; a++) out[a] = (uint8_t)GET_RAM_MEMORY(m, a);
+    return n;
+}
+
 // The state length is fixed for a build; tc_init measured it (g_boot_len), so no walk over live state here.
 bool tc_state_compatible(const uint8_t *buf, size_t len)
 {
