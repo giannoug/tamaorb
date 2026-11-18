@@ -71,7 +71,7 @@ size_t rm_look_png(const rm_look_t *l, uint8_t *out, size_t cap)
                     for (int dx = 0; dx < 4; dx++) ink(raw, x * 4 + dx, 16 + y * 4 + dy);
     for (int i = 0; i < 8; i++) {
         if (!(l->frame.icons & (1u << i))) continue;
-        const char *const *art = (i == 3 && l->model == TC_MODEL_P2) ? UI_ICON_P2_MEDICINE : UI_ICONS[i];
+        const char *const *art = ui_icon_art(l->model, i);
         draw_icon(raw, art, 10 + 32 * (i % 4), i < 4 ? 0 : 84);
     }
     uint32_t a = 1, b = 0;

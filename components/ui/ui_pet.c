@@ -47,7 +47,7 @@ void ui_render_pet(uint16_t *fb, const tc_frame_t *f, tc_model_t model, uint8_t 
     ui_clear_rows(fb, 0, UI_H - 1, bg);
 
     for (int i = 0; i < 8; i++) {
-        const char *const *rows = (i == 3 && model == TC_MODEL_P2) ? UI_ICON_P2_MEDICINE : UI_ICONS[i];
+        const char *const *rows = ui_icon_art(model, i);
         const uint16_t on = (f->icons & (1u << i)) ? ink : ghost;
         int icx, icy;
         icon_centre(i, &icx, &icy);

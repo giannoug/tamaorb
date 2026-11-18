@@ -3,9 +3,12 @@
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
+#include "tc_rom.h"
 
 extern const char *const UI_ICONS[8][12];      // '#' = on; ROM icon order
 extern const char *const UI_ICON_P2_MEDICINE[12];
+// The 12 rows of icon 0-7 of a model ('#' = on); P1's for models without their own; NULL for icon > 7.
+const char *const *ui_icon_art(tc_model_t m, int icon);
 
 bool ui_in_circle(int x, int y);
 void ui_draw_glyph(uint16_t *fb, int x, int y, char c, uint8_t scale, uint16_t color);

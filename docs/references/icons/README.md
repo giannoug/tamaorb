@@ -17,6 +17,23 @@ TamaOrb draws its own LCD icons. This folder records what we looked at, and unde
 | 6 | bottom | Discipline | open shouting mouth with zigzag | same |
 | 7 | bottom | Attention | two faces | same |
 
+### Angel and Mothra (bit = TamaOrb's icon number)
+
+Their meanings come from running the ROMs on the PC (`docs/pet-ram.md`). What each glass segment depicts was learned by looking at MAME's `tamaang.svg` and `tamamot.svg` (inside the owner's ROM zips; not stored, not traced). TamaOrb draws Angel with its P1 pictures in Angel's order, and Mothra with its own art (`components/ui/ui_icons.c`).
+
+| Bit | Angel: function (glass picture) | Mothra: function (glass picture) |
+|---|---|---|
+| 0 | Status (scale) | Status (a plain circle) |
+| 1 | Feed (knife and fork) | Feed (leaves) |
+| 2 | Play (bat and ball) | not identified (a bow) |
+| 3 | Bathroom (rubber duck) | not identified (a coil) |
+| 4 | Discipline (shouting mouth) | not identified (shouting mouth) |
+| 5 | Medicine (syringe) | not identified (two fairies) |
+| 6 | Light (light bulb) | Light (a sun) |
+| 7 | Attention (two faces) | Attention (a sparkle) |
+
+Mothra's icons sit on segment/COM pairs tamalib doesn't map; TamaOrb reads them from display memory (`tc_model_icon_pins`).
+
 The real icons are LCD segments on the glass, not printing on the shell. Each is about 4–5 matrix pixels wide, and they sit about 2 pixel rows above and below the 32×16 matrix.
 
 ## Sources
@@ -27,6 +44,7 @@ The real icons are LCD segments on the glass, not printing on the shell. Each is
 | [Round-Pi/flipperzero-tamagotch-p1](https://github.com/Round-Pi/flipperzero-tamagotch-p1) `icons/icon_0..7.png` @ `9de12dc` (2023-02-07) | All 8 icons at 14×14, 1-bit. Shows the icons stay recognisable at very low resolution | **No license** | No (link only) |
 | [jcrona/tamatool](https://github.com/jcrona/tamatool) `res/p1-icons.png`, `res/p2-icons.png` @ `6941aab` (2025-03-06) | 64×64 white-on-transparent icons; the P2 sheet differs only in Medicine | GPL-2.0+ repo, but scanned from Bandai hardware | No (link only) |
 | MAME `tama.svg` (inside the MAME ROM zips `tama.zip` / `tamag2.zip`, not in MAME's source tree) | Vector map of the whole LCD glass: matrix plus icon segments. MAME uses the same file for P1 and P2 | Derived from Bandai hardware. MAME keeps it out of its repository | No (the owner's local `roms/` only, git-ignored) |
+| MAME `tamaang.svg`, `tamamot.svg` (inside the owner's `tamaang.zip` / `tamamot.zip`) | Vector maps of the Angel and Mothra glass, icon segments included | Derived from Bandai hardware. MAME keeps them out of its repository | No (looked at to learn what each icon depicts; nothing traced) |
 
 ## Notes for the polish milestone
 

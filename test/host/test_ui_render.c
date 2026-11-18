@@ -90,6 +90,34 @@ static void test_p2_medicine_differs(void)
     TEST_ASSERT_GREATER_THAN(0, diffs);
 }
 
+static bool art_has_ink(const char *const *art)
+{
+    for (int y = 0; y < 12; y++)
+        if (strchr(art[y], '#')) return true;
+    return false;
+}
+
+static void test_icon_art_per_model(void)
+{
+    const tc_model_t models[] = { TC_MODEL_P1, TC_MODEL_P2, TC_MODEL_ANGEL, TC_MODEL_MOTHRA };
+    for (size_t m = 0; m < 4; m++)
+        for (int i = 0; i < 8; i++) {
+            const char *const *art = ui_icon_art(models[m], i);
+            TEST_ASSERT_NOT_NULL(art);
+            TEST_ASSERT_TRUE_MESSAGE(art_has_ink(art), "an icon without ink");
+            for (int y = 0; y < 12; y++) TEST_ASSERT_EQUAL(12, strlen(art[y]));
+        }
+    // Angel: P1's pictures in its own order (docs/pet-ram.md): only Play (2) and Attention (7) stay put.
+    for (int i = 0; i < 8; i++) {
+        bool same = ui_icon_art(TC_MODEL_ANGEL, i) == ui_icon_art(TC_MODEL_P1, i);
+        TEST_ASSERT_EQUAL_MESSAGE(i == 2 || i == 7, same, "Angel icon order");
+        TEST_ASSERT_TRUE_MESSAGE(ui_icon_art(TC_MODEL_MOTHRA, i) != ui_icon_art(TC_MODEL_P1, i), "Mothra icon is P1's");
+    }
+    TEST_ASSERT_TRUE(ui_icon_art(TC_MODEL_ANGEL, 0) == ui_icon_art(TC_MODEL_P1, 5));  // meter first
+    TEST_ASSERT_TRUE(ui_icon_art(TC_MODEL_MOTHRA, 4) == ui_icon_art(TC_MODEL_P1, 6)); // the shouting mouth
+    for (int i = 0; i < 8; i++) TEST_ASSERT_TRUE(ui_icon_art(TC_MODEL_UNKNOWN, i) == ui_icon_art(TC_MODEL_P1, i));
+}
+
 static void test_pet_layout(void)
 {
     frame.icons = 0xFF;  // every icon ink
@@ -906,6 +934,7 @@ int main(void)
     RUN_TEST(test_last_pixel_position);
     RUN_TEST(test_icon_lit);
     RUN_TEST(test_p2_medicine_differs);
+    RUN_TEST(test_icon_art_per_model);
     RUN_TEST(test_pet_layout);
     RUN_TEST(test_buttons_drawn);
     RUN_TEST(test_night_well_lip_darker);
