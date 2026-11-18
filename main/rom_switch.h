@@ -1,15 +1,32 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Delayed restarts and the ROM switch shared by the on-device picker and the remote API.
+// Delayed restarts, and switching, creating and deleting pets: shared by the on-device screens and the remote API.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_err.h"
+#include "pet_store.h"
 
 // Any task: esp_restart() after ms (esp_timer one-shot), so a reply can go out first. Later calls are ignored.
 void      app_restart_after(uint32_t ms);
 bool      app_restart_pending(void);
-// Any task, draws nothing. Saves the running pet (<= 3 s), reads that SD ROM, makes it the active ROM,
-// then app_restart_after(1000). ESP_ERR_INVALID_STATE: not in EMU_RUN. ESP_ERR_NOT_ALLOWED: another switch
-// or a restart is under way. ESP_ERR_NOT_FOUND: no such P1/P2 ROM on the card, or unreadable.
-// ESP_FAIL: the save failed (or saving is frozen by an import), nothing changed. Other codes: storage errors.
+
+// The pet a ROM starts with when none is chosen: its pet with the newest save, else its lowest pet, else a new
+// pet 0 (created). Boot and USB pushes use it (spec: "a ROM becomes active with no pet chosen").
+esp_err_t pet_for_rom(const uint8_t sha1[20], tc_model_t m, pet_ref_t *out);
+
+// Boot, once the running pet is known: takes this boot's "previous pet" record (Back after a switch).
+void      pet_switch_boot(void);
+// This boot's Back target, with its name, if the boot followed a switch.
+bool      pet_prev(pet_ref_t *out, char name[PS_NAME_MAX + 1]);
+
+// Any task, EMU_RUN only. Each draws nothing; on success the ball restarts in 1 s.
+// Saves the running pet (<= 3 s), makes p's ROM the active ROM, records prev = running and active = p.
+// ESP_ERR_INVALID_STATE: wrong phase. ESP_ERR_NOT_ALLOWED: a switch or restart is under way. ESP_ERR_NOT_FOUND: no
+// such pet, or its ROM is not on the SD card. ESP_FAIL: the save failed (or saving is frozen), nothing changed.
+esp_err_t pet_switch_to(const pet_ref_t *p);
+// A new pet of a ROM on the card, then as pet_switch_to. ESP_ERR_NO_MEM: no free pet number or NVS is full.
+esp_err_t pet_new(const uint8_t sha1[20], pet_ref_t *created);
+// Not the running pet (ESP_ERR_INVALID_STATE); no restart. ESP_ERR_NOT_FOUND: no such pet.
+esp_err_t pet_delete(const pet_ref_t *p);
+// Until the screens and the remote API name pets: the pet pet_for_rom picks for that SD file, then pet_switch_to.
 esp_err_t rom_switch_to(const char *sd_name);

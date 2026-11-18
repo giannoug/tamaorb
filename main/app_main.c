@@ -12,6 +12,7 @@
 #include "rom_store.h"
 #include "saver.h"
 #include "pet_store.h"
+#include "rom_switch.h"
 #include "power.h"
 #include "press_task.h"
 #include "remote_ops.h"
@@ -80,6 +81,29 @@ static tc_model_t choose_rom(void)
     return TC_MODEL_UNKNOWN;
 }
 
+// The pet of the active ROM that runs: the recorded active pet if it is this ROM's and still exists, else the
+// one pet_for_rom picks (a USB push with no card, a first start, or a record lost to a power cut).
+static void choose_pet(const uint8_t sha1[20], tc_model_t model, pet_ref_t *pet)
+{
+    static pet_info_t list[PET_STORE_MAX];
+    pet_ref_t active;
+    if (pet_store_active(&active) && !memcmp(active.sha1, sha1, 20)) {
+        int n = pet_store_list(list, PET_STORE_MAX);
+        for (int i = 0; i < n; i++)
+            if (pet_ref_eq(&list[i].ref, &active)) {
+                *pet = active;
+                return;
+            }
+        ESP_LOGW(TAG, "the active pet record names a pet that doesn't exist");
+    }
+    if (pet_for_rom(sha1, model, pet) != ESP_OK) {
+        memcpy(pet->sha1, sha1, 20);  // NVS unusable: pet 0, as before pets had numbers
+        pet->id = 0;
+    }
+    if (pet_store_set_active(pet) != ESP_OK) ESP_LOGW(TAG, "could not record the active pet");
+    ESP_LOGI(TAG, "pet %d of this ROM runs", pet->id);
+}
+
 static void save_for_power(void) { saver_request_and_wait(3000); }
 
 void app_main(void)
@@ -124,9 +148,11 @@ void app_main(void)
     tc_rom_identify(s_rom, s_rom_len, sha1);
     ps_meta_t meta;
     uint64_t gap_s = 0;
-    pet_ref_t active;
-    uint8_t pet_id = pet_store_active(&active) && !memcmp(active.sha1, sha1, 20) ? active.id : 0;
-    if (saver_load(sha1, pet_id, &meta) == ESP_OK) {
+    pet_ref_t pet;
+    choose_pet(sha1, model, &pet);
+    esp_err_t loaded = saver_load(sha1, pet.id, &meta);
+    pet_switch_boot();
+    if (loaded == ESP_OK) {
         int64_t now = 0;
         // After deep sleep the RTC ran on its RC oscillator (several % drift): prefer NTP if it comes.
         if (esp_reset_reason() == ESP_RST_DEEPSLEEP && net_configured()) net_wait_fresh_sync(15000);
