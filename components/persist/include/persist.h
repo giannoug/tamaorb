@@ -32,6 +32,21 @@ uint32_t ps_crc32(const uint8_t *data, size_t len);
 // Sequence numbers compare wrap-safely.
 int    ps_pick_newest(bool a_ok, const ps_meta_t *a, bool b_ok, const ps_meta_t *b);
 
+// ---- Pets: a ROM (by SHA-1) plus a pet number 0-9, which ps_key already carries ----
+#define PS_PETS_PER_ROM 10
+#define PS_NAME_MAX     16   // printable ASCII, no leading or trailing space
+// The inverse of ps_key; false for any other key.
+bool ps_key_parse(const char *key, uint8_t sha_prefix[5], uint8_t *pet_id, char *slot);
+bool ps_name_valid(const char *name);
+bool ps_name_taken(const char *name, const char *const *names, int n);  // case-insensitive
+// "<model_name> #<k>" with the lowest k >= 1 not in names (case-insensitive).
+void ps_name_auto(const char *model_name, const char *const *names, int n, char out[PS_NAME_MAX + 1]);
+int  ps_free_pet_id(const bool used[PS_PETS_PER_ROM]);  // lowest free id, -1 when all ten are used
+typedef struct { bool exists, has_save, save_trusted; int64_t save_unix; uint32_t seq; } ps_pet_seen_t;
+// The pet that runs when a ROM becomes active with no pet chosen: the existing pet with the newest save (trusted
+// times first, by time; untrusted ones by sequence number), else the lowest existing id, else -1 (create pet 0).
+int  ps_pick_for_rom(const ps_pet_seen_t pets[PS_PETS_PER_ROM]);
+
 #define PS_SAVE_AFTER_RELEASE_MS 3000u
 #define PS_SAVE_PERIOD_MS        300000u
 
