@@ -10,6 +10,8 @@
 #include "saver.h"
 #include "tama_core.h"
 #include "tc_pet.h"
+#include <string.h>
+#include "press_task.h"
 
 static const char *TAG = "pet_clock";
 static tc_model_t s_model;
@@ -93,4 +95,36 @@ pet_clock_status_t pet_clock_sync(int32_t *written_s)
     }
     ESP_LOGW(TAG, "request %lu: no answer in 3 s", (unsigned long)id);
     return PET_CLOCK_BUSY;
+}
+
+static void auto_task(void *arg)
+{
+    const char *why = arg;
+    while (emu_phase() != EMU_RUN) vTaskDelay(pdMS_TO_TICKS(200));
+    vTaskDelay(pdMS_TO_TICKS(1000));  // let the ROM settle after a restore or a replay
+    const char *spec = tc_pet_setup_exit(s_model);
+    if (!strcmp(why, "new pet") && spec) {
+        rm_press_req_t r;
+        rm_press_defaults(&r);
+        r.gap_ms = TC_PET_SETUP_GAP_MS;
+        rm_err_t e = rm_press_parse(&r, spec) ? press_run(&r) : RM_ERR_BAD;
+        ESP_LOGI(TAG, "new pet: setup exit \"%s\": %s", spec, e == RM_OK ? "pressed" : "not pressed");
+    }
+    pet_clock_status_t st = PET_CLOCK_BUSY;
+    int32_t w = -1;
+    for (int i = 0; i < 5 && st != PET_CLOCK_OK && st != PET_CLOCK_UNSUPPORTED && st != PET_CLOCK_NO_TIME; i++) {
+        if (i) vTaskDelay(pdMS_TO_TICKS(2000));
+        st = pet_clock_sync(&w);
+    }
+    if (st == PET_CLOCK_OK)
+        ESP_LOGI(TAG, "%s: pet clock set to %02d:%02d:%02d", why, (int)(w / 3600), (int)(w / 60 % 60), (int)(w % 60));
+    else
+        ESP_LOGW(TAG, "%s: pet clock not set (%d)", why, (int)st);
+    vTaskDelete(NULL);
+}
+
+void pet_clock_auto(const char *why)
+{
+    if (xTaskCreatePinnedToCore(auto_task, "pet_clock", 4096, (void *)why, 3, NULL, 0) != pdPASS)
+        ESP_LOGW(TAG, "%s: no task for the pet clock", why);
 }

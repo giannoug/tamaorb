@@ -157,3 +157,20 @@ esp_err_t pet_delete(const pet_ref_t *p)
     if (app_restart_pending()) return ESP_ERR_NOT_ALLOWED;
     return pet_store_delete(p);
 }
+
+esp_err_t pet_switch_back(void)
+{
+    if (emu_phase() != EMU_WAIT) return ESP_ERR_INVALID_STATE;
+    if (!s_have_prev) return ESP_ERR_NOT_FOUND;
+    if (app_restart_pending() || atomic_exchange(&s_switching, true)) return ESP_ERR_NOT_ALLOWED;
+    esp_err_t err = activate_rom(&s_prev);
+    if (err == ESP_OK) err = pet_store_set_active(&s_prev);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "back failed: %s", esp_err_to_name(err));
+        atomic_store(&s_switching, false);
+        return err;
+    }
+    ESP_LOGI(TAG, "back to pet %d", s_prev.id);
+    app_restart_after(1000);
+    return ESP_OK;
+}

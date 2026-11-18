@@ -3,6 +3,7 @@
 #include "emu_task.h"
 #include "board.h"
 #include "press_task.h"
+#include "pet_clock.h"
 #include "saver.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -59,6 +60,10 @@ static const tc_platform_t s_plat = { .now_us = now_us, .sleep_until_us = sleep_
 
 static volatile emu_phase_t s_phase = EMU_BOOT;
 static uint64_t s_catchup_s;
+static bool s_ask;
+static TaskHandle_t s_task;
+static volatile int s_answer = -1;      // emu_answer_t, -1 none yet
+static volatile bool s_skip;
 static int64_t s_saved_unix;
 static bool s_saved_trusted;
 static volatile uint32_t s_done_s, s_total_s;  // 32-bit: read from the other core without tearing
@@ -92,7 +97,38 @@ static bool catchup_cb(uint64_t done_ticks, uint64_t total_ticks, void *ctx)
         s_last_progress_save = now;
     }
     vTaskDelay(1);  // let core 1's idle task run (task watchdog) during the full-speed replay
+    return !s_skip;
+}
+
+bool emu_answer(emu_answer_t a)
+{
+    if (s_phase != EMU_WAIT || !s_task) return false;
+    s_answer = (int)a;
+    xTaskNotifyGive(s_task);
     return true;
+}
+
+bool emu_skip(void)
+{
+    if (s_phase != EMU_CATCHUP) return false;
+    s_skip = true;
+    return true;
+}
+
+uint64_t emu_wait_gap_s(void) { return s_phase == EMU_WAIT ? s_catchup_s : 0; }
+
+// The question: the pet doesn't run and nothing is saved until an answer comes.
+static void wait_for_answer(void)
+{
+    s_phase = EMU_WAIT;
+    ESP_LOGI(TAG, "away %llu s: waiting for Resume or Fast-forward", (unsigned long long)s_catchup_s);
+    while (s_answer < 0) ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    ESP_LOGI(TAG, "answer: %s", s_answer == EMU_ANSWER_RESUME ? "resume" : "fast-forward");
+    if (s_answer == EMU_ANSWER_RESUME) {
+        s_catchup_s = 0;
+        saver_request();  // stamped with the current time at the first loop: the gap isn't counted again
+        pet_clock_auto("resume");
+    }
 }
 
 static void run_catchup(void)
@@ -106,11 +142,16 @@ static void run_catchup(void)
     double speed = wall > 0 ? (double)ran / TC_TICK_HZ / wall : 0;
     ESP_LOGI(TAG, "caught up %llu s in %.1f s (%.1fx)", (unsigned long long)(ran / TC_TICK_HZ), wall, speed);
     if (speed > 0) s_catchup_speed = (float)speed;
-    saver_request();  // stamp the caught-up state with the current time
+    saver_request();  // stamp the caught-up (or skipped) state with the current time
+    if (s_skip) {
+        ESP_LOGI(TAG, "skipped after %llu s", (unsigned long long)(ran / TC_TICK_HZ));
+        pet_clock_auto("skip");
+    }
 }
 
 static void emu_task(void *arg)
 {
+    if (s_ask) wait_for_answer();
     if (s_catchup_s) run_catchup();
     s_phase = EMU_RUN;
     tc_step(1);  // first step after init; start measuring from here
@@ -140,10 +181,11 @@ bool emu_init(const uint16_t *program)
     return false;
 }
 
-void emu_start(uint64_t catchup_s, int64_t saved_unix, bool saved_trusted)
+void emu_start(uint64_t catchup_s, int64_t saved_unix, bool saved_trusted, bool ask)
 {
     s_catchup_s = catchup_s;
     s_saved_unix = saved_unix;
     s_saved_trusted = saved_trusted;
-    xTaskCreatePinnedToCore(emu_task, "emu", 8192, NULL, 10, NULL, 1);
+    s_ask = ask && catchup_s > 0;
+    xTaskCreatePinnedToCore(emu_task, "emu", 8192, NULL, 10, &s_task, 1);
 }

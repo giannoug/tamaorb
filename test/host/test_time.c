@@ -127,6 +127,43 @@ static void test_catchup_converge_replays_its_own_duration(void)
     TEST_ASSERT_TRUE(last_total > 100ull * TC_TICK_HZ);  // the progress total grows with each pass
 }
 
+// Skip: a callback that says stop ends the converging replay at once, with no further pass or callback.
+static int stop_calls;
+static bool stop_on_second(uint64_t done, uint64_t total, void *ctx) { return ++stop_calls < 2; }
+
+static void test_converge_stops_on_false(void)
+{
+    fake_ticks = 0;
+    fake_wall_us = 0;
+    stop_calls = 0;
+    tc_debug_set_tick_source(fake_tick_source);
+    tc_debug_set_step_hook(advance_tenth);
+    uint64_t ran = tc_catchup_converge(100ull * TC_TICK_HZ, fake_wall, stop_on_second, NULL, TC_TICK_HZ);
+    tc_debug_set_step_hook(NULL);
+    TEST_ASSERT_EQUAL(2, stop_calls);
+    TEST_ASSERT_TRUE(ran < 100ull * TC_TICK_HZ);
+    TEST_ASSERT_TRUE(ran >= 2ull * TC_TICK_HZ);
+}
+
+static void test_resume_rule(void)
+{
+    TEST_ASSERT_EQUAL(TC_RESUME_NONE, tc_resume_rule(false, 3600));     // time unknown
+    TEST_ASSERT_EQUAL(TC_RESUME_NONE, tc_resume_rule(true, 0));
+    TEST_ASSERT_EQUAL(TC_RESUME_SILENT_FF, tc_resume_rule(true, 59));
+    TEST_ASSERT_EQUAL(TC_RESUME_ASK, tc_resume_rule(true, TC_ASK_GAP_S));
+    TEST_ASSERT_EQUAL(60u, TC_ASK_GAP_S);
+    TEST_ASSERT_EQUAL(TC_RESUME_ASK, tc_resume_rule(true, 7ull * 86400));
+}
+
+static void test_ff_estimate(void)
+{
+    TEST_ASSERT_EQUAL_UINT32(8064, tc_ff_estimate_s(604800, 75.0f));   // exactly 8064
+    TEST_ASSERT_EQUAL_UINT32(8064, tc_ff_estimate_s(604800, 0.0f));   // no measurement yet: 75x
+    TEST_ASSERT_EQUAL_UINT32(8065, tc_ff_estimate_s(604801, 75.0f));   // rounded up
+    TEST_ASSERT_EQUAL_UINT32(1, tc_ff_estimate_s(60, 75.0f));         // rounded up
+    TEST_ASSERT_EQUAL_UINT32(0, tc_ff_estimate_s(0, 75.0f));
+}
+
 static void test_catchup_is_silent(void)
 {
     if (!have_rom) TEST_IGNORE_MESSAGE("ROM not present");
@@ -170,6 +207,9 @@ int main(void)
     RUN_TEST(test_catchup_exceeds_wrap);
     RUN_TEST(test_catchup_without_callback);
     RUN_TEST(test_catchup_converge_replays_its_own_duration);
+    RUN_TEST(test_converge_stops_on_false);
+    RUN_TEST(test_resume_rule);
+    RUN_TEST(test_ff_estimate);
     RUN_TEST(test_catchup_is_silent);
     RUN_TEST(test_catchup_matches_realtime);
     RUN_TEST(test_catchup_reads_no_clock);

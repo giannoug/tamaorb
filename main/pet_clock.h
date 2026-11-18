@@ -19,3 +19,7 @@ pet_clock_status_t pet_clock_start(uint32_t *id);
 pet_clock_status_t pet_clock_poll(uint32_t id, int32_t *written_s);
 // start + poll every 20 ms, at most 3 s. For the remote API and USB, which may block.
 pet_clock_status_t pet_clock_sync(int32_t *written_s);
+// Any task. A one-shot task waits for EMU_RUN, then sets the pet's clock (up to 5 tries, 2 s apart). why "new pet":
+// first presses the ROM's setup exit (tc_pet_setup_exit), which takes a fresh egg out of its clock-setting mode.
+// why must be a string literal (it outlives the call).
+void pet_clock_auto(const char *why);

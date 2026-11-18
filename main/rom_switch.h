@@ -28,3 +28,7 @@ esp_err_t pet_switch_to(const pet_ref_t *p);
 esp_err_t pet_new(const uint8_t sha1[20], pet_ref_t *created);
 // Not the running pet (ESP_ERR_INVALID_STATE); no restart. ESP_ERR_NOT_FOUND: no such pet.
 esp_err_t pet_delete(const pet_ref_t *p);
+// EMU_WAIT only: back to this boot's previous pet (pet_prev), leaving the waiting pet untouched (no save, no clock).
+// ESP_ERR_INVALID_STATE: not waiting. ESP_ERR_NOT_FOUND: no previous pet, or its ROM is not on the card.
+// ESP_ERR_NOT_ALLOWED: a restart is under way. On success the ball restarts in 1 s.
+esp_err_t pet_switch_back(void);

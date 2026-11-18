@@ -148,6 +148,7 @@ void app_main(void)
     tc_rom_identify(s_rom, s_rom_len, sha1);
     ps_meta_t meta;
     uint64_t gap_s = 0;
+    bool gap_known = false;
     pet_ref_t pet;
     choose_pet(sha1, model, &pet);
     esp_err_t loaded = saver_load(sha1, pet.id, &meta);
@@ -158,18 +159,24 @@ void app_main(void)
         if (esp_reset_reason() == ESP_RST_DEEPSLEEP && net_configured()) net_wait_fresh_sync(15000);
         bool trusted = net_now(&now);
         if (!trusted && net_configured()) trusted = net_wait_time(15000) && net_now(&now);
-        if (!tc_gap_seconds(meta.unix_time, meta.time_trusted, now, trusted, &gap_s)) {
+        gap_known = tc_gap_seconds(meta.unix_time, meta.time_trusted, now, trusted, &gap_s);
+        if (!gap_known) {
             gap_s = 0;
             ESP_LOGI(TAG, "time unknown; resuming where the save left off");
         }
     } else {
-        ESP_LOGI(TAG, "no save for this ROM; starting fresh");
+        ESP_LOGI(TAG, "no save for this pet; starting fresh");
         meta.unix_time = 0;
         meta.time_trusted = false;
     }
+    // A minute or more away: ask Resume or Fast-forward. Less (a restart): fast-forward without asking.
+    bool ask = tc_resume_rule(gap_known, gap_s) == TC_RESUME_ASK;
+    if (ask) ESP_LOGI(TAG, "away %llu s: asking", (unsigned long long)gap_s);
     press_task_start();
     power_set_awake_hook(net_set_low_latency);  // an open debugger: no light sleep, no Wi-Fi power save
     web_start(remote_ops_init(model, sha1, s_rom, s_rom_len), st.name);  // the same SHA-1 the saver loaded
-    emu_start(gap_s, meta.unix_time, meta.time_trusted);
+    emu_start(gap_s, meta.unix_time, meta.time_trusted, ask);
+    int64_t t;
+    if (loaded != ESP_OK && net_now(&t)) pet_clock_auto("new pet");  // a fresh egg: out of its clock setup, then set
     power_start(save_for_power, ui_task_show_low_battery);
 }

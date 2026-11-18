@@ -39,7 +39,7 @@ static rm_phase_t phase_now(uint8_t *pct)
     emu_phase_t ph = emu_phase();
     *pct = 0;
     if (ph == EMU_RUN) return RM_PHASE_RUN;
-    if (ph == EMU_BOOT) return RM_PHASE_BOOT;
+    if (ph == EMU_BOOT || ph == EMU_WAIT) return RM_PHASE_BOOT;  // WAIT gets its own phase with the question (Task 13)
     uint64_t done, total;
     uint32_t eta;
     emu_catchup_progress(&done, &total, &eta);
