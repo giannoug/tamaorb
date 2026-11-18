@@ -211,6 +211,39 @@ static void test_playable_and_names(void)
     TEST_ASSERT_EQUAL(0, tc_model_rom_bytes(TC_MODEL_UNKNOWN));
 }
 
+// Mothra's glass wires its icons to segment/COM pairs tamalib doesn't map: TamaOrb reads them from display memory.
+static void test_icon_pins_mothra(void)
+{
+    const tc_icon_pin_t *p = tc_model_icon_pins(TC_MODEL_MOTHRA);
+    TEST_ASSERT_NOT_NULL(p);
+    TEST_ASSERT_EQUAL(8, p[0].seg); TEST_ASSERT_EQUAL(0, p[0].com);
+    TEST_ASSERT_EQUAL(17, p[1].seg); TEST_ASSERT_EQUAL(0, p[1].com);
+    TEST_ASSERT_EQUAL(39, p[4].seg); TEST_ASSERT_EQUAL(8, p[4].com);
+    TEST_ASSERT_EQUAL(28, p[7].seg); TEST_ASSERT_EQUAL(8, p[7].com);
+    TEST_ASSERT_NULL(tc_model_icon_pins(TC_MODEL_P1));
+    TEST_ASSERT_NULL(tc_model_icon_pins(TC_MODEL_ANGEL));
+}
+
+// Display nibble n (0x00-0xFF stands for 0xE00 + n) holds COMs com0..com0+3 of segment (n & 0x7F) >> 1, where
+// com0 = 8 * bit 7 + 4 * bit 0 (tamalib's set_lcd).
+static void test_icons_from_lcd(void)
+{
+    uint8_t nib[256] = {0};
+    const tc_icon_pin_t *p = tc_model_icon_pins(TC_MODEL_MOTHRA);
+    TEST_ASSERT_EQUAL_HEX8(0x00, tc_icons_from_lcd(nib, p));
+    nib[17 * 2] = 1;             // seg 17, COM 0
+    TEST_ASSERT_EQUAL_HEX8(0x02, tc_icons_from_lcd(nib, p));
+    nib[0x80 + 39 * 2] = 1;      // seg 39, COM 8
+    nib[0x80 + 28 * 2] = 1;      // seg 28, COM 8
+    TEST_ASSERT_EQUAL_HEX8(0x92, tc_icons_from_lcd(nib, p));
+    nib[0x80 + 28 * 2] = 2;      // seg 28, COM 9: not an icon
+    TEST_ASSERT_EQUAL_HEX8(0x12, tc_icons_from_lcd(nib, p));
+    const tc_icon_pin_t q[8] = { {28, 13} };  // COM 13: display 2, odd nibble, bit 1
+    uint8_t m[256] = {0};
+    m[0x80 + 28 * 2 + 1] = 2;
+    TEST_ASSERT_EQUAL_HEX8(0x01, tc_icons_from_lcd(m, q));
+}
+
 static void test_distinct_valid_includes_angel(void)
 {
     tc_rom_entry_t sd[5] = { entry("tama.bin", TC_MODEL_P1, 1), entry("tamaang.bin", TC_MODEL_ANGEL, 4),
@@ -244,5 +277,7 @@ int main(void)
     RUN_TEST(test_identify_size_mismatch);
     RUN_TEST(test_playable_and_names);
     RUN_TEST(test_distinct_valid_includes_angel);
+    RUN_TEST(test_icon_pins_mothra);
+    RUN_TEST(test_icons_from_lcd);
     return UNITY_END();
 }

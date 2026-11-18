@@ -170,6 +170,8 @@ int main(int argc, char **argv)
     g_model = tc_rom_identify(rom, rom_len, g_sha1);
     static const tc_platform_t plat = { now_us, sleep_until, NULL, NULL, NULL };
     if (!tc_init(program, &plat)) return 1;
+    tc_set_icon_pins(tc_model_icon_pins(g_model));
+    if (tc_pet_clock_addr(g_model) >= 0) tc_set_clock_addr((uint16_t)tc_pet_clock_addr(g_model));
     ps_meta_t meta;
     const uint8_t *payload;
     size_t payload_len;

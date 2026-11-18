@@ -26,8 +26,15 @@ tc_need_t tc_pet_need(const tc_pet_t *p);  // TC_NEED_NONE when !known
 // "All good", "Hungry", "Unhappy", "Sick", "Droppings", "Asleep"; NULL for TC_NEED_NONE.
 const char *tc_need_word(tc_need_t n);
 // The pet's clock as seconds of the day, from RAM nibbles (tc_get_ram): 0x10 s ones, 0x11 s tens, 0x12 min ones,
-// 0x13 min tens (BCD), hour = 16 * 0x15 + 0x14. False for models other than P1/P2, fewer than 0x16 nibbles, or a
-// digit out of range (tens > 5, ones > 9, hour > 23: the ROM's own carry shows such values for a few instructions).
+// 0x13 min tens (BCD), hour = 16 * 0x15 + 0x14, counted from the model's clock address (tc_pet_clock_addr; P1's
+// shown). False for a model without a known clock, too few nibbles, or a digit out of range (tens > 5, ones > 9,
+// hour > 23: the ROM's own carry shows such values for a few instructions, and a fresh egg's unset clock reads 32 h).
 bool tc_pet_clock(tc_model_t model, const uint8_t *ram, size_t n, uint32_t *sec_of_day);
-// "lb" for P1, "g" for P2, NULL otherwise.
+int  tc_pet_clock_addr(tc_model_t m);  // first clock nibble: 0x10 (P1, P2, Angel), 0x1A (Mothra); -1 none
+bool tc_pet_has_clock(tc_model_t m);
+// "lb" for P1, "g" for P2, NULL otherwise (Angel's unit glyph wasn't identified; Mothra's weight wasn't found).
 const char *tc_weight_unit(tc_model_t m);
+// Presses (rm_press_parse spec) that take a fresh egg out of the ROM's clock-setting mode, played with
+// TC_PET_SETUP_GAP_MS between presses; NULL for models without one. Found on the PC (docs/pet-ram.md).
+#define TC_PET_SETUP_GAP_MS 1000u
+const char *tc_pet_setup_exit(tc_model_t m);

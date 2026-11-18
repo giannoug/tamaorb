@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "tc_rom.h"
 
 typedef enum { TC_BTN_A = 0, TC_BTN_B = 1, TC_BTN_C = 2 } tc_button_t;  // tamalib BTN_LEFT/MIDDLE/RIGHT
 #define TC_BTN_MASK(b) (1u << (b))
@@ -79,7 +80,7 @@ uint8_t  tc_applied_buttons(void);  // emulator task: the mask currently applied
 uint64_t tc_catchup_converge(uint64_t ticks, uint64_t (*wall_us)(void), tc_catchup_cb cb, void *ctx,
                              uint32_t cb_every_ticks);
 
-// The pet's clock (RAM 0x10-0x15). Asks the emulator task to set it to the local time ms_of_day (0-86399999,
+// The pet's clock (RAM 0x10-0x15 on P1, from tc_set_clock_addr). Asks the emulator task to set it to the local time ms_of_day (0-86399999,
 // the time now); which models have a clock there is the caller's business (tc_pet_clock). The emulator task
 // accepts the request at its next instruction and stamps the tick counter, then waits for the ROM's next seconds
 // tick (0x10 changing) and writes TC_CLOCK_QUIET_TICKS after it, when the ROM's carry into 0x11-0x15 (~150 ticks)
@@ -90,6 +91,12 @@ uint64_t tc_catchup_converge(uint64_t ticks, uint64_t (*wall_us)(void), tc_catch
 #define TC_CLOCK_TIMEOUT_TICKS 65536u  // 2 s
 typedef enum { TC_CLOCK_PENDING, TC_CLOCK_APPLIED, TC_CLOCK_BUSY } tc_clock_state_t;
 uint32_t tc_clock_request_ms(uint32_t ms_of_day);  // returns the request id, never 0
+// Emulator task, before running: where the pet's clock nibbles start (default 0x10, P1/P2/Angel; Mothra 0x1A;
+// tc_pet_clock_addr has the table). The layout from there is the same for every model.
+void     tc_set_clock_addr(uint16_t addr);
+// Emulator task, before running: icon pins for a model tamalib can't wire (tc_model_icon_pins); NULL = tamalib's.
+// The array must outlive the emulator.
+void     tc_set_icon_pins(const tc_icon_pin_t *pins);
 // APPLIED fills *written_s (may be NULL) with the value written. BUSY: timed out, or an unknown id.
 tc_clock_state_t tc_clock_poll(uint32_t id, uint32_t *written_s);
 

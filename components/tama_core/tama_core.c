@@ -157,10 +157,25 @@ static void cpu_copy(tc_cpu_t *c)
     c->buttons = g_applied;
 }
 
+static const tc_icon_pin_t *g_icon_pins;  // NULL: tamalib's own icon wiring
+
+void tc_set_icon_pins(const tc_icon_pin_t *pins) { g_icon_pins = pins; }
+
+// The icons as the pins say, from display memory (tamalib's icon calls follow the P1's wiring only).
+static uint8_t icons_from_pins(void)
+{
+    const MEM_BUFFER_TYPE *m = tamalib_get_state()->memory;
+    uint8_t nib[256] = {0};
+    for (unsigned n = 0; n < MEM_DISPLAY1_SIZE; n++) nib[n] = (uint8_t)GET_DISP1_MEMORY(m, MEM_DISPLAY1_ADDR + n);
+    for (unsigned n = 0; n < MEM_DISPLAY2_SIZE; n++) nib[0x80 + n] = (uint8_t)GET_DISP2_MEMORY(m, MEM_DISPLAY2_ADDR + n);
+    return tc_icons_from_lcd(nib, g_icon_pins);
+}
+
 static void publish(void)
 {
     tc_cpu_t cpu;
     cpu_copy(&cpu);  // outside the lock: only the copy below is taken under it
+    if (g_icon_pins) g_back.icons = icons_from_pins();
     lock();
     g_front = g_back;
     memcpy(g_front_ram, tamalib_get_state()->memory, sizeof g_front_ram);
@@ -268,22 +283,26 @@ static void clock_finish(tc_clock_state_t st, uint32_t written)
     unlock();
 }
 
+static uint16_t g_clk_addr = 0x10;  // where the clock nibbles start (tc_set_clock_addr)
+
+void tc_set_clock_addr(uint16_t addr) { g_clk_addr = addr; }
+
 static void clock_write(uint32_t s)
 {
     MEM_BUFFER_TYPE *m = tamalib_get_state()->memory;
     uint32_t h = s / 3600, mi = s / 60 % 60, se = s % 60;
-    SET_RAM_MEMORY(m, 0x10, se % 10);
-    SET_RAM_MEMORY(m, 0x11, se / 10);
-    SET_RAM_MEMORY(m, 0x12, mi % 10);
-    SET_RAM_MEMORY(m, 0x13, mi / 10);
-    SET_RAM_MEMORY(m, 0x14, h & 15);
-    SET_RAM_MEMORY(m, 0x15, h >> 4);
+    SET_RAM_MEMORY(m, g_clk_addr + 0, se % 10);
+    SET_RAM_MEMORY(m, g_clk_addr + 1, se / 10);
+    SET_RAM_MEMORY(m, g_clk_addr + 2, mi % 10);
+    SET_RAM_MEMORY(m, g_clk_addr + 3, mi / 10);
+    SET_RAM_MEMORY(m, g_clk_addr + 4, h & 15);
+    SET_RAM_MEMORY(m, g_clk_addr + 5, h >> 4);
 }
 
 static void clock_step(void)
 {
     uint32_t now = tc_tick_counter();
-    int sec = GET_RAM_MEMORY(tamalib_get_state()->memory, 0x10);
+    int sec = GET_RAM_MEMORY(tamalib_get_state()->memory, g_clk_addr);
     if (g_clk_id != g_clk_work) {  // a new request: accept it
         lock();
         g_clk_work = g_clk_id;

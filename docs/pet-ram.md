@@ -88,3 +88,42 @@ The ball's Pet clock action (`tc_clock_request`) writes `0x10`-`0x15` directly. 
 
 **The ROM's own clock menu.** P1 and P2 alike: B on the main screen shows the clock; holding A+C about 3 s enters set mode, which sets the seconds to 00 and stops the clock (`0x28`-`0x2B` and `0x2E` are cleared too; no pet stat changes); A steps the hour, B the minute, C leaves and the clock runs again. A set request while the menu is open reports busy, e.g. P2: `ff360 w100 C w1000 B w1500 h3000 AC h200 w2000 set070000 clock` (`=== set busy`, clock still 18:15:00). The one difference from a direct write found: after the menu, an awake pet set into the night stays awake until morning.
 
+
+## A fresh egg's clock setup (all four ROMs)
+
+A ROM started from power-on (no save) sits in its own clock-setting mode with the clock stopped: P1, P2 and Angel hold an invalid hour (`0x15` = 2, i.e. 32 h) at `0x10`-`0x15`, Mothra 00:00:00 at `0x1A`-`0x1F`, and nothing ticks for an hour of emulated time. **B** (shows the clock), **A** (steps the hour, which also makes P1's stored hour valid) and **C** (leaves) start it, with about 1 s between presses (the press tool's 200 ms hold and 400 ms gap is too quick for P2 and Angel): `save_replay <rom> - "w3000 B A C w1500 clock w3000 clock" 200 1000`. P1, P2 and Angel then run from 01:00:00 at `0x10`, Mothra at `0x1A`; P1's egg hatches about 20 min later (`set120000 ff1200` after the setup shows `char=1`). `tc_pet_setup_exit` holds these presses; `test_setup` checks each dump (skipped without it).
+
+## Angel (`tamaang`, E0C6S48, 16 KB)
+
+Runs from fresh eggs (`save_replay <rom> - …`; there are no owner saves), chained with `dump`. Angel keeps P1's RAM layout for everything found.
+
+| Name | Address | Encoding | Verified how |
+|---|---|---|---|
+| Clock | `0x10`-`0x15` | as P1 | ticks after the setup exit; `set120000` applies |
+| Character | `0x5D` | 0 egg, 1 after hatching, 2 at the first evolution (about 1 h later) | hatch and 2 h runs |
+| State | `0x5E` | 1 normal, 2 eating, 3 asleep, 9 sick (awake) | meal 1→2→1; asleep at 20:00 (`set180000` + `ff1800` ×24); sick below |
+| Hunger | `0x40` | as P1: a meal adds 4; hearts = (v+1)/4 | meal 0→4, hunger page one heart |
+| Happy | `0x41` | a game adds 1 (P1's formula assumed for hearts) | game 0→1 |
+| The bar | `0x43` | the meter's second page (a bar, Angel's stand-in for discipline); 4 showed a small fill | meter page with `0x43` = 4 |
+| Age | `0x54`, `0x55` | as P1 | meter "0" at 0; 0→1 at the first evolution |
+| Weight | `0x46`, `0x47` | as P1; a snack adds 2 | meter "4" with `0x46` = 4; snack 4→6 |
+| Sick | `0x48` | ≥ 8 sick: switching the light off by day set 15 with `0x5E` 1→9 | light-off run |
+| Light | `0x4B` | 15 on, 0 off | the light menu |
+| Care mistakes | `0x42` | counts up while calls are ignored | 2 h run |
+
+Icons (bit = tamalib icon number; the same pictures as P1, in another order on the glass): 0 meter, 1 food, 2 game, 3 bathroom, 4 discipline (shouting mouth), 5 medicine, 6 light, 7 attention. A from the main screen steps bit 0 → 6.
+
+**Not found:** droppings (`0x4D` never changed: no droppings appeared in 10 h of neglect or after three meals; `0x4A` counts something after meals); the weight unit glyph.
+
+## Mothra (`tamamot`, E0C6S48, 16 KB)
+
+Mothra's RAM is laid out differently, and its glass wires the icons to segments tamalib doesn't map: TamaOrb reads them from display memory (`tc_model_icon_pins`).
+
+| Name | Address | Encoding | Verified how |
+|---|---|---|---|
+| Clock | `0x1A`-`0x1F` | P1's layout, 10 nibbles later: s ones, s tens, min ones, min tens (BCD), hour low, hour high | in the clock menu A steps `0x1E`, B steps `0x1C`; ticks after the setup exit (`0x1A` per second, `0x1C` per minute, `0x1E` per hour) |
+| Hunger | `0x3E` | a meal adds 1, at most 4; hearts = v | 0 meals: 0 hearts; eight meals: `0x3E` = 4, four hearts |
+
+Icon pins (bit: segment-COM, picture): 0: 8-0 circle (meter), 1: 17-0 leaves (food), 2: 18-0 bow, 3: 19-0 coil, 4: 39-8 shouting mouth, 5: 38-8 two fairies, 6: 37-8 sun (light), 7: 28-8 sparkle (attention). A from the main screen steps bit 0 → 6. The meter's pages: age and weight (tons), hunger hearts, happy hearts, a bar.
+
+**Not found:** character/egg, happy (six games moved nothing the meter showed; `0x50` went 0→1 after one game and back), the bar, age, weight, sickness, sleep, light, droppings. The glance shows hunger only.

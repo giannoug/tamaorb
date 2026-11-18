@@ -25,7 +25,15 @@ bool        tc_rom_decode(const uint8_t *data, size_t len, uint16_t *words_out);
 // A model from the known SHA-1 table, else UNKNOWN.
 tc_model_t  tc_model_from_sha1(const uint8_t sha1[20]);
 const char *tc_model_name(tc_model_t m);       // "P1", "P2", "Angel", "Mothra", "test ROM", "unknown"
-const char *tc_model_long_name(tc_model_t m);  // "Gen 1", "Gen 2", "Angel", "Mothra"; NULL otherwise
+const char *tc_model_long_name(tc_model_t m);
+
+// LCD icons. tamalib knows the P1's wiring (icons 0-3 on segment 8, COM 0-3; icons 4-7 on segment 28, COM 12-15),
+// which P2 and Angel share. A model wired otherwise has a pin per icon (bit i = pins[i]), read from display memory.
+typedef struct { uint8_t seg, com; } tc_icon_pin_t;
+const tc_icon_pin_t *tc_model_icon_pins(tc_model_t m);  // 8 pins, or NULL: tamalib's icons are right
+// nib[n] is the display nibble at 0xE00 + n (n 0x00-0xFF; 0x80 and up is display memory 2). Nibble n holds COM
+// com0..com0+3 of segment (n & 0x7F) >> 1, com0 = 8 * (n >> 7) + 4 * (n & 1), as tamalib's set_lcd writes them.
+uint8_t tc_icons_from_lcd(const uint8_t nib[256], const tc_icon_pin_t pins[8]);  // "Gen 1", "Gen 2", "Angel", "Mothra"; NULL otherwise
 
 // ---- Active ROM selection ----
 typedef struct { char name[64]; uint8_t sha1[20]; tc_model_t model; } tc_rom_entry_t;

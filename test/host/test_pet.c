@@ -4,6 +4,7 @@
 #include "test_support.h"
 #include "tc_pet.h"
 #include "tama_core.h"
+#include "remote.h"
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -218,6 +219,99 @@ static void test_clock_unknown_model_and_short_ram(void)
     TEST_ASSERT_FALSE(tc_pet_clock(TC_MODEL_P1, NULL, 0, &s));
 }
 
+// ---- Angel and Mothra (docs/pet-ram.md, "Angel" and "Mothra") ----
+static void test_angel_decode(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    base_ram(ram);  // Angel keeps P1's addresses
+    ram[0x43] = 4;
+    tc_pet_t p;
+    tc_pet_decode(TC_MODEL_ANGEL, ram, sizeof ram, &p);
+    TEST_ASSERT_TRUE(p.known);
+    TEST_ASSERT_EQUAL(3, p.hunger);
+    TEST_ASSERT_EQUAL(2, p.happy);
+    TEST_ASSERT_EQUAL(1, p.discipline);
+    TEST_ASSERT_EQUAL(2, p.age_years);
+    TEST_ASSERT_EQUAL(22, p.weight);
+    TEST_ASSERT_EQUAL(-1, p.droppings);  // never seen on an Angel
+    TEST_ASSERT_EQUAL(0, p.sick);
+    TEST_ASSERT_EQUAL(0, p.asleep);
+    TEST_ASSERT_EQUAL(1, p.light_on);
+    ram[0x48] = 15; ram[0x5E] = 3; ram[0x4B] = 0;  // the light switched off by day made it sick
+    tc_pet_decode(TC_MODEL_ANGEL, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(1, p.sick);
+    TEST_ASSERT_EQUAL(1, p.asleep);
+    TEST_ASSERT_EQUAL(0, p.light_on);
+    ram[0x5D] = 0;
+    tc_pet_decode(TC_MODEL_ANGEL, ram, sizeof ram, &p);
+    TEST_ASSERT_FALSE(p.known);
+}
+
+static void test_mothra_hunger_only(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    memset(ram, 0, sizeof ram);
+    ram[0x3E] = 3;  // one meal adds 1; the meter shows one heart per unit, 4 at most
+    tc_pet_t p;
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_TRUE(p.known);
+    TEST_ASSERT_EQUAL(3, p.hunger);
+    TEST_ASSERT_EQUAL(-1, p.happy);
+    TEST_ASSERT_EQUAL(-1, p.discipline);
+    TEST_ASSERT_EQUAL(-1, p.age_years);
+    TEST_ASSERT_EQUAL(-1, p.weight);
+    TEST_ASSERT_EQUAL(-1, p.droppings);
+    TEST_ASSERT_EQUAL(-1, p.sick);
+    TEST_ASSERT_EQUAL(-1, p.asleep);
+    TEST_ASSERT_EQUAL(-1, p.light_on);
+    ram[0x3E] = 7;
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(4, p.hunger);
+    TEST_ASSERT_NULL(tc_weight_unit(TC_MODEL_MOTHRA));
+}
+
+static void test_clock_addresses(void)
+{
+    TEST_ASSERT_EQUAL(0x10, tc_pet_clock_addr(TC_MODEL_P1));
+    TEST_ASSERT_EQUAL(0x10, tc_pet_clock_addr(TC_MODEL_P2));
+    TEST_ASSERT_EQUAL(0x10, tc_pet_clock_addr(TC_MODEL_ANGEL));
+    TEST_ASSERT_EQUAL(0x1A, tc_pet_clock_addr(TC_MODEL_MOTHRA));
+    TEST_ASSERT_EQUAL(-1, tc_pet_clock_addr(TC_MODEL_TEST_ROM));
+    TEST_ASSERT_TRUE(tc_pet_has_clock(TC_MODEL_ANGEL));
+    TEST_ASSERT_TRUE(tc_pet_has_clock(TC_MODEL_MOTHRA));
+    TEST_ASSERT_FALSE(tc_pet_has_clock(TC_MODEL_UNKNOWN));
+}
+
+static void test_clock_angel_mothra(void)
+{
+    uint8_t ram[0x20] = {0};
+    uint32_t s = 0;
+    ram[0x10] = 7; ram[0x11] = 3; ram[0x12] = 5; ram[0x13] = 4; ram[0x14] = 3; ram[0x15] = 1;  // 19:45:37
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_ANGEL, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(19 * 3600 + 45 * 60 + 37, s);
+    memset(ram, 0, sizeof ram);
+    ram[0x1A] = 2; ram[0x1B] = 1; ram[0x1C] = 0; ram[0x1D] = 3; ram[0x1E] = 9; ram[0x1F] = 0;  // 09:30:12
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_MOTHRA, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(9 * 3600 + 30 * 60 + 12, s);
+    TEST_ASSERT_FALSE(tc_pet_clock(TC_MODEL_MOTHRA, ram, 0x1F, &s));  // 0x1F missing
+}
+
+static void test_setup_exit_specs_parse(void)
+{
+    const tc_model_t models[] = { TC_MODEL_P1, TC_MODEL_P2, TC_MODEL_ANGEL, TC_MODEL_MOTHRA };
+    for (size_t i = 0; i < sizeof models / sizeof models[0]; i++) {
+        const char *spec = tc_pet_setup_exit(models[i]);
+        TEST_ASSERT_NOT_NULL(spec);
+        rm_press_req_t r;
+        rm_press_defaults(&r);
+        r.gap_ms = TC_PET_SETUP_GAP_MS;
+        TEST_ASSERT_TRUE(rm_press_parse(&r, spec));
+        TEST_ASSERT_NULL(rm_press_validate(&r));
+    }
+    TEST_ASSERT_NULL(tc_pet_setup_exit(TC_MODEL_TEST_ROM));
+    TEST_ASSERT_NULL(tc_pet_setup_exit(TC_MODEL_UNKNOWN));
+}
+
 static void test_decoder_needs_only_pet_ram_nibbles(void)
 {
     uint8_t ram[TC_RAM_NIBBLES];
@@ -247,5 +341,10 @@ int main(void)
     RUN_TEST(test_clock_hour_high_nibble);
     RUN_TEST(test_clock_rejects_bad_digits);
     RUN_TEST(test_clock_unknown_model_and_short_ram);
+    RUN_TEST(test_angel_decode);
+    RUN_TEST(test_mothra_hunger_only);
+    RUN_TEST(test_clock_addresses);
+    RUN_TEST(test_clock_angel_mothra);
+    RUN_TEST(test_setup_exit_specs_parse);
     return UNITY_END();
 }

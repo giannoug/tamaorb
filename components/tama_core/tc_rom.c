@@ -63,6 +63,21 @@ const char *tc_model_name(tc_model_t m)
     }
 }
 
+// Mothra's glass (MAME's tamamot artwork): top row left to right, then bottom row left to right.
+static const tc_icon_pin_t MOTHRA_PINS[8] = { {8, 0}, {17, 0}, {18, 0}, {19, 0}, {39, 8}, {38, 8}, {37, 8}, {28, 8} };
+
+const tc_icon_pin_t *tc_model_icon_pins(tc_model_t m) { return m == TC_MODEL_MOTHRA ? MOTHRA_PINS : NULL; }
+
+uint8_t tc_icons_from_lcd(const uint8_t nib[256], const tc_icon_pin_t pins[8])
+{
+    uint8_t icons = 0;
+    for (int i = 0; i < 8; i++) {
+        unsigned com = pins[i].com, n = (com >= 8 ? 0x80u : 0u) | (unsigned)pins[i].seg << 1 | ((com & 4) ? 1u : 0u);
+        if ((nib[n & 0xFF] >> (com & 3)) & 1) icons |= (uint8_t)(1u << i);
+    }
+    return icons;
+}
+
 const char *tc_model_long_name(tc_model_t m)
 {
     switch (m) {
