@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "pet_store.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -153,8 +154,8 @@ static known_t s_known[PET_STORE_MAX];  // under the lock
 
 int pet_store_list(pet_info_t *out, int max)
 {
-    static tc_rom_entry_t roms[16];
-    int nroms = rom_store_scan(roms, 16);
+    tc_rom_entry_t *roms = malloc(sizeof *roms * 16);  // per call: the UI task and httpd list at the same time
+    int nroms = roms ? rom_store_scan(roms, 16) : 0;
     lock();
     int n = gather(s_known, PET_STORE_MAX);
     name_all(s_known, n);
@@ -189,6 +190,7 @@ int pet_store_list(pet_info_t *out, int max)
         }
     }
     unlock();
+    free(roms);
     // By model, then by number.
     for (int i = 1; i < k; i++)
         for (int j = i; j > 0 && (out[j].model < out[j - 1].model ||
@@ -244,9 +246,8 @@ esp_err_t pet_store_name(const pet_ref_t *p, char out[PS_NAME_MAX + 1])
 {
     lock();
     int n = gather(s_known, PET_STORE_MAX);
-    n = add_known(s_known, n, PET_STORE_MAX, p);
-    name_all(s_known, n);
-    int i = find_known(s_known, n, p);
+    int i = find_known(s_known, n, p);  // a pet that doesn't exist (deleted) gets no name, so it isn't created again
+    if (i >= 0 && !s_known[i].named) name_all(s_known, n);
     if (i >= 0) snprintf(out, PS_NAME_MAX + 1, "%s", s_known[i].name);
     unlock();
     return i >= 0 ? ESP_OK : ESP_ERR_NOT_FOUND;

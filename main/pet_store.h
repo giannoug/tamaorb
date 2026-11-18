@@ -33,7 +33,7 @@ bool      pet_store_active(pet_ref_t *out);          // false: none recorded
 esp_err_t pet_store_set_active(const pet_ref_t *p);
 bool      pet_store_take_prev(pet_ref_t *out);       // reads and erases the "prev" record (Back after a switch)
 esp_err_t pet_store_set_prev(const pet_ref_t *p);
-// The stored name, else an automatic one (stored). ESP_ERR_NOT_FOUND only if NVS can't be read.
+// The stored name, else an automatic one (stored). ESP_ERR_NOT_FOUND: no such pet (it is never created here).
 esp_err_t pet_store_name(const pet_ref_t *p, char out[PS_NAME_MAX + 1]);
 // A new pet of that ROM (lowest free number, automatic name). ESP_ERR_NO_MEM: all ten used, or NVS is full.
 esp_err_t pet_store_create(const uint8_t sha1[20], tc_model_t m, pet_ref_t *out);

@@ -121,13 +121,14 @@ static bool is_running(const uint8_t sha1[20], uint8_t id)
     return saver_running(run, &rid) && rid == id && !memcmp(run, sha1, 20);
 }
 
-static pet_info_t s_pets[PET_STORE_MAX];  // httpd handles one request at a time
-
+// Per call (rm_alloc): REST runs on httpd and MCP on its own worker, so two lists can overlap.
 static int op_list_pets(void *ctx, rm_pet_t *out, int max)
 {
-    int n = pet_store_list(s_pets, PET_STORE_MAX), k = 0;
+    pet_info_t *pets = rm_alloc(sizeof *pets * PET_STORE_MAX);
+    if (!pets) return 0;
+    int n = pet_store_list(pets, PET_STORE_MAX), k = 0;
     for (int i = 0; i < n && k < max; i++, k++) {
-        const pet_info_t *s = &s_pets[i];
+        const pet_info_t *s = &pets[i];
         rm_pet_t *p = &out[k];
         memset(p, 0, sizeof *p);
         memcpy(p->sha1, s->ref.sha1, 20);
@@ -142,6 +143,7 @@ static int op_list_pets(void *ctx, rm_pet_t *out, int max)
         p->egg = s->egg;
         p->age_years = s->age_years;
     }
+    free(pets);
     return k;
 }
 

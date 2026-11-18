@@ -64,8 +64,9 @@ void pet_switch_boot(void)
 bool pet_prev(pet_ref_t *out, char name[PS_NAME_MAX + 1])
 {
     if (!s_have_prev) return false;
+    char tmp[PS_NAME_MAX + 1];
+    if (pet_store_name(&s_prev, name ? name : tmp) != ESP_OK) return false;  // deleted meanwhile
     *out = s_prev;
-    if (name && pet_store_name(&s_prev, name) != ESP_OK) name[0] = 0;
     return true;
 }
 
@@ -148,7 +149,11 @@ esp_err_t pet_new(const uint8_t sha1[20], pet_ref_t *created)
     tc_model_t m = tc_model_from_sha1(sha1);
     if (!tc_model_playable(m) || !rom_store_find_sd(sha1, file)) return end(ESP_ERR_NOT_FOUND);
     err = pet_store_create(sha1, m, created);
-    if (err == ESP_OK) err = switch_locked(created);
+    if (err == ESP_OK) {
+        err = switch_locked(created);
+        if (err != ESP_OK && pet_store_delete(created) != ESP_OK)  // not started: nothing of it should stay
+            ESP_LOGW(TAG, "could not remove the pet that didn't start");
+    }
     return end(err);
 }
 
@@ -161,7 +166,8 @@ esp_err_t pet_delete(const pet_ref_t *p)
 esp_err_t pet_switch_back(void)
 {
     if (emu_phase() != EMU_WAIT) return ESP_ERR_INVALID_STATE;
-    if (!s_have_prev) return ESP_ERR_NOT_FOUND;
+    pet_ref_t prev;
+    if (!pet_prev(&prev, NULL)) return ESP_ERR_NOT_FOUND;
     if (app_restart_pending() || atomic_exchange(&s_switching, true)) return ESP_ERR_NOT_ALLOWED;
     esp_err_t err = activate_rom(&s_prev);
     if (err == ESP_OK) err = pet_store_set_active(&s_prev);
