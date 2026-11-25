@@ -135,7 +135,7 @@ static void test_clock_12h_edges(void)
 }
 
 // C on the main screen leaves time running at real speed (Mothra's ROM has a test fast mode behind input K13,
-// which reads high on the real toy: tc_model_k1_pullup).
+// which reads high on the real toy: tc_model_k13_pullup).
 static void test_c_on_main_screen_keeps_time(void)
 {
     if (!have) TEST_IGNORE_MESSAGE("ROM not present");
@@ -167,7 +167,7 @@ int main(void)
         tc_set_icon_pins(tc_model_icon_pins(model));
         tc_set_clock_addr((uint16_t)tc_pet_clock_addr(model));
         tc_set_clock_12h(tc_pet_clock_12h(model));  // as app_main does
-        tc_set_k1_pullup(tc_model_k1_pullup(model));
+        tc_set_k13_pullup(tc_model_k13_pullup(model));
     }
     UNITY_BEGIN();
     RUN_TEST(test_setup_exit_starts_the_clock);

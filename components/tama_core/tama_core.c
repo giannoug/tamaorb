@@ -292,14 +292,7 @@ void tc_set_clock_addr(uint16_t addr) { g_clk_addr = addr; }
 static bool g_clk_12h;
 void tc_set_clock_12h(bool on) { g_clk_12h = on; }
 
-void tc_set_k1_pullup(bool on)
-{
-    pin_state_t level = on ? PIN_STATE_HIGH : PIN_STATE_LOW;
-    cpu_set_input_pin(PIN_K10, level);
-    cpu_set_input_pin(PIN_K11, level);
-    cpu_set_input_pin(PIN_K12, level);
-    cpu_set_input_pin(PIN_K13, level);
-}
+void tc_set_k13_pullup(bool on) { cpu_set_input_pin(PIN_K13, on ? PIN_STATE_HIGH : PIN_STATE_LOW); }
 
 static void clock_write(uint32_t s)
 {

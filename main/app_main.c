@@ -147,7 +147,7 @@ void app_main(void)
     tc_set_icon_pins(tc_model_icon_pins(model));  // Mothra: icons tamalib can't wire
     if (tc_pet_clock_addr(model) >= 0) tc_set_clock_addr((uint16_t)tc_pet_clock_addr(model));
     tc_set_clock_12h(tc_pet_clock_12h(model));     // Mothra's clock is 12-hour with a PM bit
-    tc_set_k1_pullup(tc_model_k1_pullup(model));   // Mothra: K13 high, or C runs its clock an hour a second
+    tc_set_k13_pullup(tc_model_k13_pullup(model));   // Mothra: K13 high, or C runs its clock an hour a second
     tc_set_halt_ff(tc_model_halt_ff(model));  // catch-up only, where proven exact
     emu_set_default_speed(tc_model_catchup_speed(model));
     uint8_t sha1[20];
