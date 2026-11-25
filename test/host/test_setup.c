@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // A fresh egg of each real ROM (TAMAORB_SETUP_ROM: tama.bin, tamag2.bin, tamaang.bin, tamamot.bin) boots in its own
 // clock-setting mode with the clock stopped. tc_pet_setup_exit's presses must get it ticking at the model's clock
-// address (docs/pet-ram.md). Skipped when the dump isn't in the ROM folder (CI has none).
+// address (docs/pet-ram.md). Skipped (exit 77) when the dump isn't in the ROM folder (CI has none).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -140,5 +140,6 @@ int main(void)
     RUN_TEST(test_first_icon_after_a);
     RUN_TEST(test_clock_set_carries_on);
     RUN_TEST(test_c_on_main_screen_keeps_time);
-    return UNITY_END();
+    int failed = UNITY_END();
+    return !have && !failed ? 77 : failed;  // 77: ctest's SKIP_RETURN_CODE, so a missing dump shows "Skipped"
 }

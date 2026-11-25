@@ -2,7 +2,7 @@
 // Halt fast-forward (tamalib_set_halt_ff) during catch-up must leave a pet exactly where stepping through every
 // HALT leaves it. One ROM per run (TAMAORB_HALTFF_ROM: tama.bin, tamag2.bin, tamaang.bin, tamamot.bin), since
 // tc_init runs once per process. P1 and P2 start from the owner's saves (roms/saves/p1.sav, p2.sav), Angel and
-// Mothra from a fresh egg out of its clock setup. Skipped, loudly, without the dump or the save.
+// Mothra from a fresh egg out of its clock setup. Skipped (exit 77), loudly, without the dump or the save.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -171,5 +171,6 @@ int main(void)
     UNITY_BEGIN();
     RUN_TEST(test_halt_ff_stops_at_target);
     RUN_TEST(test_halt_ff_exact);
-    return UNITY_END();
+    int failed = UNITY_END();
+    return s_skip && !failed ? 77 : failed;  // 77: ctest's SKIP_RETURN_CODE, so a missing dump or save shows "Skipped"
 }

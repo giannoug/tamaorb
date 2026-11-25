@@ -93,7 +93,7 @@ target_include_directories(test_setup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TAMA
 target_link_libraries(test_setup PRIVATE unity)
 foreach(rom tama tamag2 tamaang tamamot)
     add_test(NAME test_setup_${rom} COMMAND test_setup)
-    set_tests_properties(test_setup_${rom} PROPERTIES ENVIRONMENT "TAMAORB_SETUP_ROM=${rom}.bin")
+    set_tests_properties(test_setup_${rom} PROPERTIES ENVIRONMENT "TAMAORB_SETUP_ROM=${rom}.bin" SKIP_RETURN_CODE 77)
 endforeach()
 # Halt fast-forward during catch-up is exact on each real ROM (skipped without the dump or the owner's save).
 add_executable(test_halt_ff ${CMAKE_CURRENT_SOURCE_DIR}/test_halt_ff.c ${CMAKE_CURRENT_SOURCE_DIR}/test_support.c
@@ -102,7 +102,7 @@ target_include_directories(test_halt_ff PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${TA
 target_link_libraries(test_halt_ff PRIVATE unity)
 foreach(rom tama tamag2 tamaang tamamot)
     add_test(NAME test_halt_ff_${rom} COMMAND test_halt_ff)
-    set_tests_properties(test_halt_ff_${rom} PROPERTIES ENVIRONMENT "TAMAORB_HALTFF_ROM=${rom}.bin" TIMEOUT 3600)
+    set_tests_properties(test_halt_ff_${rom} PROPERTIES ENVIRONMENT "TAMAORB_HALTFF_ROM=${rom}.bin" TIMEOUT 3600 SKIP_RETURN_CODE 77)
 endforeach()
 # Catch-up speed with and without halt fast-forward (a measuring tool, not a test).
 add_executable(catchup_bench ${CMAKE_CURRENT_SOURCE_DIR}/catchup_bench.c ${CMAKE_CURRENT_SOURCE_DIR}/test_support.c
