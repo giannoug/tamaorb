@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# Where P1 and P2 keep the pet's stats in RAM
+# Where the pets keep their stats in RAM
 
-The ball's glance screen reads the pet's stats straight from the emulator's RAM (`tc_get_ram`, one 4-bit nibble per address). This page lists the addresses and how each was checked. Every row was checked on the PC by replaying one of the owner's saves with `build-host/save_replay` and comparing the RAM against the ROM's own screens (the meter, the clock, the sprites).
+The ball's glance screen reads the pet's stats straight from the emulator's RAM (`tc_get_ram`, one 4-bit nibble per address). This page lists the addresses and how each was checked: P1 and P2 first, then Angel and Mothra (every glance stat found for all four as of 2026-11-25; Mothra keeps them in its own layout, decoded by `decode_mothra` in `components/tama_core/tc_pet.c`). Every row was checked on the PC by replaying one of the owner's saves with `build-host/save_replay` and comparing the RAM against the ROM's own screens (the meter, the clock, the sprites).
 
 **Credit.** The P1 starting point came from the [tamagotchi-carebot](https://github.com/Sagestum/tamagotchi-carebot) README, which publishes P1 addresses found by watching and setting RAM in an emulator: hunger `0x40`, happy `0x41`, care mistakes `0x42`, discipline `0x43`, weight `0x46`/`0x47`, light `0x4B`, droppings `0x4D`, character `0x5D`, call icon `0x2D`, the clock at `0x10`-`0x15`, and, unverified there, "was sick" `0x49` and age `0x54`. Only those facts were used; no code was copied. Sleep, current sickness and the P2 addresses were found here.
 
