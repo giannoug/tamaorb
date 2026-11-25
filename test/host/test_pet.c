@@ -285,6 +285,41 @@ static void test_mothra_names_no_need(void)
     TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));
 }
 
+// "All good" is a claim about every input: it shows only when the model knows them all.
+static void test_need_all_good_needs_every_input(void)
+{
+    tc_pet_t p = { .known = true, .hunger = 4, .happy = 4, .discipline = -1, .age_years = -1, .weight = -1,
+                   .droppings = 0, .sick = 0, .asleep = 0, .light_on = 1 };
+    TEST_ASSERT_EQUAL(TC_NEED_ALL_GOOD, tc_pet_need(&p));
+    p.droppings = -1;
+    TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));
+}
+
+static void test_need_known_problem_still_named(void)
+{
+    tc_pet_t p = { .known = true, .hunger = 0, .happy = 4, .discipline = -1, .age_years = -1, .weight = -1,
+                   .droppings = -1, .sick = 0, .asleep = 0, .light_on = 1 };
+    TEST_ASSERT_EQUAL(TC_NEED_HUNGRY, tc_pet_need(&p));
+    p.hunger = 4;
+    p.sick = 1;
+    TEST_ASSERT_EQUAL(TC_NEED_SICK, tc_pet_need(&p));
+}
+
+static void test_angel_no_all_good(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    memset(ram, 0, sizeof ram);
+    ram[0x5D] = 1;               // hatched
+    ram[0x40] = ram[0x41] = 15;  // full hearts
+    ram[0x48] = 0;               // not sick
+    ram[0x5E] = 1;               // awake
+    ram[0x4B] = 15;              // light on
+    tc_pet_t p;
+    tc_pet_decode(TC_MODEL_ANGEL, ram, sizeof ram, &p);
+    TEST_ASSERT_TRUE(p.known);
+    TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));  // droppings unknown on Angel
+}
+
 static void test_clock_addresses(void)
 {
     TEST_ASSERT_EQUAL(0x10, tc_pet_clock_addr(TC_MODEL_P1));
@@ -359,6 +394,9 @@ int main(void)
     RUN_TEST(test_angel_decode);
     RUN_TEST(test_mothra_hunger_only);
     RUN_TEST(test_mothra_names_no_need);
+    RUN_TEST(test_need_all_good_needs_every_input);
+    RUN_TEST(test_need_known_problem_still_named);
+    RUN_TEST(test_angel_no_all_good);
     RUN_TEST(test_clock_addresses);
     RUN_TEST(test_clock_angel_mothra);
     RUN_TEST(test_setup_exit_specs_parse);

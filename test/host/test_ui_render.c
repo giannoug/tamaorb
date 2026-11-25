@@ -427,7 +427,8 @@ static void test_glance_closes_up_missing_rows(void)
     TEST_ASSERT_FALSE(find_shape(HEART_EMPTY, INK));
 
     sample_pet();
-    pet.happy = -1;  // one group of hearts left: still drawn
+    pet.happy = -1;      // one group of hearts left: still drawn
+    pet.droppings = 1;   // a known problem keeps a need word ("All good" would need happy known)
     ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
     TEST_ASSERT_TRUE(find_shape(HEART_FULL, INK));
     TEST_ASSERT_EQUAL_INT(full, address_y() - clock_y());

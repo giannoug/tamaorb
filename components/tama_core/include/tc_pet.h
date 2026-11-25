@@ -24,7 +24,9 @@ typedef struct {
 #define TC_PET_RAM_NIBBLES 0x5F
 // ram: n nibbles, one per byte, address order (tc_get_ram). Always fills *out (every field -1 when !known).
 void tc_pet_decode(tc_model_t model, const uint8_t *ram, size_t n, tc_pet_t *out);
-tc_need_t tc_pet_need(const tc_pet_t *p);  // TC_NEED_NONE when !known or need_hidden
+// TC_NEED_NONE when !known or need_hidden. A problem is named when its input is known; "All good" only when
+// sick, hunger, droppings, asleep, light_on and happy are all known (>= 0), else TC_NEED_NONE.
+tc_need_t tc_pet_need(const tc_pet_t *p);
 // "All good", "Hungry", "Unhappy", "Sick", "Droppings", "Asleep"; NULL for TC_NEED_NONE.
 const char *tc_need_word(tc_need_t n);
 // The pet's clock as seconds of the day, from RAM nibbles (tc_get_ram): 0x10 s ones, 0x11 s tens, 0x12 min ones,

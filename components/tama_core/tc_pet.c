@@ -101,7 +101,10 @@ tc_need_t tc_pet_need(const tc_pet_t *p)
     if (p->droppings > 0) return TC_NEED_DROPPINGS;
     if (p->asleep > 0 && p->light_on > 0) return TC_NEED_ASLEEP_LIGHT_ON;
     if (p->happy == 0) return TC_NEED_UNHAPPY;
-    return TC_NEED_ALL_GOOD;
+    // "All good" vouches for every input: with one not known for this model, say nothing.
+    bool all_known = p->sick >= 0 && p->hunger >= 0 && p->droppings >= 0 && p->asleep >= 0 && p->light_on >= 0 &&
+                     p->happy >= 0;
+    return all_known ? TC_NEED_ALL_GOOD : TC_NEED_NONE;
 }
 
 const char *tc_need_word(tc_need_t n)
