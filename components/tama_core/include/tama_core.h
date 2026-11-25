@@ -120,4 +120,5 @@ tc_clock_state_t tc_clock_poll(uint32_t id, uint32_t *written_s);
 uint8_t  tc_debug_applied_buttons(void);
 void     tc_debug_set_tick_source(uint32_t (*fn)(void));  // NULL = tamalib's counter
 void     tc_debug_set_step_hook(void (*fn)(void));        // called after every tamalib step
+void     tc_debug_set_ram(uint16_t addr, uint8_t nibble);  // emulator task only (between tc_step calls)
 #endif

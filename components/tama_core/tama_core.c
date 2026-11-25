@@ -593,6 +593,7 @@ uint8_t tc_applied_buttons(void) { return g_applied; }
 
 #ifdef TC_TESTING
 uint8_t tc_debug_applied_buttons(void) { return g_applied; }
+void tc_debug_set_ram(uint16_t addr, uint8_t nibble) { SET_RAM_MEMORY(tamalib_get_state()->memory, addr, nibble & 0xF); }
 #endif
 
 typedef struct {

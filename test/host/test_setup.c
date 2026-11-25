@@ -100,6 +100,40 @@ static void test_clock_set_carries_on(void)
     }
 }
 
+// The 12-hour write's edges (Mothra): midnight is hour 12 with PM clear, and bits 1-3 of the PM nibble stay the ROM's.
+static uint8_t ram_at(uint16_t addr)
+{
+    uint8_t ram[TC_PET_RAM_NIBBLES];
+    TEST_ASSERT_TRUE(tc_get_ram(ram, sizeof ram) > addr);
+    return ram[addr];
+}
+
+static void set_clock(uint32_t s)
+{
+    uint32_t id = tc_clock_request_ms(s * 1000u), w = 0;  // w: the time written, a second or so on from s
+    tc_clock_state_t st;
+    int guard = 0;
+    while ((st = tc_clock_poll(id, &w)) == TC_CLOCK_PENDING && guard++ < 400) run_ms(10);
+    TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, st);
+    run_ms(100);  // the published RAM catches up
+}
+
+static void test_clock_12h_edges(void)
+{
+    if (!have) TEST_IGNORE_MESSAGE("ROM not present");
+    if (!tc_pet_clock_12h(model)) TEST_IGNORE_MESSAGE("24-hour clock");
+    uint16_t hr = (uint16_t)tc_pet_clock_addr(model) + 4, pm = hr + 1;
+    uint8_t keep = ram_at(pm) & 0xE;
+    tc_debug_set_ram(pm, 0xE | (ram_at(pm) & 1));
+    set_clock(5);  // 00:00:05
+    TEST_ASSERT_EQUAL_HEX8(12, ram_at(hr));
+    TEST_ASSERT_EQUAL_HEX8(0xE, ram_at(pm));  // PM clear, bits 1-3 untouched
+    set_clock(13 * 3600 + 5);  // 1 PM
+    TEST_ASSERT_EQUAL_HEX8(1, ram_at(hr));
+    TEST_ASSERT_EQUAL_HEX8(0xF, ram_at(pm));
+    tc_debug_set_ram(pm, keep | (ram_at(pm) & 1));
+}
+
 // C on the main screen leaves time running at real speed (Mothra's ROM has a test fast mode behind input K13,
 // which reads high on the real toy: tc_model_k1_pullup).
 static void test_c_on_main_screen_keeps_time(void)
@@ -139,6 +173,7 @@ int main(void)
     RUN_TEST(test_setup_exit_starts_the_clock);
     RUN_TEST(test_first_icon_after_a);
     RUN_TEST(test_clock_set_carries_on);
+    RUN_TEST(test_clock_12h_edges);
     RUN_TEST(test_c_on_main_screen_keeps_time);
     int failed = UNITY_END();
     return !have && !failed ? 77 : failed;  // 77: ctest's SKIP_RETURN_CODE, so a missing dump shows "Skipped"
