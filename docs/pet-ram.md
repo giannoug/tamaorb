@@ -117,7 +117,7 @@ Icons (bit = tamalib icon number; the same pictures as P1, in another order on t
 
 **Why droppings took so long to show.** Angel only makes droppings from its second stage on, and only while it is happy: at each happiness tick, if `0x41` ≥ 4 the ROM takes 4 off and adds about ((`0x41` − 4)/2 + weight tens)/2 + `0x1F` to an accumulator at `0x214` (code `0x0FAB`-`0x0FC0`; with `0x41` = 15 and weight 28 it added 3, `ANGPOOP5`); when that overflows (and `0x5D` ≠ 1) it queues a "make droppings" event (dispatched through `0x5C` at `0x0309`), which adds 1 to `0x4D` (`0x0350`). With happy below 4, as in the earlier neglect and meal-only runs (a game adds only 1), `0x214` never moves and no droppings come. `ANGPOOP5` kept happy up with three games every 20 minutes.
 
-Angel runs (ROM `build-host/roms/tamaang.bin`; scripts and saves in `.superpowers/sdd/2026-11-25-leftovers/research/`, `saves/` and `logs/` there; `angscript.py` writes the scripts):
+Angel runs (ROM `build-host/roms/tamaang.bin`; tools and hand-written scripts in `tools/research/` (`angscript.py` writes the long scripts); saves and logs go in the git-ignored `research/`, `saves/` and `logs/` there):
 
 | Name | Save | Script | What it shows |
 |---|---|---|---|
@@ -174,7 +174,7 @@ Death: `0x0B` = F after four sicknesses in one stage (`0x36` counts them, `0x051
 
 **C toggles a fast mode in this emulation.** On the main screen C toggles `0x08` bit 0 (`0x1DEC`) when `0x14` bit 3 is set, and `0x14` bit 3 is the inverse of input K13 (`0xF42` bit 3, read at `0x0707`). tamalib leaves K10-K13 low, so the ROM sees the pin grounded (most likely a factory test pad) and C works; with the bit set every main-loop pass counts as a second and a minute (`0x0900`, `0x0922`), so the pet's clock, timers and evolution run about an hour per real second until C is pressed again or an event (a sickness, droppings, a call, waking up, evolving) clears it (`0x00E4`). The research scripts never press C on the main screen (menus close on their own after 10 s).
 
-Mothra runs (ROM `build-host/roms/tamamot.bin`; all files under `.superpowers/sdd/2026-11-25-leftovers/research/`, scripts by `care.py` and `evo.py`; logs in `logs/`, the long ones gzipped: `gunzip -k` before `mjoin.py`, `snap.py` or `timeline.py`):
+Mothra runs (ROM `build-host/roms/tamamot.bin`; tools and hand-written scripts in `tools/research/`, long scripts by `care.py` and `evo.py`; saves and logs go in the git-ignored `research/`, the long logs gzipped: `gunzip -k` before `mjoin.py`, `snap.py` or `timeline.py`):
 
 | Name | Save | Script | What it shows |
 |---|---|---|---|
