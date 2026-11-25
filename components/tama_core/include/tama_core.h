@@ -78,6 +78,10 @@ typedef bool (*tc_catchup_cb)(uint64_t done_ticks, uint64_t total_ticks, void *c
 // Runs at full speed until `ticks` emulated ticks have passed (wrap-safe), calling cb every
 // cb_every_ticks (0 = never). Restores real-time mode. Returns ticks actually run.
 uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_every_ticks);
+// Catch-up skips the time the CPU spends halted (tamalib_set_halt_ff, never past the target) when on; default
+// off. Only for ROMs where it is proven exact (tc_model_halt_ff, test/host/test_halt_ff.c). Live running never
+// uses it: tamalib applies it at speed 0 only.
+void     tc_set_halt_ff(bool on);
 
 uint8_t  tc_applied_buttons(void);  // emulator task: the mask currently applied to tamalib
 

@@ -253,9 +253,21 @@ static void test_distinct_valid_includes_angel(void)
     TEST_ASSERT_EQUAL(3, tc_rom_distinct_valid(sd, 5, idx, 5));
 }
 
+// Halt fast-forward during catch-up: on for each ROM whose proof (test_halt_ff.c, 1/6/26 h) passed.
+static void test_model_halt_ff_table(void)
+{
+    TEST_ASSERT_TRUE(tc_model_halt_ff(TC_MODEL_P1));
+    TEST_ASSERT_TRUE(tc_model_halt_ff(TC_MODEL_P2));
+    TEST_ASSERT_TRUE(tc_model_halt_ff(TC_MODEL_ANGEL));
+    TEST_ASSERT_TRUE(tc_model_halt_ff(TC_MODEL_MOTHRA));
+    TEST_ASSERT_FALSE(tc_model_halt_ff(TC_MODEL_UNKNOWN));
+    TEST_ASSERT_FALSE(tc_model_halt_ff(TC_MODEL_TEST_ROM));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_model_halt_ff_table);
     RUN_TEST(test_sha1_abc);
     RUN_TEST(test_sha1_empty);
     RUN_TEST(test_sha1_two_blocks);

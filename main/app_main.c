@@ -146,6 +146,7 @@ void app_main(void)
     if (!emu_init(s_program)) return;
     tc_set_icon_pins(tc_model_icon_pins(model));  // Mothra: icons tamalib can't wire
     if (tc_pet_clock_addr(model) >= 0) tc_set_clock_addr((uint16_t)tc_pet_clock_addr(model));
+    tc_set_halt_ff(tc_model_halt_ff(model));  // catch-up only, where proven exact
     uint8_t sha1[20];
     tc_rom_identify(s_rom, s_rom_len, sha1);
     ps_meta_t meta;

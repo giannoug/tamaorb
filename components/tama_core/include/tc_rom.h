@@ -15,6 +15,9 @@ typedef enum { TC_MODEL_UNKNOWN = 0, TC_MODEL_P1, TC_MODEL_P2, TC_MODEL_TEST_ROM
 bool        tc_rom_size_ok(size_t len);         // 12,288 or 16,384
 bool        tc_model_playable(tc_model_t m);    // P1, P2, Angel, Mothra
 size_t      tc_model_rom_bytes(tc_model_t m);   // the dump size of a known model; 0 for UNKNOWN
+// Catch-up uses halt fast-forward (tc_set_halt_ff) for this model: true where test/host/test_halt_ff.c proved it
+// exact (all four playable models; only Mothra gains much, docs/architecture.md).
+bool        tc_model_halt_ff(tc_model_t m);
 
 void        tc_sha1(const uint8_t *data, size_t len, uint8_t out[20]);
 // sha1_out may be NULL. A size that doesn't match the known model's dump size is TC_MODEL_UNKNOWN.

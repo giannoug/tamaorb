@@ -78,6 +78,17 @@ uint8_t tc_icons_from_lcd(const uint8_t nib[256], const tc_icon_pin_t pins[8])
     return icons;
 }
 
+bool tc_model_halt_ff(tc_model_t m)
+{
+    switch (m) {
+    case TC_MODEL_P1:
+    case TC_MODEL_P2:
+    case TC_MODEL_ANGEL:
+    case TC_MODEL_MOTHRA: return true;  // test_halt_ff: identical state after 1, 6 and 26 h (2026-11-25)
+    default: return false;
+    }
+}
+
 const char *tc_model_long_name(tc_model_t m)
 {
     switch (m) {

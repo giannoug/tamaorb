@@ -349,14 +349,27 @@ void tc_step(uint32_t n)
     while (n--) step_once();
 }
 
+static bool g_halt_ff;
+void tc_set_halt_ff(bool on) { g_halt_ff = on; }
+
+// tamalib compares its halt fast-forward limit with the 32-bit tick counter, wrap-safely, so a limit may lie at
+// most 2^31 ticks ahead: a longer replay renews it every HALT_FF_SPAN ticks.
+#define HALT_FF_SPAN (1ull << 30)
+
 uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_every_ticks)
 {
     tc_set_realtime(false);
     g_quiet = true;
     uint64_t done = 0;
     uint64_t next_cb = cb_every_ticks ? cb_every_ticks : UINT64_MAX;
+    uint64_t ff_renew = 0;  // done at which the halt fast-forward limit is reached (and renewed if ticks remain)
     uint32_t prev = ticks_now();
     while (done < ticks) {  // input is ignored during catch-up
+        if (g_halt_ff && done >= ff_renew) {
+            uint64_t span = ticks - done < HALT_FF_SPAN ? ticks - done : HALT_FF_SPAN;
+            tamalib_set_halt_ff(1, prev + (uint32_t)span);  // never past the target
+            ff_renew = done + span;
+        }
         step_once();
         uint32_t now = ticks_now();
         done += tc_ticks_since(prev, now);
@@ -366,6 +379,7 @@ uint64_t tc_catchup(uint64_t ticks, tc_catchup_cb cb, void *ctx, uint32_t cb_eve
             next_cb += cb_every_ticks;
         }
     }
+    if (g_halt_ff) tamalib_set_halt_ff(0, 0);
     g_quiet = false;
     tone_changed(true);
     tc_set_realtime(true);
