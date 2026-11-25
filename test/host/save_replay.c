@@ -19,10 +19,14 @@
 // "@file" in place of the script reads it from that file (for scripts too long for one argument).
 // dump <file> writes the state at that point as a save record (pet 0, untrusted time 0) that this tool loads again,
 // so long research runs can be chained.
+// watchN prints every RAM nibble write during the next N emulated seconds, as the script goes on:
+// "watch <ms> 0x<addr>: <old>-><new> pc=<PC of the instruction that wrote it>" (research: which code keeps which
+// stat; read straight from tamalib's state after each instruction).
 // Emulation runs as fast as possible; times in the output are emulated milliseconds.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "cpu.h"
 #include "persist.h"
 #include "tama_core.h"
 #include "tc_pet.h"
@@ -91,6 +95,36 @@ static void show_ram(void)
     g_have_ram = true;
 }
 
+// ---- watch: RAM writes with the PC that made them ----
+static double g_watch_until = -1;
+static uint8_t g_shadow[MEM_RAM_SIZE];
+static uint16_t g_prev_pc;
+
+static void watch_hook(void)  // after every instruction (tc_debug_set_step_hook)
+{
+    state_t *st = cpu_get_state();
+    if (g_ms <= g_watch_until) {
+        for (int a = 0; a < MEM_RAM_SIZE; a++) {
+            uint8_t v = GET_RAM_MEMORY(st->memory, a) & 0xF;
+            if (v != g_shadow[a]) {
+                printf("watch %.0f ms 0x%03X: %X->%X pc=%04X\n", g_ms, a, g_shadow[a], v, g_prev_pc);
+                g_shadow[a] = v;
+            }
+        }
+    }
+    g_prev_pc = *st->pc;  // the next instruction: the writer, as seen by the next call
+}
+
+static void watch_start(double seconds)
+{
+    state_t *st = cpu_get_state();
+    for (int a = 0; a < MEM_RAM_SIZE; a++) g_shadow[a] = GET_RAM_MEMORY(st->memory, a) & 0xF;
+    g_prev_pc = *st->pc;
+    g_watch_until = g_ms + seconds * 1000;
+    tc_debug_set_step_hook(watch_hook);
+    printf("=== watch %.0f s from %.0f ms\n", seconds, g_ms);
+}
+
 static tc_model_t g_model;
 
 static void show_clock(void)
@@ -155,7 +189,8 @@ int main(int argc, char **argv)
                         "script tokens: A B C AC (press), wN (wait N ms), ffN (fast-forward N s quietly),\n"
                         "  ram (RAM nibbles changed since the last ram; the first prints all),\n"
                         "  clock (the pet's clock), setHHMMSS (set it), hN (hold time of later presses),\n"
-                        "  dump <file> (write the state as a save)\n", argv[0]);
+                        "  dump <file> (write the state as a save), watchN (RAM writes with their PC for N s)\n",
+                argv[0]);
         return 2;
     }
     double hold = argc > 5 ? atof(argv[4]) : 200, gap = argc > 5 ? atof(argv[5]) : 400;  // the press tool's defaults
@@ -194,6 +229,7 @@ int main(int argc, char **argv)
         script = strdup(argv[3]);
     }
     for (char *t = strtok(script, " \t\r\n"); t; t = strtok(NULL, " \t\r\n")) {
+        if (!strncmp(t, "watch", 5)) { watch_start(atof(t + 5)); continue; }  // before "w": both start with w
         if (t[0] == 'w') { run_ms(atof(t + 1)); continue; }
         if (!strncmp(t, "ff", 2)) {
             printf("=== fast-forward %ss at %.0f ms\n", t + 2, g_ms);
