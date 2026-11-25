@@ -70,6 +70,15 @@ void pet_switch_boot(bool asking)
     pet_store_clear_prev();
 }
 
+#ifdef TC_TESTING
+void rom_switch_test_reset(void)
+{
+    atomic_store(&s_restart, false);
+    atomic_store(&s_switching, false);
+    atomic_store(&s_have_prev, false);
+}
+#endif
+
 void pet_prev_forget(void)
 {
     if (atomic_exchange(&s_have_prev, false)) pet_store_clear_prev();

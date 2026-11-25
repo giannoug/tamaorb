@@ -36,3 +36,6 @@ esp_err_t pet_delete(const pet_ref_t *p);
 // ESP_ERR_INVALID_STATE: not waiting. ESP_ERR_NOT_FOUND: no previous pet, or its ROM is not on the card.
 // ESP_ERR_NOT_ALLOWED: a restart is under way. On success the ball restarts in 1 s.
 esp_err_t pet_switch_back(void);
+#ifdef TC_TESTING
+void      rom_switch_test_reset(void);  // host tests: no restart pending, no switch under way, no Back
+#endif

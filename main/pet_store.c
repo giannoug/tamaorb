@@ -159,6 +159,14 @@ static struct { pet_ref_t ref; char name[PS_NAME_MAX + 1]; bool used; } s_cache[
 static int s_cache_next;
 static void cache_clear(void) { memset(s_cache, 0, sizeof s_cache); }
 
+#ifdef TC_TESTING
+void pet_store_test_reset(void)
+{
+    cache_clear();
+    s_cache_next = 0;
+}
+#endif
+
 int pet_store_list(pet_info_t *out, int max)
 {
     tc_rom_entry_t *roms = malloc(sizeof *roms * 16);  // per call: the UI task and httpd list at the same time

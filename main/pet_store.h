@@ -45,3 +45,6 @@ esp_err_t pet_store_rename(const pet_ref_t *p, const char *name);
 // Erases the saves, then the name. ESP_ERR_INVALID_STATE for the running pet; ESP_ERR_NOT_FOUND: no such pet.
 esp_err_t pet_store_delete(const pet_ref_t *p);
 bool      pet_ref_eq(const pet_ref_t *a, const pet_ref_t *b);
+#ifdef TC_TESTING
+void      pet_store_test_reset(void);  // host tests: forget cached names between tests
+#endif

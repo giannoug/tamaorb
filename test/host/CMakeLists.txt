@@ -95,6 +95,14 @@ foreach(rom tama tamag2 tamaang tamamot)
     add_test(NAME test_setup_${rom} COMMAND test_setup)
     set_tests_properties(test_setup_${rom} PROPERTIES ENVIRONMENT "TAMAORB_SETUP_ROM=${rom}.bin")
 endforeach()
+# main/pet_store.c and main/rom_switch.c over fakes for NVS, FreeRTOS, the timer, rom_store, saver and emu phase.
+# fakes/ comes first so its esp_*.h, nvs.h and freertos/ stand in for ESP-IDF's.
+add_executable(test_pet_store ${CMAKE_CURRENT_SOURCE_DIR}/test_pet_store.c ${CMAKE_CURRENT_SOURCE_DIR}/fake_nvs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/fake_idf.c ${ROOT}/main/pet_store.c ${ROOT}/main/rom_switch.c ${TAMA_CORE_SRC} ${PERSIST_SRC})
+target_include_directories(test_pet_store PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/fakes ${CMAKE_CURRENT_SOURCE_DIR}
+    ${ROOT}/main ${TAMA_CORE_INC} ${PERSIST_INC})
+target_link_libraries(test_pet_store PRIVATE unity)
+add_test(NAME test_pet_store COMMAND test_pet_store)
 tamaorb_test(test_ui_render ${UI_SRC} ${SETTINGS_SRC})
 tamaorb_test(test_ui_touch ${UI_SRC})
 tamaorb_test(test_ui_screen ${UI_SRC})
