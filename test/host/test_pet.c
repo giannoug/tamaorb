@@ -132,6 +132,38 @@ static void test_egg_hides_stats(void)
     assert_all_hidden(&p);
 }
 
+// Egg and dead both hide the stats; dead says so (docs/pet-ram.md: death sets 0x5E to 10 on P1 and P2, 12 on Angel,
+// whose character stays that of its last stage; Mothra's stage nibble goes to F).
+static void test_dead_told_from_egg(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    tc_pet_t p;
+    static const tc_model_t P1_LIKE[] = { TC_MODEL_P1, TC_MODEL_P2 };
+    for (size_t i = 0; i < 2; i++) {
+        base_ram(ram);
+        ram[0x5D] = 0;  // egg: state normal
+        tc_pet_decode(P1_LIKE[i], ram, sizeof ram, &p);
+        TEST_ASSERT_FALSE(p.known);
+        TEST_ASSERT_FALSE(p.dead);
+        ram[0x5E] = 10;  // dead
+        tc_pet_decode(P1_LIKE[i], ram, sizeof ram, &p);
+        assert_all_hidden(&p);
+        TEST_ASSERT_TRUE(p.dead);
+    }
+    base_ram(ram);
+    ram[0x5D] = 10; ram[0x5E] = 12;  // a dead Angel keeps its character
+    tc_pet_decode(TC_MODEL_ANGEL, ram, sizeof ram, &p);
+    assert_all_hidden(&p);
+    TEST_ASSERT_TRUE(p.dead);
+    ram[0x5E] = 9;  // sick, alive
+    tc_pet_decode(TC_MODEL_ANGEL, ram, sizeof ram, &p);
+    TEST_ASSERT_TRUE(p.known);
+    TEST_ASSERT_FALSE(p.dead);
+    base_ram(ram);  // a living P1 is not dead
+    tc_pet_decode(TC_MODEL_P1, ram, sizeof ram, &p);
+    TEST_ASSERT_FALSE(p.dead);
+}
+
 static void test_unknown_model_hides_stats(void)
 {
     uint8_t ram[TC_RAM_NIBBLES];
@@ -261,13 +293,16 @@ static void test_mothra_stage(void)
     mothra_ram(ram, 0);  // egg
     tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
     TEST_ASSERT_FALSE(p.known);
+    TEST_ASSERT_FALSE(p.dead);
     mothra_ram(ram, 0xF);  // dead
     tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
     TEST_ASSERT_FALSE(p.known);
+    TEST_ASSERT_TRUE(p.dead);
     for (uint8_t st = 1; st <= 0xE; st++) {
         mothra_ram(ram, st);
         tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
         TEST_ASSERT_TRUE(p.known);
+        TEST_ASSERT_FALSE(p.dead);
     }
 }
 
@@ -469,6 +504,7 @@ int main(void)
     RUN_TEST(test_need_priority);
     RUN_TEST(test_need_words);
     RUN_TEST(test_egg_hides_stats);
+    RUN_TEST(test_dead_told_from_egg);
     RUN_TEST(test_unknown_model_hides_stats);
     RUN_TEST(test_unverified_fields_minus_one);
     RUN_TEST(test_clock_decodes_bcd);

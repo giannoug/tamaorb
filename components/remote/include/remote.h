@@ -90,7 +90,7 @@ typedef struct {
     uint8_t id;
     char name[17];
     tc_model_t model;
-    bool active, has_save, save_trusted, rom_on_card, egg;
+    bool active, has_save, save_trusted, rom_on_card, egg, dead;  // egg and dead: as pet_info_t
     int16_t age_years;     // -1 unknown
     int64_t save_unix;
 } rm_pet_t;

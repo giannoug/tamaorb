@@ -511,7 +511,17 @@ static void test_pets_list_shape(void)
     TEST_ASSERT_EQUAL_STRING("4b4979cf92dc9d2fb6d7295a38f209f3da144f72-3", cJSON_GetObjectItem(p1, "id")->valuestring);
     TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(p1, "age")));
     TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(p1, "egg")));
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(p1, "dead")));
     cJSON_Delete(a);
+    fake.pets[1].egg = false;  // a dead pet is not an egg
+    fake.pets[1].dead = true;
+    go(RM_GET, "/api/pets", NULL, NULL, NULL);
+    a = json();
+    p1 = cJSON_GetArrayItem(a, 1);
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItem(p1, "egg")));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(p1, "dead")));
+    cJSON_Delete(a);
+    fake.pets[1].dead = false;
     fake.pets[1].model = TC_MODEL_MOTHRA;  // days on Mothra's (and Angel's) meter
     fake.pets[1].age_years = 17;
     go(RM_GET, "/api/pets", NULL, NULL, NULL);

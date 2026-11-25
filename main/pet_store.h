@@ -19,7 +19,8 @@ typedef struct {
     int64_t save_unix;
     uint32_t seq;
     int16_t age_years;  // -1 unknown
-    bool egg;           // character 0 in the saved RAM (egg or dead), or no save yet
+    bool egg;           // an egg in the saved RAM, or no save yet
+    bool dead;          // dead in the saved RAM (tc_pet_t.dead)
     bool rom_on_card;
 } pet_info_t;
 

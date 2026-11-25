@@ -576,6 +576,7 @@ static void load_pet_rows(ui_menu_view_t *v)
         const char *longname = tc_model_long_name(p->model);
         char age[12] = "", short_away[12] = "";
         if (p->egg) snprintf(age, sizeof age, "egg");
+        else if (p->dead) snprintf(age, sizeof age, "dead");
         else if (p->age_years >= 0) snprintf(age, sizeof age, "%d %s", p->age_years, tc_age_unit(p->model));
         snprintf(s_pet_age[i], sizeof s_pet_age[i], "%s%s%s", longname ? longname : "", age[0] ? " - " : "", age);
         if (running) {

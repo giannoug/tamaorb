@@ -28,7 +28,7 @@ Also seen, not used by the glance: care mistakes `0x42` (counts up when a call i
 
 **Not used:** nothing. Every stat the glance wants was found on both ROMs. The formulas were checked on the meter at the values listed, not at all sixteen: hunger and happy at 0, 3, 4, 5, 7, 8, 11, 12 and 15 between the two ROMs, discipline at 0, 4, 12 and 15.
 
-**Egg and dead.** `0x5D` = 0 means there is no pet to report on: show no stats. The P2 save is an egg (`0x5D` = 0, buttons do nothing until it hatches about five minutes later). A dead P1 pet also reads 0 (with `0x5E` = 10).
+**Egg and dead.** `0x5D` = 0 means there is no pet to report on: show no stats. The P2 save is an egg (`0x5D` = 0, buttons do nothing until it hatches about five minutes later). A dead P1 or P2 pet also reads 0, with `0x5E` = 10, which tells it from an egg (P2 neglected from `p2.sav`: `0x5E` 9 → 10 and `0x5D` 2 → 0 at about 20 h, and both stay). `tc_pet_t.dead` reads it, and the pet lists show "dead" in place of "egg".
 
 **What `0x5E` hides.** While the pet eats or plays, `0x5E` is 2 or 5 even if it is sick or would be asleep, so use `0x48` for sickness (it does not change during animations) and treat "asleep" as `0x5E` = 3 only.
 
@@ -101,7 +101,7 @@ Runs from fresh eggs (`save_replay <rom> - …`; there are no owner saves), chai
 |---|---|---|---|
 | Clock | `0x10`-`0x15` | as P1 | ticks after the setup exit; `set120000` applies |
 | Character | `0x5D` | 0 egg, 1 after hatching, 2 at the first evolution (about 1 h later) | hatch and 2 h runs |
-| State | `0x5E` | 1 normal, 2 eating, 3 asleep, 9 sick (awake) | meal 1→2→1; asleep at 20:00 (`set180000` + `ff1800` ×24); sick below |
+| State | `0x5E` | 1 normal, 2 eating, 3 asleep, 9 sick (awake), 12 dead | meal 1→2→1; asleep at 20:00 (`set180000` + `ff1800` ×24); sick below. Death (neglect from a fresh egg, `ff1800 clock` ×400): `0x5E` 9 → 12 at about 92 h while `0x5D` stays 10 (unlike P1), and the screen stands still on its ending picture from then on |
 | Hunger | `0x40` | as P1: a meal adds 4; hearts = (v+1)/4 | meal 0→4, hunger page one heart |
 | Happy | `0x41` | a game adds 1 (P1's formula assumed for hearts) | game 0→1 |
 | The bar | `0x43` | the meter's second page (a bar, Angel's stand-in for discipline); 4 showed a small fill | meter page with `0x43` = 4 |

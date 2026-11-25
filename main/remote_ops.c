@@ -141,6 +141,7 @@ static int op_list_pets(void *ctx, rm_pet_t *out, int max)
         p->save_unix = s->has_save ? s->save_unix : 0;
         p->rom_on_card = s->rom_on_card;
         p->egg = s->egg;
+        p->dead = s->dead;
         p->age_years = s->age_years;
     }
     free(pets);

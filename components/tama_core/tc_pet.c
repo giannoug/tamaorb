@@ -13,6 +13,7 @@ typedef struct {
     tc_model_t model;
     const char *weight_unit, *age_unit, *bar_label;
     int16_t hunger, happy, disc, weight_lo, weight_hi, sick, light, drop, age_lo, age_hi, chr, state, clock;
+    int8_t dead_state;  // the state nibble's value once the pet has died, -1 = none
     decode_fn decode;
     const char *setup_exit;
     bool clock_12h;  // hour nibble 1-12 and a PM bit (tc_pet_clock_12h)
@@ -21,13 +22,14 @@ typedef struct {
 #define P1_LAYOUT 0x40, 0x41, 0x43, 0x46, 0x47, 0x48, 0x4B, 0x4D, 0x54, 0x55, 0x5D, 0x5E
 #define NO_LAYOUT -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
 static const model_row_t MODELS[] = {
-    { TC_MODEL_P1, "lb", "yr", "disc", P1_LAYOUT, 0x10, NULL, "B A C", false },
-    { TC_MODEL_P2, "g", "yr", "disc", P1_LAYOUT, 0x10, NULL, "B A C", false },
+    // P1 and P2 die to character 0 (an egg's) with state 10.
+    { TC_MODEL_P1, "lb", "yr", "disc", P1_LAYOUT, 0x10, 10, NULL, "B A C", false },
+    { TC_MODEL_P2, "g", "yr", "disc", P1_LAYOUT, 0x10, 10, NULL, "B A C", false },
     // Angel keeps P1's addresses (droppings only come once happy is high). Its meter ends the weight with a heart,
-    // which the font lacks (""), and the age with 日 (days).
-    { TC_MODEL_ANGEL, "", "d", "disc", P1_LAYOUT, 0x10, NULL, "B A C", false },
+    // which the font lacks (""), and the age with 日 (days). It dies to state 12, keeping its character.
+    { TC_MODEL_ANGEL, "", "d", "disc", P1_LAYOUT, 0x10, 12, NULL, "B A C", false },
     // Mothra: its own layout (decode_mothra); the clock 10 nibbles later than P1's, 12-hour.
-    { TC_MODEL_MOTHRA, "t", "d", "justice", NO_LAYOUT, 0x1A, decode_mothra, "B A C", true },
+    { TC_MODEL_MOTHRA, "t", "d", "justice", NO_LAYOUT, 0x1A, -1, decode_mothra, "B A C", true },
 };
 
 _Static_assert(0x5F + 1 == TC_PET_RAM_NIBBLES, "TC_PET_RAM_NIBBLES must cover the decoders' addresses");
@@ -104,6 +106,7 @@ static int8_t cap4(uint8_t v) { return (int8_t)(v > 4 ? 4 : v); }
 static void decode_mothra(const uint8_t *ram, tc_pet_t *out)
 {
     uint8_t stage = nib(ram, 0x0B);
+    out->dead = stage == 0xF;
     if (stage == 0 || stage == 0xF) return;  // egg or dead: nothing to report
     out->known = true;
     out->hunger = nib(ram, 0x3F) ? 4 : cap4(nib(ram, 0x3E));
@@ -119,7 +122,7 @@ static void decode_mothra(const uint8_t *ram, tc_pet_t *out)
 
 void tc_pet_decode(tc_model_t model, const uint8_t *ram, size_t n, tc_pet_t *out)
 {
-    *out = (tc_pet_t){ .known = false, .hunger = -1, .happy = -1, .discipline = -1, .age_years = -1, .weight = -1,
+    *out = (tc_pet_t){ .known = false, .dead = false, .hunger = -1, .happy = -1, .discipline = -1, .age_years = -1, .weight = -1,
                        .droppings = -1, .sick = -1, .asleep = -1, .light_on = -1 };
     const model_row_t *r = row_of(model);
     if (!r || !ram || n < TC_PET_RAM_NIBBLES) return;
@@ -127,7 +130,8 @@ void tc_pet_decode(tc_model_t model, const uint8_t *ram, size_t n, tc_pet_t *out
         r->decode(ram, out);
         return;
     }
-    if (r->chr >= 0 && nib(ram, r->chr) == 0) return;  // egg or dead: nothing to report
+    out->dead = r->state >= 0 && r->dead_state >= 0 && nib(ram, r->state) == r->dead_state;
+    if (out->dead || (r->chr >= 0 && nib(ram, r->chr) == 0)) return;  // dead or egg: nothing to report
     out->known = true;
     if (r->hunger >= 0) out->hunger = hearts(nib(ram, r->hunger));
     if (r->happy >= 0) out->happy = hearts(nib(ram, r->happy));

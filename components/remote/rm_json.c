@@ -217,6 +217,7 @@ cJSON *rm_json_pets(const rm_pet_t *p, int n)
         else cJSON_AddNullToObject(o, "save_unix");
         cJSON_AddBoolToObject(o, "rom_on_card", p[i].rom_on_card);
         cJSON_AddBoolToObject(o, "egg", p[i].egg);
+        cJSON_AddBoolToObject(o, "dead", p[i].dead);
         if (p[i].age_years >= 0) cJSON_AddNumberToObject(o, "age", p[i].age_years);
         else cJSON_AddNullToObject(o, "age");
         const char *unit = tc_age_unit(p[i].model);  // "yr" (P1, P2) or "d" (Angel, Mothra: their meters' 日)

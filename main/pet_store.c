@@ -200,7 +200,8 @@ int pet_store_list(pet_info_t *out, int max)
                 tc_pet_t pet;
                 tc_pet_decode(p->model, ram, got, &pet);
                 p->age_years = pet.age_years;
-                p->egg = !pet.known;
+                p->egg = !pet.known && !pet.dead;
+                p->dead = pet.dead;
             }
         }
     }

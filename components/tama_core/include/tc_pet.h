@@ -10,7 +10,8 @@ typedef enum { TC_NEED_NONE, TC_NEED_ALL_GOOD, TC_NEED_SICK, TC_NEED_HUNGRY, TC_
                TC_NEED_ASLEEP_LIGHT_ON, TC_NEED_UNHAPPY } tc_need_t;
 
 typedef struct {
-    bool known;                    // false: unknown model, egg/dead (character 0), or no snapshot yet
+    bool known;                    // false: unknown model, egg, dead, or no snapshot yet
+    bool dead;                     // the ROM's own death state (then known is false)
     int8_t hunger, happy;          // hearts 0-4, -1 = not available
     int8_t discipline;             // quarters 0-4, -1 = n/a
     int16_t age_years, weight;     // weight in the ROM's own unit (tc_weight_unit); -1 = n/a
