@@ -21,6 +21,9 @@ bool        tc_model_halt_ff(tc_model_t m);
 // Catch-up speed on the ball (x real time, with tc_model_halt_ff's setting): what the "about N min" estimates
 // assume until a boot has measured its own. 75 for models not measured.
 float       tc_model_catchup_speed(tc_model_t m);
+// Its unused K1 inputs are pulled high on the real toy and the ROM reads them (tc_set_k1_pullup): Mothra only;
+// P1, P2 and Angel keep tamalib's default.
+bool        tc_model_k1_pullup(tc_model_t m);
 
 void        tc_sha1(const uint8_t *data, size_t len, uint8_t out[20]);
 // sha1_out may be NULL. A size that doesn't match the known model's dump size is TC_MODEL_UNKNOWN.

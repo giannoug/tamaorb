@@ -104,6 +104,12 @@ uint32_t tc_clock_request_ms(uint32_t ms_of_day);  // returns the request id, ne
 // Emulator task, before running: where the pet's clock nibbles start (default 0x10, P1/P2/Angel; Mothra 0x1A;
 // tc_pet_clock_addr has the table). The layout from there is the same for every model.
 void     tc_set_clock_addr(uint16_t addr);
+// The clock write's hour format (tc_pet_clock_12h): 12-hour puts 1-12 in the hour nibble and PM in bit 0 of the
+// next one, keeping that nibble's other bits. Default 24-hour (P1's 16 * high + low).
+void     tc_set_clock_12h(bool on);
+// After tc_init: input pins K10-K13 read high, as pulled up on the real toy (tc_model_k1_pullup); tamalib leaves
+// them low. Mothra reads K13 low as a test pad that lets C on the main screen run its clock about an hour a second.
+void     tc_set_k1_pullup(bool on);
 // Emulator task, before running: icon pins for a model tamalib can't wire (tc_model_icon_pins); NULL = tamalib's.
 // The array must outlive the emulator.
 void     tc_set_icon_pins(const tc_icon_pin_t *pins);

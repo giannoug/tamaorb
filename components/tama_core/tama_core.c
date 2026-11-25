@@ -289,6 +289,17 @@ static void clock_finish(tc_clock_state_t st, uint32_t written)
 static uint16_t g_clk_addr = 0x10;  // where the clock nibbles start (tc_set_clock_addr)
 
 void tc_set_clock_addr(uint16_t addr) { g_clk_addr = addr; }
+static bool g_clk_12h;
+void tc_set_clock_12h(bool on) { g_clk_12h = on; }
+
+void tc_set_k1_pullup(bool on)
+{
+    pin_state_t level = on ? PIN_STATE_HIGH : PIN_STATE_LOW;
+    cpu_set_input_pin(PIN_K10, level);
+    cpu_set_input_pin(PIN_K11, level);
+    cpu_set_input_pin(PIN_K12, level);
+    cpu_set_input_pin(PIN_K13, level);
+}
 
 static void clock_write(uint32_t s)
 {
@@ -298,8 +309,14 @@ static void clock_write(uint32_t s)
     SET_RAM_MEMORY(m, g_clk_addr + 1, se / 10);
     SET_RAM_MEMORY(m, g_clk_addr + 2, mi % 10);
     SET_RAM_MEMORY(m, g_clk_addr + 3, mi / 10);
-    SET_RAM_MEMORY(m, g_clk_addr + 4, h & 15);
-    SET_RAM_MEMORY(m, g_clk_addr + 5, h >> 4);
+    if (g_clk_12h) {  // 1-12 and PM in bit 0 of the next nibble, whose other bits stay the ROM's
+        uint8_t next = GET_RAM_MEMORY(m, g_clk_addr + 5) & 0xE;
+        SET_RAM_MEMORY(m, g_clk_addr + 4, h % 12 ? h % 12 : 12);
+        SET_RAM_MEMORY(m, g_clk_addr + 5, next | (h >= 12));
+    } else {
+        SET_RAM_MEMORY(m, g_clk_addr + 4, h & 15);
+        SET_RAM_MEMORY(m, g_clk_addr + 5, h >> 4);
+    }
 }
 
 static void clock_step(void)

@@ -100,6 +100,8 @@ float tc_model_catchup_speed(tc_model_t m)
     }
 }
 
+bool tc_model_k1_pullup(tc_model_t m) { return m == TC_MODEL_MOTHRA; }  // K13 low: its test fast mode
+
 const char *tc_model_long_name(tc_model_t m)
 {
     switch (m) {

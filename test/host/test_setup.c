@@ -78,6 +78,43 @@ static void test_first_icon_after_a(void)
     TEST_ASSERT_EQUAL_HEX8(0x01, f.icons & 0x7F);
 }
 
+// The ball's clock set is a time the ROM's own clock carries on from: set a few seconds before an hour turns
+// (noon, 1 PM, midnight on a 12-hour clock), let the ROM count past it, read it back.
+static void test_clock_set_carries_on(void)
+{
+    if (!have) TEST_IGNORE_MESSAGE("ROM not present");
+    static const uint32_t SET_S[] = { 11 * 3600 + 3590, 12 * 3600 + 3590, 23 * 3600 + 3590, 13 * 3600 + 5 * 60 };
+    for (size_t i = 0; i < sizeof SET_S / sizeof SET_S[0]; i++) {
+        uint32_t id = tc_clock_request_ms(SET_S[i] * 1000u), w = 0;
+        tc_clock_state_t st;
+        int guard = 0;
+        while ((st = tc_clock_poll(id, &w)) == TC_CLOCK_PENDING && guard++ < 400) run_ms(10);
+        TEST_ASSERT_EQUAL(TC_CLOCK_APPLIED, st);
+        run_ms(20000);
+        uint32_t s = 0;
+        char msg[48];
+        snprintf(msg, sizeof msg, "set %02u:%02u:%02u", (unsigned)(SET_S[i] / 3600), (unsigned)(SET_S[i] / 60 % 60),
+                 (unsigned)(SET_S[i] % 60));
+        TEST_ASSERT_TRUE_MESSAGE(clock_now(&s), msg);
+        TEST_ASSERT_UINT32_WITHIN_MESSAGE(3, (SET_S[i] + 20) % 86400, s, msg);
+    }
+}
+
+// C on the main screen leaves time running at real speed (Mothra's ROM has a test fast mode behind input K13,
+// which reads high on the real toy: tc_model_k1_pullup).
+static void test_c_on_main_screen_keeps_time(void)
+{
+    if (!have) TEST_IGNORE_MESSAGE("ROM not present");
+    play("C C C");  // back to the main screen from whatever is open
+    run_ms(3000);
+    uint32_t s0 = 0, s1 = 0;
+    TEST_ASSERT_TRUE(clock_now(&s0));
+    play("C");
+    run_ms(10000);
+    TEST_ASSERT_TRUE(clock_now(&s1));
+    TEST_ASSERT_UINT32_WITHIN(4, 10 + 1, (s1 - s0 + 86400) % 86400);  // the C press itself takes ~1.2 s
+}
+
 int main(void)
 {
     const char *name = getenv("TAMAORB_SETUP_ROM");
@@ -95,9 +132,13 @@ int main(void)
         tc_set_realtime(false);
         tc_set_icon_pins(tc_model_icon_pins(model));
         tc_set_clock_addr((uint16_t)tc_pet_clock_addr(model));
+        tc_set_clock_12h(tc_pet_clock_12h(model));  // as app_main does
+        tc_set_k1_pullup(tc_model_k1_pullup(model));
     }
     UNITY_BEGIN();
     RUN_TEST(test_setup_exit_starts_the_clock);
     RUN_TEST(test_first_icon_after_a);
+    RUN_TEST(test_clock_set_carries_on);
+    RUN_TEST(test_c_on_main_screen_keeps_time);
     return UNITY_END();
 }

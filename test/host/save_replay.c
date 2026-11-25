@@ -207,6 +207,8 @@ int main(int argc, char **argv)
     if (!tc_init(program, &plat)) return 1;
     tc_set_icon_pins(tc_model_icon_pins(g_model));
     if (tc_pet_clock_addr(g_model) >= 0) tc_set_clock_addr((uint16_t)tc_pet_clock_addr(g_model));
+    tc_set_clock_12h(tc_pet_clock_12h(g_model));  // as the ball (app_main.c)
+    tc_set_k1_pullup(tc_model_k1_pullup(g_model));
     ps_meta_t meta;
     const uint8_t *payload;
     size_t payload_len;

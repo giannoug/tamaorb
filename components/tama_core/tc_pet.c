@@ -12,17 +12,18 @@ typedef struct {
     int16_t hunger, happy, disc, weight_lo, weight_hi, sick, light, drop, age_lo, age_hi, chr, state, clock;
     uint8_t hunger_per_heart;  // 0: hearts = (v + 1) / 4 (P1); 1: hearts = v, at most 4 (Mothra)
     const char *setup_exit;
+    bool clock_12h;  // hour nibble 1-12 and a PM bit (tc_pet_clock_12h)
 } model_row_t;
 
 #define P1_LAYOUT 0x40, 0x41, 0x43, 0x46, 0x47, 0x48, 0x4B, 0x4D, 0x54, 0x55, 0x5D, 0x5E, 0x10
 static const model_row_t MODELS[] = {
-    { TC_MODEL_P1, "lb", P1_LAYOUT, 0, "B A C" },
-    { TC_MODEL_P2, "g", P1_LAYOUT, 0, "B A C" },
+    { TC_MODEL_P1, "lb", P1_LAYOUT, 0, "B A C", false },
+    { TC_MODEL_P2, "g", P1_LAYOUT, 0, "B A C", false },
     // Angel keeps P1's addresses; droppings never appeared in the research runs, and its weight unit is a glyph
     // that wasn't identified.
-    { TC_MODEL_ANGEL, NULL, 0x40, 0x41, 0x43, 0x46, 0x47, 0x48, 0x4B, -1, 0x54, 0x55, 0x5D, 0x5E, 0x10, 0, "B A C" },
+    { TC_MODEL_ANGEL, NULL, 0x40, 0x41, 0x43, 0x46, 0x47, 0x48, 0x4B, -1, 0x54, 0x55, 0x5D, 0x5E, 0x10, 0, "B A C", false },
     // Mothra: only hunger and the clock were found (the clock 10 nibbles later than P1's).
-    { TC_MODEL_MOTHRA, NULL, 0x3E, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0x1A, 1, "B A C" },
+    { TC_MODEL_MOTHRA, NULL, 0x3E, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0x1A, 1, "B A C", true },
 };
 
 _Static_assert(0x5E + 1 == TC_PET_RAM_NIBBLES, "TC_PET_RAM_NIBBLES must cover the decoder's addresses");
@@ -48,6 +49,12 @@ int tc_pet_clock_addr(tc_model_t m)
 
 bool tc_pet_has_clock(tc_model_t m) { return tc_pet_clock_addr(m) >= 0; }
 
+bool tc_pet_clock_12h(tc_model_t m)
+{
+    const model_row_t *r = row_of(m);
+    return r && r->clock_12h;
+}
+
 const char *tc_pet_setup_exit(tc_model_t m)
 {
     const model_row_t *r = row_of(m);
@@ -61,6 +68,10 @@ bool tc_pet_clock(tc_model_t model, const uint8_t *ram, size_t n, uint32_t *sec_
     if (a < 0 || !ram || n < (size_t)a + 6) return false;
     const uint8_t *c = ram + a;
     unsigned hour = 16u * (c[5] & 15) + (c[4] & 15);
+    if (tc_pet_clock_12h(model)) {  // 1-12, PM in bit 0 of the next nibble (its other bits are the ROM's own)
+        unsigned h12 = c[4] & 15;
+        hour = h12 >= 1 && h12 <= 12 ? h12 % 12 + 12u * (c[5] & 1) : 99;
+    }
     if (c[0] > 9 || c[1] > 5 || c[2] > 9 || c[3] > 5 || hour > 23) return false;
     *sec_of_day = hour * 3600u + (c[3] * 10u + c[2]) * 60u + c[1] * 10u + c[0];
     return true;

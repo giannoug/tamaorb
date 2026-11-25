@@ -36,6 +36,9 @@ const char *tc_need_word(tc_need_t n);
 bool tc_pet_clock(tc_model_t model, const uint8_t *ram, size_t n, uint32_t *sec_of_day);
 int  tc_pet_clock_addr(tc_model_t m);  // first clock nibble: 0x10 (P1, P2, Angel), 0x1A (Mothra); -1 none
 bool tc_pet_has_clock(tc_model_t m);
+// The clock's hour is 12-hour: the hour nibble holds 1-12 and the next nibble's bit 0 is PM (Mothra); otherwise
+// it is 16 * high + low, 0-23 (P1, P2, Angel). tama_core's clock write follows it (tc_set_clock_12h).
+bool tc_pet_clock_12h(tc_model_t m);
 // "lb" for P1, "g" for P2, NULL otherwise (Angel's unit glyph wasn't identified; Mothra's weight wasn't found).
 const char *tc_weight_unit(tc_model_t m);
 // Presses (rm_press_parse spec) that take a fresh egg out of the ROM's clock-setting mode, played with

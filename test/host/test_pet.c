@@ -285,6 +285,31 @@ static void test_mothra_names_no_need(void)
     TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));
 }
 
+// Mothra's clock is 12-hour: 0x1E holds 1-12, 0x1F bit 0 is PM (docs/pet-ram.md, CLOCK12); other 0x1F bits kept.
+static void test_mothra_clock_12h(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    memset(ram, 0, sizeof ram);
+    uint32_t s = 0;
+    ram[0x1A] = 4; ram[0x1B] = 3; ram[0x1C] = 5; ram[0x1D] = 0;  // :05:34
+    ram[0x1E] = 12; ram[0x1F] = 1;  // noon
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_MOTHRA, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(12 * 3600 + 5 * 60 + 34, s);
+    ram[0x1E] = 1; ram[0x1F] = 1 | 2;  // 1 PM, with bit 1 set too
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_MOTHRA, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(13 * 3600 + 5 * 60 + 34, s);
+    ram[0x1E] = 12; ram[0x1F] = 0;  // midnight
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_MOTHRA, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(5 * 60 + 34, s);
+    ram[0x1E] = 11; ram[0x1F] = 0;  // 11 AM
+    TEST_ASSERT_TRUE(tc_pet_clock(TC_MODEL_MOTHRA, ram, sizeof ram, &s));
+    TEST_ASSERT_EQUAL_UINT32(11 * 3600 + 5 * 60 + 34, s);
+    ram[0x1E] = 0;  // no such hour
+    TEST_ASSERT_FALSE(tc_pet_clock(TC_MODEL_MOTHRA, ram, sizeof ram, &s));
+    TEST_ASSERT_TRUE(tc_pet_clock_12h(TC_MODEL_MOTHRA));
+    TEST_ASSERT_FALSE(tc_pet_clock_12h(TC_MODEL_P1));
+}
+
 // "All good" is a claim about every input: it shows only when the model knows them all.
 static void test_need_all_good_needs_every_input(void)
 {
@@ -394,6 +419,7 @@ int main(void)
     RUN_TEST(test_angel_decode);
     RUN_TEST(test_mothra_hunger_only);
     RUN_TEST(test_mothra_names_no_need);
+    RUN_TEST(test_mothra_clock_12h);
     RUN_TEST(test_need_all_good_needs_every_input);
     RUN_TEST(test_need_known_problem_still_named);
     RUN_TEST(test_angel_no_all_good);
