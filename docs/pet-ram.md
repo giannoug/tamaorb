@@ -110,20 +110,88 @@ Runs from fresh eggs (`save_replay <rom> - …`; there are no owner saves), chai
 | Sick | `0x48` | ≥ 8 sick: switching the light off by day set 15 with `0x5E` 1→9 | light-off run |
 | Light | `0x4B` | 15 on, 0 off | the light menu |
 | Care mistakes | `0x42` | counts up while calls are ignored | 2 h run |
+| Droppings | `0x4D` | number of piles, as P1; the ROM adds one at a time and stops at 8 (code at `0x0350`-`0x0358`); the bathroom sets 0 (`0x0B6C`) | `ANGPOOP5`: `0x4D` 0→1 at 17.56 h and a pile with stink lines appears at the bottom right. `ANGPOOP6`: 0→1 at 18.65 h with the pile, the next block's bathroom set 0 and the pile was gone (18.70 h) |
+| Weight unit | (glyph) | the meter's weight line is a weight icon, the number (`0x47` `0x46`, tens blank when 0), then a **heart**: a filled heart with a three-pixel highlight at its top left (`.##.##.` / `#..####` / `#.#####` / `#######` / `.#####.` / `..###..` / `...#...`). The age line ends in 日 (days) | `ANGMETER`: "28" + heart with `0x47` = 2, `0x46` = 8 (stage 4, 48 h); "4" + heart with `0x46` = 4 (the baby). The ROM writes tile `0x1B` after the weight digits (`0x0866`-`0x086D`) |
 
 Icons (bit = tamalib icon number; the same pictures as P1, in another order on the glass): 0 meter, 1 food, 2 game, 3 bathroom, 4 discipline (shouting mouth), 5 medicine, 6 light, 7 attention. A from the main screen steps bit 0 → 6.
 
-**Not found:** droppings (`0x4D` never changed: no droppings appeared in 10 h of neglect or after three meals; `0x4A` counts something after meals); the weight unit glyph.
+**Why droppings took so long to show.** Angel only makes droppings from its second stage on, and only while it is happy: at each happiness tick, if `0x41` ≥ 4 the ROM takes 4 off and adds about ((`0x41` − 4)/2 + weight tens)/2 + `0x1F` to an accumulator at `0x214` (code `0x0FAB`-`0x0FC0`; with `0x41` = 15 and weight 28 it added 3, `ANGPOOP5`); when that overflows (and `0x5D` ≠ 1) it queues a "make droppings" event (dispatched through `0x5C` at `0x0309`), which adds 1 to `0x4D` (`0x0350`). With happy below 4, as in the earlier neglect and meal-only runs (a game adds only 1), `0x214` never moves and no droppings come. `ANGPOOP5` kept happy up with three games every 20 minutes.
+
+Angel runs (ROM `build-host/roms/tamaang.bin`; scripts and saves in `.superpowers/sdd/2026-11-25-leftovers/research/`, `saves/` and `logs/` there; `angscript.py` writes the scripts):
+
+| Name | Save | Script | What it shows |
+|---|---|---|---|
+| baby | `-` | `w3000 B w1000 A w1000 C w2000 ff600 w100 ram dump saves/ang_baby.sav` (200 600 timing) | hatched baby, `0x5D` = 1 |
+| feed48 | `ang_baby.sav` | `angscript.py feed 48 30 step=300` + `dump saves/ang_feed48.sav` | a meal and a "snack" every 30 min for 48 h: no droppings (happy stays low), stage 4 at 30.9 h |
+| `ANGPOOP5` | `ang_feed48.sav` | `angscript.py games 24 20 games=3` | `0x214` steps up at each tick with happy ≥ 4; overflow at 17.56 h → `0x4D` 0→1, pile on screen |
+| `ANGPOOP6` | `ang_feed48.sav` | `angscript.py games 36 20 games=3 clean=1` | `0x4D` 0→1 at 18.65 h (pile), bathroom → 0 at 18.70 h (no pile) |
+| `ANGMETER` | `ang_feed48.sav`, `ang_baby.sav` | `w1000 ram A w1000 B w2500 A w2500 A w2500 A w2500` (200 800 timing) | first meter page: "4日" over "28♥" (48 h save), "0日" over "4♥" (baby) |
+
+**Not found:** nothing left for the glance.
 
 ## Mothra (`tamamot`, E0C6S48, 16 KB)
 
 Mothra's RAM is laid out differently, and its glass wires the icons to segments tamalib doesn't map: TamaOrb reads them from display memory (`tc_model_icon_pins`).
 
+Every row below was checked three ways: the ROM code that keeps or draws the value (a disassembly, `disasm.py`), a save with the nibble poked (`poke.py`, `sweep.py`) and two or more natural runs whose screens (meter pages, sprites) were compared with the RAM at every RAM dump (`mjoin.py` + `mcheck.py` for the meter: 56 visits in `CARE2`-`CARE4`, hunger, happy, bar, age and weight agreed with the RAM dumped just before every time; `snap.py` for the screen). "v" is the nibble's value.
+
 | Name | Address | Encoding | Verified how |
 |---|---|---|---|
-| Clock | `0x1A`-`0x1F` | P1's layout, 10 nibbles later: s ones, s tens, min ones, min tens (BCD), hour low, hour high | in the clock menu A steps `0x1E`, B steps `0x1C`; ticks after the setup exit (`0x1A` per second, `0x1C` per minute, `0x1E` per hour) |
-| Hunger | `0x3E` | a meal adds 1, at most 4; hearts = v | 0 meals: 0 hearts; eight meals: `0x3E` = 4, four hearts |
+| Clock | `0x1A`-`0x1F` | s ones, s tens, min ones, min tens (BCD), then a **12-hour** hour: `0x1E` = 1-12, `0x1F` bit 0 = PM. 24 h hour = (`0x1E` mod 12) + 12 × (`0x1F` & 1); midnight is `0x1E` = 12, `0x1F` = 0, noon 12 and 1 | `CLOCK12`: the ROM's own carry goes 11:59 AM (`B`,0) → (`C`,1), (`C`,0) → (1,0), 11:59 PM (`B`,1) → (`C`,0), and the clock-setting menu's A steps 1…11, 12 PM, 1 PM…11 PM, 12 AM. The ROM's sleep check compares `0x1E` (12 read as 0) with the stage's sleep hour when `0x1F` bit 0 is set and with its wake hour when it is clear (`0x099C`) |
+| Stage | `0x0B` | 0 egg, 1 baby, 2 child, 3 or 4 teen, 5 cocoon (the teen spins it on a tower for an hour; the adult to come waits in `0x63`), 7/8/9/A adults, B/C/D/E second adult forms, F dead. The evolution code never picks 6 | natural runs: 1→2→3→5→A→F (`CARE3`), 1→2→4→5→A→F (`CARE4`), 1→2→3→5→7 (`CARE5`, no mistakes, bar 4); all adults forced from a teen save (`EVO`) |
+| Hunger | `0x3E` (`0x3F`) | hearts = v, at most 4; if `0x3F` ≠ 0 the meter shows 4 (`0x047D`). A meal adds 1 and is refused at 4 (`0x0324`); one comes off per stage tick (child and teen: 49 min) | poke 5 → 4 hearts, `0x3F` = 5 → 4 hearts (`SWEEP`); `MEALS4`: 1, 2, 3, 4 hearts with v = 1-4; every meter visit of `CARE2`-`CARE4` (54, no mismatch) |
+| Happy | `0x3D` | hearts = v, at most 4 (`0x0487`). A snack adds 1 (`0x07D5`, at most 4); a won game (about half) adds 1 | poke 5 → 4 hearts (`SWEEP`); `SNACK5`: 1, 2, 3 hearts after 1-3 snacks; every meter visit of `CARE2`-`CARE4` |
+| Bar ("せいぎ", justice) | `0x3B` | the meter's fourth page, titled せいぎ (justice): quarters filled = v, full at 4 (drawn 4 columns per unit from `0x0447`, so v > 4 still shows full). Scolding (shouting-mouth icon) while the pet makes its misbehaving call (`0x30` bit 0) adds 1, at most 4 (`0x0396`); each evolution resets it to 0, 2 or 4 depending on the new stage | poke 1-4 → ¼, ½, ¾, full (`SWEEP` + `BAR`); `CARE2` 0→1→2; `CARE4` 0→1→2→3 as a child, 2 at the teen, 3, 4, 0 at the adult A; meter quarters matched at every visit |
+| Age | `0x5E` ones, `0x5F` tens (BCD) | days (the meter writes 日 after it); one more each time the pet wakes, the baby's nap included (`0x09D9` → `0x0076`) | poke `0x5E` = 5 → "5", `0x5F` = 5 → "50" (`SWEEP`); `CARE3`: 0→1 at the baby's nap, then +1 at every morning, 9→0 with `0x5F` 0→1 at 217 h; meter matched at every visit |
+| Weight | `0x56` ones, `0x57` tens (BCD) | tons (the meter writes "t"). Meals and snacks add, games take 1 off, never below the stage's base (`0x68`/`0x69`), at most 99 | poke `0x56` = A → a non-digit, `0x57` = 5 → "55" (`SWEEP`); `CARE2`: 13, 26 … 91, 99 and stays 99; `CARE4`: 10, 20, 30 at each evolution; meter matched at every visit |
+| Sick | `0x05` bit 0 | 1 = sick: the skull (top right) while awake. Each medicine (two-fairies icon) takes one off `0x6A`; when `0x6A` was 0 the bit clears, so it takes `0x6A` + 1 doses (2 for the baby). Bit 1 is set when the pet starts dying (skull too, then `0x0B` = F) | `SICKFIND` (bit set at 1 076 s, skull from then on), `CURE` (dose 1: `0x6A` 1→0, skull; dose 2: bit clear, skull gone); in `CARE4` (1 441 RAM dumps) and the neglect run the skull is on screen exactly when bit 0 or 1 is set and the pet is awake |
+| Asleep | `0x05` bit 2 | 1 = asleep (night and the baby's nap). Child and teen sleep 8 PM-8 AM (teen 4: 8 PM-9 AM), adult A 11 PM-10 AM: the hours are `0x66` (PM) and `0x67` (AM), set per stage | Z's on screen with the light on exactly when the bit is set (neglect run: `0x05` = 4 and 5; `CARE2`, `CARE4` baby naps); bit set and cleared at the stage's hours in `CARE2`-`CARE5` |
+| Light | `0x08` bit 3 | 1 = off: the whole screen is dark (every pixel lit). The light menu (sun icon) writes it from its cursor; the ROM turns the light on when the pet wakes (`0x09DF`) | `LIGHT1`: off → `0x08` 0→8, screen dark; on → 8→0. `CARE4`: dark screen at exactly the RAM dumps with bit 3 set (750 of 1 441); `CARE5` the same (977 of 1 801, bit 1 set or not). Mask it: bit 1 is the clock's 24-hour display and bit 0 the fast mode below |
+| Droppings | `0x07` | number of piles, at most 8 (`0x04E9`); the coil icon cleans (sets 0, `0x04AE`) | `POOP1`: 1, 2, 3, 4 piles on screen with v = 1-4 (one about every 3 h, no cleaning); `CARE4`: 0→1 with a pile, the coil → 0 and the pile gone |
+| Care mistakes | `0x37` | +1 each time a call (hunger or happy at 0, light left on at bedtime) runs out; reset at each evolution, which it steers | `CARE4` (≈ 0.7 h apart while happy was 0), `EVO` |
 
-Icon pins (bit: segment-COM, picture): 0: 8-0 circle (meter), 1: 17-0 leaves (food), 2: 18-0 bow, 3: 19-0 coil, 4: 39-8 shouting mouth, 5: 38-8 two fairies, 6: 37-8 sun (light), 7: 28-8 sparkle (attention). A from the main screen steps bit 0 → 6. The meter's pages: age and weight (tons), hunger hearts, happy hearts, a bar.
+Icon pins (bit: segment-COM, picture): 0: 8-0 circle (meter), 1: 17-0 leaves (food), 2: 18-0 bow (game), 3: 19-0 coil (clean the droppings), 4: 39-8 shouting mouth (scold), 5: 38-8 two fairies (medicine), 6: 37-8 sun (light), 7: 28-8 sparkle (attention). A from the main screen steps bit 0 → 6. The meter's pages: age 日 and weight t, おなか (hunger) hearts, ごきげん (mood) hearts, せいぎ (justice) bar.
 
-**Not found:** character/egg, happy (six games moved nothing the meter showed; `0x50` went 0→1 after one game and back), the bar, age, weight, sickness, sleep, light, droppings. The glance shows hunger only.
+**Not like P1.** Hunger, happy and the bar count 0-4 directly (P1: 0-15 and (v+1)/4). Sickness is a flag, not P1's ≥ 8 threshold. There is no state nibble like P1's `0x5E`: sick, dying and asleep are bits 0, 1 and 2 of `0x05`. The light is bit 3 of `0x08` and set means off (P1: `0x4B` 15 on, 0 off). Age is in days and also goes up after the baby's nap. The stage nibble `0x0B` plays P1's `0x5D` (0 egg, F dead). The clock is 12-hour with a PM bit (above). The menus' own cursors: the food menu remembers its item (`0x23`: 1 meal, 2 snack); the light menu starts on the current state. For the glance: **bar label "Justice"** (P1's discipline slot), hunger = min(`0x3E`, 4) (4 if `0x3F` ≠ 0), happy = min(`0x3D`, 4), bar = min(`0x3B`, 4) quarters, sick = `0x05` & 3, asleep = `0x05` & 4, light off = `0x08` & 8, droppings = `0x07`, weight = 10 × `0x57` + `0x56` t, age = 10 × `0x5F` + `0x5E` days, no stats while `0x0B` is 0 or F.
+
+**Stages and how the ROM picks them** (`0x0D10`, a jump table on the current stage; "mistakes" is `0x37`, "bar" `0x3B`, both read at the evolution, which comes after a set awake time kept in `0x48`-`0x4B` and compared with `0x4C`-`0x4F`: about 24 awake hours for the child, 42 for a teen):
+
+| From | To |
+|---|---|
+| 0 egg | 1 baby (about 5.5 min after the setup exit) |
+| 1 baby | 2 child (about 1 h) |
+| 2 child | 3 if mistakes < 3, else 4 |
+| 3 teen | 7 if bar 4 and no mistakes; else 8 if mistakes < 3 (bar < 2) or < 4 (bar ≥ 2); else A. Through 5 (cocoon) for an hour |
+| 4 teen | 8 if bar 4 and mistakes < 2; else 9 if mistakes < 4 (bar < 2) or < 5; else A. Through 5 (cocoon) |
+| 7 | D when there are no mistakes and the weight is 70-79 t at two checks in a row (`0x16` counts them, a failed check clears it); E instead if the count is exactly 5 at a check, which these runs never reached naturally (forced with `0x16` = 4) |
+| 8 | B if bar 4 and no mistakes |
+| A | C if bar 4 and no mistakes |
+| 9, B, C, D, E | no further stage |
+
+Also seen, not used by the glance (from the code, matched in the runs): `0x36` sicknesses this stage, `0x38`-`0x3A` sick time, `0x6A` medicine doses still needed − 1; `0x48`/`0x49` awake minutes (BCD) and `0x4A`/`0x4B` awake hours (binary, they stop while asleep), `0x4C`-`0x4F` the stage's target for them; `0x83`/`0x84` minutes until the next hunger heart comes off (reloaded per stage from `0x0600`), `0x86`/`0x87` the same for happy (`0x0610`); `0x7A`/`0x7B` and `0x7C`/`0x7D` count down while hunger or happy is at 0 (a care mistake when they run out), `0x7E`/`0x7F` a third such call; `0x3C` snacks modulo 3 and `0x62` +1 per three snacks (it raises the odds of sickness, `0x0AA9`, and is cleared at evolution); `0x66`/`0x67` the stage's sleep (PM) and wake (AM) hours, `0x68`/`0x69` its base weight; `0x16` the 7 → D/E count; `0x23` the food menu's cursor; `0x08` bit 1 the clock screen's 24-hour display. The earlier candidates "`0x05E` 0→1 at the child and 1→2 when it got sick" were the age going up at the baby's nap and the next morning's wake.
+
+Death: `0x0B` = F after four sicknesses in one stage (`0x36` counts them, `0x0514`) or after six hours of sickness while awake (`0x38`/`0x39` count the minutes, `0x3A` the hours, `0x08D6`; in the neglect run `0x3A` went 1→6 from 8.1 h to 13.1 h, when the pet died). The sprites of each stage are in `mothra_stage_sprites.txt` in the research folder.
+
+**C toggles a fast mode in this emulation.** On the main screen C toggles `0x08` bit 0 (`0x1DEC`) when `0x14` bit 3 is set, and `0x14` bit 3 is the inverse of input K13 (`0xF42` bit 3, read at `0x0707`). tamalib leaves K10-K13 low, so the ROM sees the pin grounded (most likely a factory test pad) and C works; with the bit set every main-loop pass counts as a second and a minute (`0x0900`, `0x0922`), so the pet's clock, timers and evolution run about an hour per real second until C is pressed again or an event (a sickness, droppings, a call, waking up, evolving) clears it (`0x00E4`). The research scripts never press C on the main screen (menus close on their own after 10 s).
+
+Mothra runs (ROM `build-host/roms/tamamot.bin`; all files under `.superpowers/sdd/2026-11-25-leftovers/research/`, scripts by `care.py` and `evo.py`; logs in `logs/`, the long ones gzipped: `gunzip -k` before `mjoin.py`, `snap.py` or `timeline.py`):
+
+| Name | Save | Script | What it shows |
+|---|---|---|---|
+| baby | `-` | `w3000 B w1000 A w1000 C w2000 clock ff400 w100 clock ram dump saves/mot_baby.sav` | baby (`0x0B` = 1) at 6.7 min |
+| `SWEEP` | `mot_baby.sav` | `sweep.py build-host/roms/tamamot.bin saves/mot_baby.sav 0 9F +5 "w1000 A w1000 B w1500 A w2300 A w2300 A w2300 C w1500"` | each nibble 0x000-0x09F +5 in turn, meter pages compared: only `0x3B` (bar), `0x3D` (happy), `0x3E`/`0x3F` (hunger), `0x56`/`0x57` (weight) and `0x5E`/`0x5F` (age) change them (`0x02`, `0x0A`, `0x0D` are screen state) |
+| `BAR` | `mot_baby.sav` | `poke.py … 03B=v`, then the meter | v = 1, 2, 3, 4 → 3, 7, 11, 14 lit columns (¼ … full); 5-F full |
+| `MEALS4` | `mot_baby.sav` | (meal `A w1000 A w1000 B w1500 B w12000`, meter) ×4 | `0x3E` 1-4, hunger page 1-4 hearts |
+| `SNACK5` | `mot_baby.sav` | snack `A w1000 A w1000 B w1500 A w1500 B w14000` and meter, ×5 (the cursor is remembered, so they alternate meal and snack) | `0x3D` 1, 2, 3 → 1, 2, 3 hearts |
+| `CLOCK12` | `mot_baby.sav` | `w1000 set115930 w1000 ram ff60 ram`; `poke.py … 1A=0 1B=3 1C=9 1D=5 1E=B 1F=1` + `ff40`; `w3000 B w1000 ram` + (`A w800 ram`) ×26 from `-` | the carries and menu steps in the Clock row |
+| `LIGHT1` | `mot_baby.sav` | `w1000` + `A w900`×7 `B w1500 A w1200 B w3000 C w1000 w3000`, twice (the menu opens on the current state, so the second A picks "on") | `0x08` 0→8, dark screen; 8→0 |
+| `SICKFIND` | `mot_baby.sav` | `sick_find2.script` (meals and snacks, then ff with C presses: fast mode, which is how it got sick so early) | `0x05` 0→1, `0x0C` 0→B, `0x36` 0→1 at 1 076 s with the skull; dumped as `mot_sick_baby.sav` |
+| `CURE` | `mot_sick_baby.sav` | `w1000 ram` + (`A w900`×6 `B w9000 w12000 ram`) ×2 | dose 1 `0x6A` 1→0, still sick; dose 2 `0x05` 1→0, skull gone |
+| `POOP1` | `care4_24h.sav` | `care.py 10.5 10 0900 snack=0 game=1 clean=0` | `0x07` 1, 2, 3, 4 with as many piles |
+| `CARE2` | `mot_baby.sav` | `w500 set090000 ram` + `care.py 30 10 0900 meter=6` | 30 h: child at 1.05 h, weight to 99, asleep 20:21-08:04, light 8 at bedtime and back at the wake, age 1→2 at the wake |
+| `CARE3` | `mot_baby.sav` | `care3.script` (`care.py 240 10 0900 meter=36`, snacks every block, light only switched off the first night) | 2 → 3 at 50 h → 5 at 144.7 h → A at 145.9 h → F at 224 h (fourth sickness of the stage) |
+| `CARE4` | `mot_baby.sav` | `care4.script` (`care.py 240 10 0900 snack=0 game=1 meter=36 dump_h=24 dump_prefix=care4`) | 2 → 4 at 52 h (happy fell to 0: mistakes) → 5 → A at 147 h → F at 218 h; daily saves `care4_<h>h.sav` |
+| `CARE5` | `mot_baby.sav` | `care5.script` (`care.py 300 10 0900 snack=0 game=3 meter=36 dump_h=24 dump_prefix=care5`) | no care mistakes in 300 h: 2 → 3 at 57 h, bar 4 by 78 h, 5 (cocoon) at 147.5 h → 7 at 148.5 h; weight stays at the 7's base 60 t (three games a block), so no D; 26 meter visits agree; dark screen at exactly the 977 of 1 801 dumps with `0x08` bit 3 set, also while bit 1 (24-hour display, toggled by a stray press on the clock screen) was set |
+| `EVO` | `care4_96h.sav` and the ends of earlier `EVO` runs | `evo.py <save> <name> [37=… 3B=… 0B=… 57=… 16=…]`: sets the awake-time counters 5 min short of the target, then 3 h of `ff600 ram` | teen 4 with mistakes 0/3/F (bar 4) → 5 → 8/9/A; teen 3 (bar 4, mistakes 0) → 7, (bar 1, mistakes 5) → A; 8 → B, A → C (bar 4, no mistakes); 7 at 75 t with `0x16` = 1 → D, `0x16` = 4 → E |
+
+**Not found:** nothing the glance needs.
