@@ -19,7 +19,7 @@ TamaOrb draws its own LCD icons. This folder records what we looked at, and unde
 
 ### Angel and Mothra (bit = TamaOrb's icon number)
 
-Their meanings come from running the ROMs on the PC (`docs/pet-ram.md`). What each glass segment depicts was learned by looking at MAME's `tamaang.svg` and `tamamot.svg` (inside the owner's ROM zips; not stored, not traced). TamaOrb draws Angel with its P1 pictures in Angel's order, and Mothra with its own art (`components/ui/ui_icons.c`).
+Their meanings come from running the ROMs on the PC (`docs/pet-ram.md`). What each glass segment depicts was learned by looking at MAME's `tamaang.svg` and `tamamot.svg` (inside the owner's ROM zips; not stored, not traced). TamaOrb draws Angel with its P1 pictures in Angel's order, and Mothra with its own art (`components/ui/ui_icons.c`). Angel needs no art of its own: rendering `tamaang.svg`'s icon shapes (2026-11-25) showed the same eight subjects as P1's glass (knife and fork, light bulb, bat and ball, syringe, rubber duck, scale, shouting mouth, two faces), so the owner kept P1's pictures.
 
 | Bit | Angel: function (glass picture) | Mothra: function (glass picture) |
 |---|---|---|
