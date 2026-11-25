@@ -8,8 +8,12 @@
 # 2. components/web/CMakeLists.txt gzips the web pages while CMake configures, and an edited page alone doesn't
 #    trigger that. Gzip them here before every build (Python's gzip: works on Windows too), writing only when the
 #    content changed so an unchanged page doesn't relink.
+# 3. The firmware version (tools/version.py: the commit, plus "-dirty") is set while CMake configures, so a new
+#    commit or a newly dirty tree wouldn't reach the build. If it differs from what the last configure wrote to
+#    tamaorb_version.txt, remove build.ninja so PlatformIO configures again.
 import glob
 import gzip
+import importlib.util
 import os
 
 Import("env")  # noqa: F821 (provided by PlatformIO's SCons)
@@ -25,6 +29,16 @@ if os.path.isfile(ninja):
         watched += glob.glob(os.path.join(project, "components", "**", pattern), recursive=True)
     watched += glob.glob(os.path.join(project, "main", "idf_component.yml"))
     if any(os.path.getmtime(f) > built for f in watched):
+        os.remove(ninja)
+
+stamp = os.path.join(build, "tamaorb_version.txt")
+if os.path.isfile(ninja) and os.path.isfile(stamp):
+    _spec = importlib.util.spec_from_file_location("tamaorb_version", os.path.join(project, "tools", "version.py"))
+    _version = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_version)
+    with open(stamp) as f:
+        configured = f.read()
+    if configured != _version.version(project):
         os.remove(ninja)
 
 dst_dir = os.path.join(build, "esp-idf", "web")
