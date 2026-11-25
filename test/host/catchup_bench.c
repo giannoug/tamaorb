@@ -81,6 +81,8 @@ int main(int argc, char **argv)
     tc_set_realtime(false);
     tc_set_icon_pins(tc_model_icon_pins(model));
     tc_set_clock_addr((uint16_t)tc_pet_clock_addr(model));
+    tc_set_clock_12h(tc_pet_clock_12h(model));  // as the ball (app_main.c)
+    tc_set_k1_pullup(tc_model_k1_pullup(model));
     const char *save = model == TC_MODEL_P1 ? "p1.sav" : model == TC_MODEL_P2 ? "p2.sav" : NULL;
     if (save && !load_save(save)) {
         fprintf(stderr, "no save: roms/saves/%s\n", save);

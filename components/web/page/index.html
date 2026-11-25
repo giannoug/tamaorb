@@ -612,7 +612,7 @@ function renderPets(){
   var vm=pets.map(function(p){
     var saved=p.has_save?(clockOk()&&p.save_trusted?'saved '+ago(p.save_unix):'saved, time unknown'):'no save yet';
     var bits=[p.model];
-    if(p.egg)bits.push('egg');else if(p.age!==null&&p.age!==undefined)bits.push(p.age+' yr');
+    if(p.egg)bits.push('egg');else if(p.age!==null&&p.age!==undefined)bits.push(p.age+' '+(p.age_unit||'yr'));
     if(!p.active)bits.push(p.has_save&&p.save_trusted&&clockOk()?'away '+span(Math.max(0,nowU()-p.save_unix)):saved);
     else bits.push('running');
     if(!p.rom_on_card)bits.push('ROM not on the SD card');

@@ -507,9 +507,18 @@ static void test_pets_list_shape(void)
     TEST_ASSERT_EQUAL_STRING("09e5101b37636a314fc599d5d69b4846721b3c88-0", cJSON_GetObjectItem(p0, "id")->valuestring);
     TEST_ASSERT_EQUAL_STRING("P2 #1", cJSON_GetObjectItem(p0, "name")->valuestring);
     TEST_ASSERT_EQUAL(3, cJSON_GetObjectItem(p0, "age")->valueint);
+    TEST_ASSERT_EQUAL_STRING("yr", cJSON_GetObjectItem(p0, "age_unit")->valuestring);  // the meter's unit (tc_age_unit)
     TEST_ASSERT_EQUAL_STRING("4b4979cf92dc9d2fb6d7295a38f209f3da144f72-3", cJSON_GetObjectItem(p1, "id")->valuestring);
     TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(p1, "age")));
     TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(p1, "egg")));
+    cJSON_Delete(a);
+    fake.pets[1].model = TC_MODEL_MOTHRA;  // days on Mothra's (and Angel's) meter
+    fake.pets[1].age_years = 17;
+    go(RM_GET, "/api/pets", NULL, NULL, NULL);
+    a = json();
+    p1 = cJSON_GetArrayItem(a, 1);
+    TEST_ASSERT_EQUAL(17, cJSON_GetObjectItem(p1, "age")->valueint);
+    TEST_ASSERT_EQUAL_STRING("d", cJSON_GetObjectItem(p1, "age_unit")->valuestring);
     TEST_ASSERT_NOT_NULL(cJSON_GetObjectItem(p1, "rom_on_card"));
     cJSON_Delete(a);
 }

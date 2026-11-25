@@ -151,6 +151,8 @@ int main(void)
         tc_set_realtime(false);
         tc_set_icon_pins(tc_model_icon_pins(s_model));
         tc_set_clock_addr((uint16_t)tc_pet_clock_addr(s_model));
+        tc_set_clock_12h(tc_pet_clock_12h(s_model));    // the ball's setup (app_main.c): the proof must run it
+        tc_set_k1_pullup(tc_model_k1_pullup(s_model));
         const char *save = s_model == TC_MODEL_P1 ? "p1.sav" : s_model == TC_MODEL_P2 ? "p2.sav" : NULL;
         if (save && !load_save(save)) {
             snprintf(why, sizeof why, "no save: roms/saves/%s", save);

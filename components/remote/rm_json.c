@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "remote.h"
+#include "tc_pet.h"
 
 static void *(*s_alloc)(size_t n) = malloc;
 
@@ -218,6 +219,9 @@ cJSON *rm_json_pets(const rm_pet_t *p, int n)
         cJSON_AddBoolToObject(o, "egg", p[i].egg);
         if (p[i].age_years >= 0) cJSON_AddNumberToObject(o, "age", p[i].age_years);
         else cJSON_AddNullToObject(o, "age");
+        const char *unit = tc_age_unit(p[i].model);  // "yr" (P1, P2) or "d" (Angel, Mothra: their meters' 日)
+        if (unit) cJSON_AddStringToObject(o, "age_unit", unit);
+        else cJSON_AddNullToObject(o, "age_unit");
     }
     return a;
 }
