@@ -401,6 +401,24 @@ static int clock_y(void)
     return y;
 }
 
+// Each model's own units and bar label: Mothra days, tons and its justice bar; Angel days and a bare weight
+// (its meter's heart isn't in the font).
+static void test_glance_units_per_model(void)
+{
+    sample_pet();
+    ui_glance_t g = sample_glance();
+    pet.age_years = 17;
+    pet.weight = 55;
+    pet.discipline = 1;
+    g.model = TC_MODEL_MOTHRA;
+    ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("17 d  55 t  justice 1/4", 1, INK, NULL, NULL));
+    g.model = TC_MODEL_ANGEL;
+    pet.weight = 28;
+    ui_render_glance(fb, &g, &UI_PALETTE_CLASSIC);
+    TEST_ASSERT_TRUE(find_text("17 d  28  disc 1/4", 1, INK, NULL, NULL));
+}
+
 static void test_glance_closes_up_missing_rows(void)
 {
     sample_pet();
@@ -1031,6 +1049,7 @@ int main(void)
     RUN_TEST(test_palette_lookup);
     RUN_TEST(test_no_ink_outside_circle);
     RUN_TEST(test_glance_unknown_pet_has_no_hearts);
+    RUN_TEST(test_glance_units_per_model);
     RUN_TEST(test_glance_closes_up_missing_rows);
     RUN_TEST(test_title_marquee_moves);
     RUN_TEST(test_list_long_name_ellipsis);

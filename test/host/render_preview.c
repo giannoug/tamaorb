@@ -87,6 +87,12 @@ int main(int argc, char **argv)
         f.rows[0] = 0;  // the canvas pet, no icons on the copy
         ui_glance_t g = { .frame = &f, .pet = &pet, .model = TC_MODEL_P1, .clock_known = true, .hour = 14,
                           .minute = 32, .batt_pct = 80, .address = "tamaorb.local" };
+        if (!strcmp(mode, "glance-mothra")) {  // days, tons and the justice bar
+            g.model = TC_MODEL_MOTHRA;
+            pet.age_years = 17;
+            pet.weight = 55;
+            pet.discipline = 1;
+        }
         ui_render_glance(fb, &g, ui_palette_by_id(pal));
     } else if (!strcmp(mode, "catchup")) ui_render_catchup(fb, "P2 #1", 8040, 29100, 760, UI_SKIP_BUTTON, p);
     else if (!strcmp(mode, "catchup-confirm")) ui_render_catchup(fb, "P2 #1", 8040, 29100, 760, UI_SKIP_CONFIRM, p);

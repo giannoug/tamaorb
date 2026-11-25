@@ -85,14 +85,15 @@ static void draw_lcd_box(uint16_t *fb, int y, const tc_frame_t *f, const ui_pale
     ui_draw_lcd(fb, x + LCD_BORDER, yy + LCD_BORDER, scale, f ? f : &blank, p);
 }
 
-// "3 yr  12 lb  disc 2/4", leaving out what isn't known. Empty when nothing is.
+// "3 yr  12 lb  disc 2/4" (P1), "17 d  55 t  justice 1/4" (Mothra), leaving out what isn't known. Empty when
+// nothing is. A model whose weight unit has no glyph ("") shows the bare number.
 static void stats_line(const tc_pet_t *pet, tc_model_t model, char *out, size_t cap)
 {
-    const char *unit = tc_weight_unit(model);
-    char age[12] = "", weight[16] = "", disc[12] = "";
-    if (pet->age_years >= 0) snprintf(age, sizeof age, "%d yr", pet->age_years);
-    if (pet->weight >= 0 && unit) snprintf(weight, sizeof weight, "%d %s", pet->weight, unit);
-    if (pet->discipline >= 0) snprintf(disc, sizeof disc, "disc %d/4", pet->discipline);
+    const char *unit = tc_weight_unit(model), *age_unit = tc_age_unit(model), *bar = tc_bar_label(model);
+    char age[12] = "", weight[16] = "", disc[20] = "";
+    if (pet->age_years >= 0 && age_unit) snprintf(age, sizeof age, "%d %s", pet->age_years, age_unit);
+    if (pet->weight >= 0 && unit) snprintf(weight, sizeof weight, *unit ? "%d %s" : "%d", pet->weight, unit);
+    if (pet->discipline >= 0 && bar) snprintf(disc, sizeof disc, "%s %d/4", bar, pet->discipline);
     snprintf(out, cap, "%s%s%s%s%s", age, age[0] && (weight[0] || disc[0]) ? "  " : "", weight,
              weight[0] && disc[0] ? "  " : "", disc);
 }

@@ -22,7 +22,7 @@ So: meter is A once, food A twice, game three times, bathroom four, discipline f
 
 ## Meter (checked)
 
-A once, then B: age and weight; A: a bar (Angel's stand-in for discipline); A: hunger hearts; A: happy hearts; A wraps around. Titles are Japanese characters; go by position. Hearts: solid is full, outline empty, four per row.
+A once, then B: age (days) and weight (a heart after the number); A: a bar (Angel's stand-in for discipline); A: hunger hearts; A: happy hearts; A wraps around. Titles are Japanese characters; go by position. Hearts: solid is full, outline empty, four per row.
 
 ## Care (checked unless marked)
 
@@ -32,7 +32,7 @@ A once, then B: age and weight; A: a bar (Angel's stand-in for discipline); A: h
 - **Light.** A seven times, B, A, B switches it off. Don't switch the light off by day: in a test that made the pet sick at once.
 - **Sleep.** It falls asleep at 20:00 (the screen shows it asleep).
 - **Sickness.** A skull on screen; medicine is A six times, B. Not checked how many doses it takes.
-- **Droppings.** Not seen in testing. If droppings appear, the bathroom is A four times, B.
+- **Droppings (checked).** They only come once happy is high (and after the baby stage), a pile at a time. The bathroom, A four times, B, cleans them.
 
 ## Routine
 

@@ -233,7 +233,7 @@ static void test_angel_decode(void)
     TEST_ASSERT_EQUAL(1, p.discipline);
     TEST_ASSERT_EQUAL(2, p.age_years);
     TEST_ASSERT_EQUAL(22, p.weight);
-    TEST_ASSERT_EQUAL(-1, p.droppings);  // never seen on an Angel
+    TEST_ASSERT_EQUAL(ram[0x4D] > 4 ? 4 : ram[0x4D], p.droppings);  // 0x4D as P1 (round two)
     TEST_ASSERT_EQUAL(0, p.sick);
     TEST_ASSERT_EQUAL(0, p.asleep);
     TEST_ASSERT_EQUAL(1, p.light_on);
@@ -247,42 +247,116 @@ static void test_angel_decode(void)
     TEST_ASSERT_FALSE(p.known);
 }
 
-static void test_mothra_hunger_only(void)
+// ---- Mothra and Angel at parity (docs/pet-ram.md, round two) ----
+static void mothra_ram(uint8_t *ram, uint8_t stage)
 {
-    uint8_t ram[TC_RAM_NIBBLES];
-    memset(ram, 0, sizeof ram);
-    ram[0x3E] = 3;  // one meal adds 1; the meter shows one heart per unit, 4 at most
-    tc_pet_t p;
-    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
-    TEST_ASSERT_TRUE(p.known);
-    TEST_ASSERT_EQUAL(3, p.hunger);
-    TEST_ASSERT_EQUAL(-1, p.happy);
-    TEST_ASSERT_EQUAL(-1, p.discipline);
-    TEST_ASSERT_EQUAL(-1, p.age_years);
-    TEST_ASSERT_EQUAL(-1, p.weight);
-    TEST_ASSERT_EQUAL(-1, p.droppings);
-    TEST_ASSERT_EQUAL(-1, p.sick);
-    TEST_ASSERT_EQUAL(-1, p.asleep);
-    TEST_ASSERT_EQUAL(-1, p.light_on);
-    ram[0x3E] = 7;
-    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
-    TEST_ASSERT_EQUAL(4, p.hunger);
-    TEST_ASSERT_NULL(tc_weight_unit(TC_MODEL_MOTHRA));
+    memset(ram, 0, TC_RAM_NIBBLES);
+    ram[0x0B] = stage;
 }
 
-// Mothra's character address isn't known, so an egg or a dead pet can't be told apart from a hungry one:
-// no need word at all rather than a wrong "Hungry".
-static void test_mothra_names_no_need(void)
+static void test_mothra_stage(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    tc_pet_t p;
+    mothra_ram(ram, 0);  // egg
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_FALSE(p.known);
+    mothra_ram(ram, 0xF);  // dead
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_FALSE(p.known);
+    for (uint8_t st = 1; st <= 0xE; st++) {
+        mothra_ram(ram, st);
+        tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+        TEST_ASSERT_TRUE(p.known);
+    }
+}
+
+static void test_mothra_fields(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    tc_pet_t p;
+    mothra_ram(ram, 2);
+    ram[0x3E] = 3;               // hunger: hearts = v
+    ram[0x3D] = 2;               // happy: hearts = v
+    ram[0x3B] = 1;               // the justice bar, quarters
+    ram[0x5E] = 7; ram[0x5F] = 1;  // age 17 (days, BCD)
+    ram[0x56] = 5; ram[0x57] = 5;  // weight 55 (tons, BCD)
+    ram[0x07] = 2;               // two piles
+    ram[0x05] = 0;               // not sick, awake
+    ram[0x08] = 2;               // light on (bit 3 clear; bit 1 is the clock's 24 h display)
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(3, p.hunger);
+    TEST_ASSERT_EQUAL(2, p.happy);
+    TEST_ASSERT_EQUAL(1, p.discipline);
+    TEST_ASSERT_EQUAL(17, p.age_years);
+    TEST_ASSERT_EQUAL(55, p.weight);
+    TEST_ASSERT_EQUAL(2, p.droppings);
+    TEST_ASSERT_EQUAL(0, p.sick);
+    TEST_ASSERT_EQUAL(0, p.asleep);
+    TEST_ASSERT_EQUAL(1, p.light_on);
+    TEST_ASSERT_EQUAL(TC_NEED_DROPPINGS, tc_pet_need(&p));
+    ram[0x07] = 0;
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(TC_NEED_ALL_GOOD, tc_pet_need(&p));  // every input known on Mothra now
+}
+
+static void test_mothra_flags_and_caps(void)
+{
+    uint8_t ram[TC_RAM_NIBBLES];
+    tc_pet_t p;
+    mothra_ram(ram, 3);
+    ram[0x3E] = 2; ram[0x3F] = 5;  // the meter shows 4 when 0x3F is set
+    ram[0x3D] = 6;                 // at most 4
+    ram[0x3B] = 7;                 // full bar at 4 or more
+    ram[0x07] = 8;                 // up to 8 piles; shown as 4 like P1's
+    ram[0x05] = 1 | 4;             // sick and asleep
+    ram[0x08] = 8 | 1;             // light off (bit 0 is the fast mode, not the light)
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(4, p.hunger);
+    TEST_ASSERT_EQUAL(4, p.happy);
+    TEST_ASSERT_EQUAL(4, p.discipline);
+    TEST_ASSERT_EQUAL(4, p.droppings);
+    TEST_ASSERT_EQUAL(1, p.sick);
+    TEST_ASSERT_EQUAL(1, p.asleep);
+    TEST_ASSERT_EQUAL(0, p.light_on);
+    TEST_ASSERT_EQUAL(TC_NEED_SICK, tc_pet_need(&p));
+    ram[0x05] = 2;  // dying: the skull too
+    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(1, p.sick);
+    TEST_ASSERT_EQUAL(0, p.asleep);
+}
+
+static void test_angel_droppings(void)
 {
     uint8_t ram[TC_RAM_NIBBLES];
     memset(ram, 0, sizeof ram);
+    ram[0x5D] = 2;
+    ram[0x40] = ram[0x41] = 15;
+    ram[0x5E] = 1;
+    ram[0x4B] = 15;
+    ram[0x4D] = 1;
     tc_pet_t p;
-    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
-    TEST_ASSERT_EQUAL(0, p.hunger);
-    TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));
-    ram[0x3E] = 2;
-    tc_pet_decode(TC_MODEL_MOTHRA, ram, sizeof ram, &p);
-    TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));
+    tc_pet_decode(TC_MODEL_ANGEL, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(1, p.droppings);
+    TEST_ASSERT_EQUAL(TC_NEED_DROPPINGS, tc_pet_need(&p));
+    ram[0x4D] = 0;
+    tc_pet_decode(TC_MODEL_ANGEL, ram, sizeof ram, &p);
+    TEST_ASSERT_EQUAL(TC_NEED_ALL_GOOD, tc_pet_need(&p));  // droppings known: "All good" can show again
+}
+
+static void test_units_and_labels(void)
+{
+    TEST_ASSERT_EQUAL_STRING("lb", tc_weight_unit(TC_MODEL_P1));
+    TEST_ASSERT_EQUAL_STRING("g", tc_weight_unit(TC_MODEL_P2));
+    TEST_ASSERT_EQUAL_STRING("", tc_weight_unit(TC_MODEL_ANGEL));  // a heart on the glass; the font has none
+    TEST_ASSERT_EQUAL_STRING("t", tc_weight_unit(TC_MODEL_MOTHRA));
+    TEST_ASSERT_EQUAL_STRING("yr", tc_age_unit(TC_MODEL_P1));
+    TEST_ASSERT_EQUAL_STRING("yr", tc_age_unit(TC_MODEL_P2));
+    TEST_ASSERT_EQUAL_STRING("d", tc_age_unit(TC_MODEL_ANGEL));  // 日 on the meter
+    TEST_ASSERT_EQUAL_STRING("d", tc_age_unit(TC_MODEL_MOTHRA));
+    TEST_ASSERT_EQUAL_STRING("disc", tc_bar_label(TC_MODEL_P1));
+    TEST_ASSERT_EQUAL_STRING("disc", tc_bar_label(TC_MODEL_ANGEL));
+    TEST_ASSERT_EQUAL_STRING("justice", tc_bar_label(TC_MODEL_MOTHRA));
 }
 
 // Mothra's clock is 12-hour: 0x1E holds 1-12, 0x1F bit 0 is PM (docs/pet-ram.md, CLOCK12); other 0x1F bits kept.
@@ -328,21 +402,6 @@ static void test_need_known_problem_still_named(void)
     p.hunger = 4;
     p.sick = 1;
     TEST_ASSERT_EQUAL(TC_NEED_SICK, tc_pet_need(&p));
-}
-
-static void test_angel_no_all_good(void)
-{
-    uint8_t ram[TC_RAM_NIBBLES];
-    memset(ram, 0, sizeof ram);
-    ram[0x5D] = 1;               // hatched
-    ram[0x40] = ram[0x41] = 15;  // full hearts
-    ram[0x48] = 0;               // not sick
-    ram[0x5E] = 1;               // awake
-    ram[0x4B] = 15;              // light on
-    tc_pet_t p;
-    tc_pet_decode(TC_MODEL_ANGEL, ram, sizeof ram, &p);
-    TEST_ASSERT_TRUE(p.known);
-    TEST_ASSERT_EQUAL(TC_NEED_NONE, tc_pet_need(&p));  // droppings unknown on Angel
 }
 
 static void test_clock_addresses(void)
@@ -417,12 +476,14 @@ int main(void)
     RUN_TEST(test_clock_rejects_bad_digits);
     RUN_TEST(test_clock_unknown_model_and_short_ram);
     RUN_TEST(test_angel_decode);
-    RUN_TEST(test_mothra_hunger_only);
-    RUN_TEST(test_mothra_names_no_need);
+    RUN_TEST(test_mothra_stage);
+    RUN_TEST(test_mothra_fields);
+    RUN_TEST(test_mothra_flags_and_caps);
+    RUN_TEST(test_angel_droppings);
+    RUN_TEST(test_units_and_labels);
     RUN_TEST(test_mothra_clock_12h);
     RUN_TEST(test_need_all_good_needs_every_input);
     RUN_TEST(test_need_known_problem_still_named);
-    RUN_TEST(test_angel_no_all_good);
     RUN_TEST(test_clock_addresses);
     RUN_TEST(test_clock_angel_mothra);
     RUN_TEST(test_setup_exit_specs_parse);
