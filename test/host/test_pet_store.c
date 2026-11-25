@@ -63,6 +63,10 @@ static void test_fake_nvs_matches_idf_edges(void)
     TEST_ASSERT_NOT_NULL(it);
     TEST_ASSERT_EQUAL(ESP_ERR_NVS_NOT_FOUND, nvs_entry_next(&it));
     TEST_ASSERT_NULL(it);
+    // keys hold 15 characters: a longer one is refused on write, as nvs_page.cpp does, not cut short
+    TEST_ASSERT_EQUAL(ESP_OK, nvs_set_blob(h, "abcdefghijklmno", v, sizeof v));
+    TEST_ASSERT_EQUAL(ESP_ERR_NVS_KEY_TOO_LONG, nvs_set_blob(h, "abcdefghijklmnop", v, sizeof v));
+    TEST_ASSERT_FALSE(fake_nvs_has("pets", "abcdefghijklmnop"));
     nvs_close(h);
 }
 

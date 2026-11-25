@@ -107,6 +107,7 @@ esp_err_t nvs_set_blob(nvs_handle_t h, const char *key, const void *data, size_t
     handle_t *p = handle(h);
     if (!p || p->mode != NVS_READWRITE) return ESP_ERR_INVALID_ARG;
     if (s_fail_writes) return ESP_ERR_NVS_NOT_ENOUGH_SPACE;
+    if (strlen(key) >= sizeof s_e[0].key) return ESP_ERR_NVS_KEY_TOO_LONG;  // as nvs_page.cpp: 15 characters at most
     entry_t *e = find_entry(p->ns, key);
     if (!e) {
         for (int i = 0; i < MAX_ENTRIES && !e; i++)

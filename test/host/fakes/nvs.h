@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Host fake of ESP-IDF's nvs.h: the calls main/ makes, over an in-memory store (fake_nvs.c), with ESP-IDF's
 // results on the edges: a missing key or (read-only) namespace is ESP_ERR_NVS_NOT_FOUND, an iterator over
-// nothing is NULL with ESP_ERR_NVS_NOT_FOUND, nvs_entry_next past the end frees it and sets it NULL.
+// nothing is NULL with ESP_ERR_NVS_NOT_FOUND, nvs_entry_next past the end frees it and sets it NULL,
+// and a write to a key over 15 characters is ESP_ERR_NVS_KEY_TOO_LONG.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
