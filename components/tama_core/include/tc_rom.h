@@ -18,6 +18,9 @@ size_t      tc_model_rom_bytes(tc_model_t m);   // the dump size of a known mode
 // Catch-up uses halt fast-forward (tc_set_halt_ff) for this model: true where test/host/test_halt_ff.c proved it
 // exact (all four playable models; only Mothra gains much, docs/architecture.md).
 bool        tc_model_halt_ff(tc_model_t m);
+// Catch-up speed on the ball (x real time, with tc_model_halt_ff's setting): what the "about N min" estimates
+// assume until a boot has measured its own. 75 for models not measured.
+float       tc_model_catchup_speed(tc_model_t m);
 
 void        tc_sha1(const uint8_t *data, size_t len, uint8_t out[20]);
 // sha1_out may be NULL. A size that doesn't match the known model's dump size is TC_MODEL_UNKNOWN.

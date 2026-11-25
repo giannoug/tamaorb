@@ -89,6 +89,17 @@ bool tc_model_halt_ff(tc_model_t m)
     }
 }
 
+float tc_model_catchup_speed(tc_model_t m)
+{
+    switch (m) {  // the lower of two 15-minute catch-ups on the ball, rounded down (2026-11-25)
+    case TC_MODEL_P1: return 67.0f;
+    case TC_MODEL_P2: return 69.0f;
+    case TC_MODEL_ANGEL: return 37.0f;
+    case TC_MODEL_MOTHRA: return 75.0f;
+    default: return 75.0f;
+    }
+}
+
 const char *tc_model_long_name(tc_model_t m)
 {
     switch (m) {

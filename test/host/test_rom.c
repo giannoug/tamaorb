@@ -264,10 +264,22 @@ static void test_model_halt_ff_table(void)
     TEST_ASSERT_FALSE(tc_model_halt_ff(TC_MODEL_TEST_ROM));
 }
 
+// The catch-up speed the "about N min" estimates assume until a boot has measured its own: the lower of two runs
+// on the ball with this build's halt fast-forward (2026-11-25), rounded down; 75 for anything else.
+static void test_model_catchup_speed(void)
+{
+    TEST_ASSERT_EQUAL_FLOAT(67.0f, tc_model_catchup_speed(TC_MODEL_P1));
+    TEST_ASSERT_EQUAL_FLOAT(69.0f, tc_model_catchup_speed(TC_MODEL_P2));
+    TEST_ASSERT_EQUAL_FLOAT(37.0f, tc_model_catchup_speed(TC_MODEL_ANGEL));
+    TEST_ASSERT_EQUAL_FLOAT(75.0f, tc_model_catchup_speed(TC_MODEL_MOTHRA));
+    TEST_ASSERT_EQUAL_FLOAT(75.0f, tc_model_catchup_speed(TC_MODEL_UNKNOWN));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
     RUN_TEST(test_model_halt_ff_table);
+    RUN_TEST(test_model_catchup_speed);
     RUN_TEST(test_sha1_abc);
     RUN_TEST(test_sha1_empty);
     RUN_TEST(test_sha1_two_blocks);

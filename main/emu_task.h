@@ -21,5 +21,6 @@ uint64_t emu_wait_gap_s(void);     // the gap the question is about; 0 when not 
 emu_phase_t emu_phase(void);
 // While catching up: seconds replayed, total, and estimated seconds left.
 void emu_catchup_progress(uint64_t *done_s, uint64_t *total_s, uint32_t *eta_s);
-// Last measured catch-up speed (x real time) this boot, else 24.0f (the measured v1 figure).
+// Last measured catch-up speed (x real time) this boot, else the default (emu_set_default_speed; 75 until set).
 float emu_catchup_speed(void);
+void  emu_set_default_speed(float x);  // boot: tc_model_catchup_speed of the running model
